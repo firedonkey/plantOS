@@ -1,0 +1,5 @@
+-r requirements.txt
+
+gpiozero==2.0.1
+spidev==3.6
+Adafruit_DHT==1.4.0

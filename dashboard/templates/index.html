@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Raspberry Pi 3 MVP</p>
+        <h1>{{ app_name }}</h1>
+      </header>
+
+      {% if latest %}
+      <section class="status-grid">
+        <article>
+          <span>Temperature</span>
+          <strong>{{ latest.temperature_c or "n/a" }} C</strong>
+        </article>
+        <article>
+          <span>Humidity</span>
+          <strong>{{ latest.humidity_percent or "n/a" }}%</strong>
+        </article>
+        <article>
+          <span>Moisture</span>
+          <strong>{{ latest.moisture_percent or "n/a" }}%</strong>
+        </article>
+        <article>
+          <span>Light</span>
+          <strong>{{ "On" if latest.light_on in [true, "True", "true", "1"] else "Off" }}</strong>
+        </article>
+        <article>
+          <span>Pump</span>
+          <strong>{{ latest.pump_event or "n/a" }}</strong>
+        </article>
+        <article>
+          <span>Updated</span>
+          <strong>{{ latest.timestamp or "n/a" }}</strong>
+        </article>
+      </section>
+
+      {% if latest.errors %}
+      <section class="notice">
+        <strong>Errors</strong>
+        <p>{{ latest.errors }}</p>
+      </section>
+      {% endif %}
+      {% else %}
+      <section class="notice">
+        <strong>No readings yet</strong>
+        <p>Run <code>python main.py --once</code> to create the first local reading.</p>
+      </section>
+      {% endif %}
+
+      <section>
+        <h2>Recent Images</h2>
+        {% if images %}
+        <div class="image-grid">
+          {% for image in images %}
+          <img src="/{{ image }}" alt="Plant capture">
+          {% endfor %}
+        </div>
+        {% else %}
+        <p>No camera images saved yet.</p>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

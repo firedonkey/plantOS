@@ -1,0 +1,12 @@
+Flask==3.0.3
+PyYAML==6.0.2
+
+# Laptop/mock-mode install:
+# pip install -r requirements.txt
+#
+# Raspberry Pi hardware install:
+# pip install -r requirements-pi.txt
+#
+# Optional camera helpers on Raspberry Pi OS:
+# sudo apt install fswebcam
+# sudo apt install python3-opencv
