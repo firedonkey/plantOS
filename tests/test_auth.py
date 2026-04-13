@@ -1,18 +1,27 @@
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+import platform_app.api.routes.auth as auth_routes
+from platform_app.core.settings import get_settings
+from platform_app.main import app
 from platform_app.models.base import Base
 from platform_app.services.users import upsert_google_user
-from platform_app.main import app
-from fastapi.testclient import TestClient
 
 
-def test_google_login_reports_missing_config():
+def test_google_login_reports_missing_config(monkeypatch):
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
     client = TestClient(app)
     response = client.get("/auth/login")
 
     assert response.status_code == 503
     assert "Google sign-in is not configured" in response.json()["detail"]
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
 
 
 def test_me_reports_anonymous_user():
