@@ -188,8 +188,9 @@ Trigger alerts when:
 
 ### Backend
 
-* FastAPI (preferred)
-* REST API
+* FastAPI
+* REST API for device ingestion and user actions
+* server-rendered dashboard routes
 
 ---
 
@@ -207,8 +208,11 @@ Later:
 
 ### Frontend
 
-* Flask templates (V1)
-* React (future)
+* FastAPI + Jinja2 templates (V1)
+* small vanilla JavaScript only where needed
+* mobile-friendly web dashboard for iPhone Safari
+* optional Add to Home Screen / PWA-style support
+* React or native mobile app later, not V1
 
 ---
 
@@ -216,6 +220,7 @@ Later:
 
 Device → Backend API → Database
 User → Web UI → Backend → Device
+iPhone Safari → Mobile-friendly dashboard → Backend
 
 ---
 
@@ -285,7 +290,7 @@ POST /api/device/{id}/light
 ## 9. Non-Goals (V1)
 
 * advanced AI diagnosis
-* mobile app
+* native mobile app / App Store app
 * cloud scaling
 * fertilizer automation
 * complex permissions
