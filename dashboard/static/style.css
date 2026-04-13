@@ -152,7 +152,7 @@ h2 {
 .metric,
 .panel,
 .notice,
-.empty-media {
+.mock-plant {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -166,7 +166,7 @@ h2 {
 .metric span,
 .panel p,
 .section-heading p,
-.empty-media p {
+.mock-plant p {
   color: var(--muted);
 }
 
@@ -215,7 +215,8 @@ h2 {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
-.image-grid img {
+.image-grid img,
+.mock-growth img {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
@@ -223,22 +224,51 @@ h2 {
   border-radius: 8px;
 }
 
-.empty-media {
-  display: flex;
-  align-items: center;
+.mock-growth figure {
+  margin: 0;
+}
+
+.mock-growth figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.mock-note {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.mock-plant {
+  display: grid;
+  grid-template-columns: minmax(180px, 320px) 1fr;
+  align-items: stretch;
   gap: 14px;
-  min-height: 112px;
   padding: 18px;
 }
 
-.empty-media img {
-  width: 52px;
-  height: 52px;
+.mock-plant img {
+  width: 100%;
+  min-height: 190px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: 8px;
+  background: var(--cyan);
 }
 
-.empty-media p {
+.mock-plant div {
+  align-self: center;
+}
+
+.mock-plant strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.25rem;
+}
+
+.mock-plant p {
   margin-bottom: 0;
+  line-height: 1.5;
 }
 
 code {
@@ -275,6 +305,10 @@ code {
 
   .status-grid,
   .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mock-plant {
     grid-template-columns: 1fr;
   }
 

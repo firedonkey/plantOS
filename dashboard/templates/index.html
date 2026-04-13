@@ -99,10 +99,23 @@
           <img src="/{{ image }}" alt="Plant capture">
           {% endfor %}
         </div>
+        {% elif mock_images %}
+        <div class="image-grid mock-growth">
+          {% for image in mock_images %}
+          <figure>
+            <img src="{{ image.src }}" alt="Mock rose growth stage: {{ image.label }}">
+            <figcaption>{{ image.label }}</figcaption>
+          </figure>
+          {% endfor %}
+        </div>
+        <p class="mock-note">Mock rose images are shown until real webcam captures are available.</p>
         {% else %}
-        <div class="empty-media">
-          <img src="{{ url_for('static', filename='plant-icon.svg') }}" alt="" aria-hidden="true">
-          <p>No camera images saved yet.</p>
+        <div class="mock-plant">
+          <img src="{{ url_for('static', filename='mock-plant.svg') }}" alt="Mock plant preview">
+          <div>
+            <strong>Mock plant preview</strong>
+            <p>Real webcam captures will replace this image after camera capture is enabled.</p>
+          </div>
         </div>
         {% endif %}
       </section>

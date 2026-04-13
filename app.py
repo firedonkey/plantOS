@@ -17,11 +17,13 @@ def index():
     latest = _prepare_status(logger.latest())
     image_dir = Path(config["camera"].get("image_dir", "data/images"))
     images = sorted(image_dir.glob("*.jpg"), reverse=True)[:6]
+    mock_images = _mock_growth_images()
     return render_template(
         "index.html",
         app_name=config.get("app", {}).get("name", "Plant Dashboard"),
         latest=latest,
         images=[str(path) for path in images],
+        mock_images=mock_images,
         loop_interval=config.get("app", {}).get("loop_interval_seconds", 60),
     )
 
@@ -87,6 +89,31 @@ def _moisture_tone(value) -> str:
     if moisture < float(config["automation"].get("moisture_threshold_percent", 35)):
         return "warning"
     return "good"
+
+
+def _mock_growth_images() -> list[dict]:
+    return [
+        {
+            "src": "/static/mock/rose-01-seedling.jpg",
+            "label": "Seedling",
+        },
+        {
+            "src": "/static/mock/rose-02-young-leaves.jpg",
+            "label": "New leaves",
+        },
+        {
+            "src": "/static/mock/rose-03-bud.jpg",
+            "label": "Bud",
+        },
+        {
+            "src": "/static/mock/rose-04-bloom.jpg",
+            "label": "Opening",
+        },
+        {
+            "src": "/static/mock/rose-05-bloom.jpg",
+            "label": "Bloom",
+        },
+    ]
 
 
 if __name__ == "__main__":

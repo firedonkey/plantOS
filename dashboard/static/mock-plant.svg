@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" role="img" aria-label="Mock indoor plant">
+  <rect width="960" height="720" fill="#dff1f4"/>
+  <rect x="0" y="468" width="960" height="252" fill="#f7f8f3"/>
+  <circle cx="218" cy="154" r="58" fill="#f7d46b"/>
+  <rect x="120" y="512" width="720" height="44" rx="8" fill="#ffffff"/>
+  <rect x="176" y="548" width="608" height="18" rx="8" fill="#dce2d7"/>
+  <path d="M354 350c-62-82-105-174-70-241 76 16 123 83 124 181" fill="#2f7d4f"/>
+  <path d="M431 331c-18-126 18-226 96-276 53 70 37 181-54 288" fill="#41a36b"/>
+  <path d="M526 354c58-104 147-161 240-141-9 92-86 155-212 173" fill="#2f7d4f"/>
+  <path d="M420 414c-85-27-147-88-153-163 83-12 152 35 185 139" fill="#5fbf7d"/>
+  <path d="M512 417c54-83 128-121 209-99-24 78-100 124-202 125" fill="#41a36b"/>
+  <path d="M478 482V235" fill="none" stroke="#2a6b45" stroke-width="16" stroke-linecap="round"/>
+  <path d="M478 392c-35-56-84-96-151-125" fill="none" stroke="#2a6b45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M478 344c53-49 113-82 181-99" fill="none" stroke="#2a6b45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M348 462h260l-28 152H376z" fill="#f36f56"/>
+  <path d="M332 432h292v52H332z" fill="#ff8b72"/>
+  <path d="M376 614h204" fill="none" stroke="#ca503c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M378 462h200" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+</svg>
