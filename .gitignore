@@ -3,14 +3,16 @@ __pycache__/
 .venv/
 venv/
 .env
+.pytest_cache/
 
-data/logs/*.csv
-data/logs/*.json
-data/*.db
-data/*.sqlite
-data/*.sqlite3
-data/images/*.jpg
-data/images/*.jpeg
-data/images/*.png
-data/uploads/*
-!data/uploads/.gitkeep
+device/data/logs/*.csv
+device/data/logs/*.json
+device/data/images/*.jpg
+device/data/images/*.jpeg
+device/data/images/*.png
+
+platform/data/*.db
+platform/data/*.sqlite
+platform/data/*.sqlite3
+platform/data/uploads/*
+!platform/data/uploads/.gitkeep
