@@ -32,16 +32,35 @@ class DHT22Sensor:
                 ok=True,
             )
 
-        try:
-            import Adafruit_DHT
+        return self._read_with_circuitpython()
 
-            humidity, temperature = Adafruit_DHT.read_retry(
-                Adafruit_DHT.DHT22,
-                int(self.config["gpio_pin"]),
-            )
+    def _read_with_circuitpython(self) -> DHT22Reading:
+        try:
+            import adafruit_dht
+            import board
+
+            gpio_pin = int(self.config["gpio_pin"])
+            board_pin = getattr(board, f"D{gpio_pin}")
+            try:
+                sensor = adafruit_dht.DHT22(board_pin, use_pulseio=False)
+            except TypeError:
+                sensor = adafruit_dht.DHT22(board_pin)
+
+            try:
+                temperature = sensor.temperature
+                humidity = sensor.humidity
+            finally:
+                sensor.exit()
+
             if humidity is None or temperature is None:
                 return DHT22Reading(None, None, False, "DHT22 returned no reading")
             return DHT22Reading(round(temperature, 2), round(humidity, 2), True)
+        except ModuleNotFoundError as exc:
+            return DHT22Reading(None, None, False, f"missing DHT22 dependency: {exc.name}")
+        except AttributeError:
+            return DHT22Reading(None, None, False, f"board pin D{self.config['gpio_pin']} is not available")
+        except RuntimeError as exc:
+            return DHT22Reading(None, None, False, str(exc))
         except Exception as exc:
             return DHT22Reading(None, None, False, str(exc))
 

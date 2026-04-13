@@ -201,6 +201,12 @@ sudo apt install fswebcam
 sudo apt install python3-opencv
 ```
 
+DHT22 support uses the CircuitPython DHT library. On Raspberry Pi OS, install the system GPIO helper first:
+
+```bash
+sudo apt install libgpiod2
+```
+
 ## Test flow
 
 ### Laptop mock test
@@ -258,6 +264,13 @@ sensors:
 ```
 
 `gpio_pin: 4` means BCM GPIO 4, physical pin 7 on the Raspberry Pi header.
+
+Then install Pi requirements and run one cycle:
+
+```bash
+pip install -r requirements-pi.txt
+python main.py --once
+```
 
 ### Send mock device data to the platform
 Start the platform first:
