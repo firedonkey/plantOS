@@ -12,3 +12,5 @@ data/*.sqlite3
 data/images/*.jpg
 data/images/*.jpeg
 data/images/*.png
+data/uploads/*
+!data/uploads/.gitkeep

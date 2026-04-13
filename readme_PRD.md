@@ -284,6 +284,8 @@ POST /api/data
 POST /api/image
 
 * upload image
+* multipart form with `device_id` and image `file`
+* stores file locally for MVP and records image metadata in SQLite
 
 ---
 
