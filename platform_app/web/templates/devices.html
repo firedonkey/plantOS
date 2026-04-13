@@ -45,7 +45,7 @@
           <h2>{{ device.name }}</h2>
           <p>{{ device.plant_type or "Plant type not set" }}</p>
           <p>{{ device.location or "Location not set" }}</p>
-          <a href="/api/devices/{{ device.id }}">API details</a>
+          <a href="/devices/{{ device.id }}">View dashboard</a>
         </article>
         {% endfor %}
       </section>

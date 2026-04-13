@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ device.name }} - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-logo" href="/">PlantLab</a>
+      <nav class="site-nav" aria-label="Account">
+        <a href="/devices">Devices</a>
+        <span class="account-label">{{ current_user.name or current_user.email }}</span>
+        <form action="/auth/logout" method="post">
+          <button type="submit">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    <main>
+      <p class="eyebrow">Device Dashboard</p>
+      <h1>{{ device.name }}</h1>
+      <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
+
+      {% if latest_reading %}
+      <section class="metric-grid" aria-label="Latest reading">
+        <article class="metric-card">
+          <span>Moisture</span>
+          <strong>{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
+        </article>
+        <article class="metric-card">
+          <span>Temperature</span>
+          <strong>{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
+        </article>
+        <article class="metric-card">
+          <span>Humidity</span>
+          <strong>{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
+        </article>
+        <article class="metric-card">
+          <span>Last Reading</span>
+          <strong>{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
+        </article>
+      </section>
+      {% else %}
+      <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
+      {% endif %}
+
+      <section class="detail-section">
+        <div class="section-heading">
+          <h2>Recent Readings</h2>
+          <a href="/api/devices/{{ device.id }}">API details</a>
+        </div>
+        {% if recent_readings %}
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Moisture</th>
+              <th>Temp</th>
+              <th>Humidity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for reading in recent_readings %}
+            <tr>
+              <td>{{ reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</td>
+              <td>{{ reading.moisture if reading.moisture is not none else "n/a" }}</td>
+              <td>{{ reading.temperature if reading.temperature is not none else "n/a" }}</td>
+              <td>{{ reading.humidity if reading.humidity is not none else "n/a" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="notice">No readings recorded.</p>
+        {% endif %}
+      </section>
+
+      <section class="detail-section">
+        <h2>Recent Images</h2>
+        {% if recent_images %}
+        <div class="image-grid">
+          {% for image in recent_images %}
+          <img src="/{{ image.path }}" alt="Plant capture for {{ device.name }}">
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="notice">No images uploaded yet. Post an image to <code>/api/image</code> for this device.</p>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

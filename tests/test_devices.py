@@ -91,6 +91,40 @@ def test_create_list_and_get_device_api():
         teardown_overrides()
 
 
+def test_device_detail_page_shows_latest_data():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 42.5,
+                "temperature": 22.2,
+                "humidity": 51.0,
+            },
+        )
+        assert data_response.status_code == 201
+
+        detail_response = client.get(f"/devices/{device_id}")
+
+        assert detail_response.status_code == 200
+        assert "Kitchen Rose" in detail_response.text
+        assert "42.5%" in detail_response.text
+        assert "Recent Readings" in detail_response.text
+    finally:
+        teardown_overrides()
+
+
 def test_devices_page_renders_for_signed_in_user():
     client, _ = build_client_with_user(set_session_cookie=True)
     try:

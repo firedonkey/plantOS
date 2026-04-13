@@ -1,11 +1,21 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
 from platform_app.core.settings import get_settings
-from platform_app.db.session import SessionLocal
+from platform_app.db.session import get_session
 from platform_app.schemas.devices import DeviceCreate
-from platform_app.services.devices import create_device_for_user, list_devices_for_user
+from platform_app.services.devices import (
+    create_device_for_user,
+    get_device_for_user,
+    list_devices_for_user,
+)
+from platform_app.services.images import list_recent_images_for_device
+from platform_app.services.readings import (
+    get_latest_reading_for_device,
+    list_recent_readings_for_device,
+)
 from platform_app.services.users import get_user_by_id
 
 
@@ -14,13 +24,12 @@ templates = Jinja2Templates(directory="platform_app/web/templates")
 
 
 @router.get("/")
-def index(request: Request):
+def index(request: Request, session: Session = Depends(get_session)):
     settings = get_settings()
     current_user = None
     user_id = request.session.get("user_id")
     if user_id:
-        with SessionLocal() as session:
-            current_user = get_user_by_id(session, int(user_id))
+        current_user = get_user_by_id(session, int(user_id))
 
     return templates.TemplateResponse(
         request,
@@ -52,18 +61,17 @@ def login_page(request: Request):
 
 
 @router.get("/devices")
-def devices_page(request: Request):
+def devices_page(request: Request, session: Session = Depends(get_session)):
     settings = get_settings()
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
 
-    with SessionLocal() as session:
-        current_user = get_user_by_id(session, int(user_id))
-        if current_user is None:
-            request.session.clear()
-            return RedirectResponse(url="/login", status_code=303)
-        devices = list_devices_for_user(session, current_user)
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+    devices = list_devices_for_user(session, current_user)
 
     return templates.TemplateResponse(
         request,
@@ -76,8 +84,49 @@ def devices_page(request: Request):
     )
 
 
+@router.get("/devices/{device_id}")
+def device_detail_page(
+    request: Request,
+    device_id: int,
+    session: Session = Depends(get_session),
+):
+    settings = get_settings()
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        return RedirectResponse(url="/devices", status_code=303)
+
+    latest_reading = get_latest_reading_for_device(session, device.id)
+    recent_readings = list_recent_readings_for_device(session, device.id, limit=10)
+    recent_images = list_recent_images_for_device(session, device.id, limit=6)
+
+    return templates.TemplateResponse(
+        request,
+        "device_detail.html",
+        {
+            "app_name": settings.app_name,
+            "current_user": current_user,
+            "device": device,
+            "latest_reading": latest_reading,
+            "recent_readings": recent_readings,
+            "recent_images": recent_images,
+        },
+    )
+
+
 @router.post("/devices")
-async def create_device_page(request: Request):
+async def create_device_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
@@ -89,11 +138,10 @@ async def create_device_page(request: Request):
         plant_type=str(form.get("plant_type", "")).strip() or None,
     )
 
-    with SessionLocal() as session:
-        current_user = get_user_by_id(session, int(user_id))
-        if current_user is None:
-            request.session.clear()
-            return RedirectResponse(url="/login", status_code=303)
-        create_device_for_user(session, current_user, device_data)
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+    create_device_for_user(session, current_user, device_data)
 
     return RedirectResponse(url="/devices", status_code=303)

@@ -34,3 +34,12 @@ def list_recent_readings_for_device(
             .limit(limit)
         )
     )
+
+
+def get_latest_reading_for_device(session: Session, device_id: int) -> SensorReading | None:
+    return session.scalar(
+        select(SensorReading)
+        .where(SensorReading.device_id == device_id)
+        .order_by(SensorReading.timestamp.desc())
+        .limit(1)
+    )

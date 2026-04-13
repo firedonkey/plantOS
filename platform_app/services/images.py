@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from platform_app.models import Image
@@ -40,3 +41,18 @@ def save_uploaded_image(
     session.commit()
     session.refresh(image)
     return image
+
+
+def list_recent_images_for_device(
+    session: Session,
+    device_id: int,
+    limit: int = 12,
+) -> list[Image]:
+    return list(
+        session.scalars(
+            select(Image)
+            .where(Image.device_id == device_id)
+            .order_by(Image.timestamp.desc())
+            .limit(limit)
+        )
+    )
