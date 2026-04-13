@@ -15,8 +15,7 @@ logger = PlantLogger(config["logging"])
 @app.route("/")
 def index():
     latest = _prepare_status(logger.latest())
-    image_dir = Path(config["camera"].get("image_dir", "data/images"))
-    images = sorted(image_dir.glob("*.jpg"), reverse=True)[:6]
+    images = _recent_images()
     mock_images = _mock_growth_images()
     return render_template(
         "index.html",
@@ -33,10 +32,30 @@ def api_status():
     return jsonify(_prepare_status(logger.latest()))
 
 
+@app.route("/api/images")
+def api_images():
+    return jsonify(
+        {
+            "images": [
+                {
+                    "src": f"/{image}",
+                    "alt": "Plant capture",
+                }
+                for image in _recent_images()
+            ]
+        }
+    )
+
+
 @app.route("/data/images/<path:filename>")
 def plant_image(filename):
     image_dir = Path(config["camera"].get("image_dir", "data/images"))
     return send_from_directory(image_dir, filename)
+
+
+def _recent_images(limit: int = 6) -> list[str]:
+    image_dir = Path(config["camera"].get("image_dir", "data/images"))
+    return [str(path) for path in sorted(image_dir.glob("*.jpg"), reverse=True)[:limit]]
 
 
 def _prepare_status(record: dict | None) -> dict | None:

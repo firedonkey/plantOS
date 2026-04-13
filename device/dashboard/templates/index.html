@@ -94,13 +94,13 @@
           <p>Still captures will appear after the webcam is enabled.</p>
         </div>
         {% if images %}
-        <div class="image-grid">
+        <div class="image-grid" data-image-grid>
           {% for image in images %}
           <img src="/{{ image }}" alt="Plant capture">
           {% endfor %}
         </div>
         {% elif mock_images %}
-        <div class="image-grid mock-growth">
+        <div class="image-grid mock-growth" data-image-grid>
           {% for image in mock_images %}
           <figure>
             <img src="{{ image.src }}" alt="Mock rose growth stage: {{ image.label }}">
@@ -110,7 +110,7 @@
         </div>
         <p class="mock-note">Mock rose images are shown until real webcam captures are available.</p>
         {% else %}
-        <div class="mock-plant">
+        <div class="mock-plant" data-image-grid>
           <img src="{{ url_for('static', filename='mock-plant.svg') }}" alt="Mock plant preview">
           <div>
             <strong>Mock plant preview</strong>

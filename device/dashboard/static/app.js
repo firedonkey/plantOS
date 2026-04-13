@@ -1,4 +1,5 @@
 const fields = document.querySelectorAll("[data-field]");
+const imageGrid = document.querySelector("[data-image-grid]");
 
 async function refreshStatus() {
   if (!fields.length) {
@@ -23,6 +24,43 @@ async function refreshStatus() {
 }
 
 window.setInterval(refreshStatus, 5000);
+
+async function refreshImages() {
+  if (!imageGrid) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/images", { cache: "no-store" });
+    if (!response.ok) {
+      return;
+    }
+    const payload = await response.json();
+    const images = payload.images || [];
+    if (!images.length) {
+      return;
+    }
+
+    const nextSignature = images.map((image) => image.src).join("|");
+    if (imageGrid.dataset.signature === nextSignature) {
+      return;
+    }
+    imageGrid.dataset.signature = nextSignature;
+    imageGrid.classList.remove("mock-growth");
+    imageGrid.innerHTML = "";
+
+    images.forEach((image) => {
+      const img = document.createElement("img");
+      img.src = `${image.src}?v=${Date.now()}`;
+      img.alt = image.alt || "Plant capture";
+      imageGrid.appendChild(img);
+    });
+  } catch (error) {
+    console.debug("Image refresh skipped", error);
+  }
+}
+
+window.setInterval(refreshImages, 5000);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
