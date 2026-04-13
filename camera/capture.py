@@ -11,7 +11,7 @@ class USBCamera:
         self.image_dir.mkdir(parents=True, exist_ok=True)
 
     def capture(self) -> str | None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         image_path = self.image_dir / f"plant_{timestamp}.jpg"
 
         if self.mock_mode:
