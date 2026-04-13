@@ -10,7 +10,7 @@ hardware:
 sensors:
   dht22:
     enabled: true
-    mock_mode: true
+    mock_mode: false
     gpio_pin: 4
     retries: 5
     retry_delay_seconds: 2
