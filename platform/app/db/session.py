@@ -28,12 +28,20 @@ def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
     if not selected_engine.url.drivername.startswith("sqlite"):
         return
     inspector = inspect(selected_engine)
-    if "devices" not in inspector.get_table_names():
-        return
-    device_columns = {column["name"] for column in inspector.get_columns("devices")}
+    table_names = inspector.get_table_names()
     with selected_engine.begin() as connection:
-        if "api_token" not in device_columns:
-            connection.execute(text("ALTER TABLE devices ADD COLUMN api_token VARCHAR(80)"))
+        if "devices" in table_names:
+            device_columns = {column["name"] for column in inspector.get_columns("devices")}
+            if "api_token" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN api_token VARCHAR(80)"))
+        if "sensor_readings" in table_names:
+            reading_columns = {column["name"] for column in inspector.get_columns("sensor_readings")}
+            if "light_on" not in reading_columns:
+                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN light_on BOOLEAN"))
+            if "pump_on" not in reading_columns:
+                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_on BOOLEAN"))
+            if "pump_status" not in reading_columns:
+                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_status VARCHAR(120)"))
 
 
 def get_session() -> Generator[Session, None, None]:

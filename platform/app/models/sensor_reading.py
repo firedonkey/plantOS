@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -23,5 +23,8 @@ class SensorReading(Base):
     moisture: Mapped[Optional[float]] = mapped_column(Float, default=None)
     temperature: Mapped[Optional[float]] = mapped_column(Float, default=None)
     humidity: Mapped[Optional[float]] = mapped_column(Float, default=None)
+    light_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    pump_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    pump_status: Mapped[Optional[str]] = mapped_column(String(120), default=None)
 
     device: Mapped["Device"] = relationship(back_populates="readings")

@@ -34,6 +34,49 @@
         <p><code>X-Device-Token: {{ device.api_token }}</code></p>
       </section>
 
+      <section class="detail-section">
+        <h2>Commands</h2>
+        <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
+          <button type="submit" name="target" value="pump" formaction="/devices/{{ device.id }}/commands?target=pump">Pump run</button>
+          <input type="hidden" name="action" value="run">
+          <input type="hidden" name="value" value="5">
+        </form>
+        <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
+          <input type="hidden" name="target" value="pump">
+          <button type="submit" name="action" value="off">Pump off</button>
+        </form>
+        <form class="command-form command-row" action="/devices/{{ device.id }}/commands" method="post">
+          <input type="hidden" name="target" value="light">
+          <button type="submit" name="action" value="on">Light on</button>
+          <button type="submit" name="action" value="off">Light off</button>
+        </form>
+
+        {% if recent_commands %}
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Target</th>
+              <th>Action</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for command in recent_commands %}
+            <tr>
+              <td>{{ command.created_at.strftime("%b %-d, %-I:%M %p") }}</td>
+              <td>{{ command.target }}</td>
+              <td>{{ command.action }}{% if command.value %} {{ command.value }}{% endif %}</td>
+              <td>{{ command.status }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="notice">No commands queued yet.</p>
+        {% endif %}
+      </section>
+
       {% if latest_reading %}
       <section class="metric-grid" aria-label="Latest reading">
         <article class="metric-card">
@@ -51,6 +94,14 @@
         <article class="metric-card">
           <span>Last Reading</span>
           <strong>{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Light</span>
+          <strong>{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Pump</span>
+          <strong>{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
         </article>
       </section>
       {% else %}
@@ -70,6 +121,9 @@
               <th>Moisture</th>
               <th>Temp</th>
               <th>Humidity</th>
+              <th>Light</th>
+              <th>Pump</th>
+              <th>Pump Event</th>
             </tr>
           </thead>
           <tbody>
@@ -79,6 +133,9 @@
               <td>{{ reading.moisture if reading.moisture is not none else "n/a" }}</td>
               <td>{{ reading.temperature if reading.temperature is not none else "n/a" }}</td>
               <td>{{ reading.humidity if reading.humidity is not none else "n/a" }}</td>
+              <td>{% if reading.light_on is none %}n/a{% elif reading.light_on %}on{% else %}off{% endif %}</td>
+              <td>{% if reading.pump_on is none %}n/a{% elif reading.pump_on %}on{% else %}off{% endif %}</td>
+              <td>{{ reading.pump_status or "n/a" }}</td>
             </tr>
             {% endfor %}
           </tbody>

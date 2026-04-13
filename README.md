@@ -247,6 +247,9 @@ You can also save the values under `platform:` in `device/config.yaml` and run:
 python mock_platform_sender.py
 ```
 
+The platform device dashboard also includes basic command controls for pump and light. Commands are stored in the platform database and are ready for the Pi client to poll with `X-Device-Token`.
+The mock sender polls for pending pump/light commands every cycle, executes them with the local mock actuators, and acknowledges the result back to the platform. Use `--skip-commands` to send data without polling commands.
+
 ### Raspberry Pi mock test
 Copy the repo to the Pi, keep `hardware.mock_mode: true`, then run:
 ```bash

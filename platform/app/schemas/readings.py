@@ -8,6 +8,9 @@ class SensorReadingCreate(BaseModel):
     moisture: float | None = Field(default=None, ge=0, le=100)
     temperature: float | None = None
     humidity: float | None = Field(default=None, ge=0, le=100)
+    light_on: bool | None = None
+    pump_on: bool | None = None
+    pump_status: str | None = Field(default=None, max_length=120)
     timestamp: datetime | None = None
 
 
@@ -18,5 +21,8 @@ class SensorReadingRead(BaseModel):
     moisture: float | None
     temperature: float | None
     humidity: float | None
+    light_on: bool | None
+    pump_on: bool | None
+    pump_status: str | None
 
     model_config = {"from_attributes": True}

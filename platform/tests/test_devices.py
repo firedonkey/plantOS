@@ -112,9 +112,17 @@ def test_device_detail_page_shows_latest_data():
                 "moisture": 42.5,
                 "temperature": 22.2,
                 "humidity": 51.0,
+                "light_on": True,
+                "pump_on": False,
+                "pump_status": "not_needed",
             },
         )
         assert data_response.status_code == 201
+        command_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "pump", "action": "run", "value": "5"},
+        )
+        assert command_response.status_code == 201
 
         detail_response = client.get(f"/devices/{device_id}")
 
@@ -122,6 +130,11 @@ def test_device_detail_page_shows_latest_data():
         assert "Kitchen Rose" in detail_response.text
         assert "42.5%" in detail_response.text
         assert "Recent Readings" in detail_response.text
+        assert "not_needed" in detail_response.text
+        assert "Pump off" in detail_response.text
+        assert "pump" in detail_response.text
+        assert "run 5" in detail_response.text
+        assert "pending" in detail_response.text
         assert "data-auto-refresh=\"5000\"" in detail_response.text
     finally:
         teardown_overrides()

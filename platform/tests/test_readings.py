@@ -79,6 +79,9 @@ def test_ingest_sensor_data_for_owned_device():
                 "moisture": 42.5,
                 "temperature": 22.2,
                 "humidity": 51.0,
+                "light_on": True,
+                "pump_on": False,
+                "pump_status": "not_needed",
                 "timestamp": timestamp.isoformat(),
             },
         )
@@ -89,6 +92,9 @@ def test_ingest_sensor_data_for_owned_device():
         assert payload["moisture"] == 42.5
         assert payload["temperature"] == 22.2
         assert payload["humidity"] == 51.0
+        assert payload["light_on"] is True
+        assert payload["pump_on"] is False
+        assert payload["pump_status"] == "not_needed"
     finally:
         teardown_overrides()
 

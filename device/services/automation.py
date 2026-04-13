@@ -27,7 +27,7 @@ class PlantAutomation:
         now = datetime.now()
         dht = self.dht22.read()
         moisture = self.moisture.read()
-        light_on = self.light.apply_schedule(now)
+        self.light.apply_schedule(now)
         image_path = self._maybe_capture(now)
         pump_event = self._maybe_water(now, moisture.percent)
 
@@ -43,7 +43,8 @@ class PlantAutomation:
             "humidity_percent": dht.humidity_percent,
             "moisture_raw": moisture.raw_value,
             "moisture_percent": moisture.percent,
-            "light_on": light_on,
+            "light_on": self.light.is_on,
+            "pump_on": self.pump.is_on,
             "pump_event": pump_event,
             "image_path": image_path,
             "errors": "; ".join(errors),

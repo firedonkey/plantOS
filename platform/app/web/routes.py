@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
 from app.db.session import get_session
+from app.schemas.commands import CommandCreate
 from app.schemas.devices import DeviceCreate
+from app.services.commands import create_command, list_commands_for_device
 from app.services.devices import (
     create_device_for_user,
     get_device_for_user,
@@ -109,6 +111,7 @@ def device_detail_page(
     latest_reading = get_latest_reading_for_device(session, device.id)
     recent_readings = list_recent_readings_for_device(session, device.id, limit=10)
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
+    recent_commands = list_commands_for_device(session, device.id, limit=10)
 
     return templates.TemplateResponse(
         request,
@@ -120,6 +123,7 @@ def device_detail_page(
             "latest_reading": latest_reading,
             "recent_readings": recent_readings,
             "recent_images": recent_images,
+            "recent_commands": recent_commands,
         },
     )
 
@@ -147,3 +151,33 @@ async def create_device_page(
     create_device_for_user(session, current_user, device_data)
 
     return RedirectResponse(url="/devices", status_code=303)
+
+
+@router.post("/devices/{device_id}/commands")
+async def create_device_command_page(
+    request: Request,
+    device_id: int,
+    session: Session = Depends(get_session),
+):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        return RedirectResponse(url="/devices", status_code=303)
+
+    form = await request.form()
+    command_data = CommandCreate(
+        target=str(form.get("target", "")).strip(),
+        action=str(form.get("action", "")).strip(),
+        value=str(form.get("value", "")).strip() or None,
+    )
+    create_command(session, device.id, command_data)
+
+    return RedirectResponse(url=f"/devices/{device.id}", status_code=303)

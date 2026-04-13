@@ -11,6 +11,9 @@ def create_sensor_reading(session: Session, payload: SensorReadingCreate) -> Sen
         moisture=payload.moisture,
         temperature=payload.temperature,
         humidity=payload.humidity,
+        light_on=payload.light_on,
+        pump_on=payload.pump_on,
+        pump_status=payload.pump_status,
     )
     if payload.timestamp is not None:
         reading.timestamp = payload.timestamp
