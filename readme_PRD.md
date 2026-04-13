@@ -278,6 +278,8 @@ iPhone Safari → Mobile-friendly dashboard → Backend
 POST /api/data
 
 * send sensor data
+* requires device owner auth for platform MVP
+* body includes `device_id`, `moisture`, `temperature`, `humidity`, and optional `timestamp`
 
 POST /api/image
 

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class SensorReading(Base):
     __tablename__ = "sensor_readings"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

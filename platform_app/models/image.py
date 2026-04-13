@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class Image(Base):
     __tablename__ = "images"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True)
     path: Mapped[str] = mapped_column(String(500))
     timestamp: Mapped[datetime] = mapped_column(

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class Device(Base):
     __tablename__ = "devices"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     location: Mapped[Optional[str]] = mapped_column(String(120), default=None)

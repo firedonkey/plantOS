@@ -19,7 +19,7 @@ class EventType(str, Enum):
 class Event(Base):
     __tablename__ = "events"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True)
     type: Mapped[EventType] = mapped_column(String(40), index=True)
     timestamp: Mapped[datetime] = mapped_column(

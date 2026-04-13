@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[Optional[int]] = mapped_column(primary_key=True)
+    id: Mapped[Optional[int]] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), default=None)
     google_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
