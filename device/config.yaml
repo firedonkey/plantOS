@@ -12,6 +12,8 @@ sensors:
     enabled: true
     mock_mode: true
     gpio_pin: 4
+    retries: 5
+    retry_delay_seconds: 2
     mock_temperature_c: 22.5
     mock_temperature_variation_c: 1.5
     mock_humidity_percent: 52.0

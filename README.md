@@ -261,6 +261,8 @@ sensors:
     enabled: true
     mock_mode: false
     gpio_pin: 4
+    retries: 5
+    retry_delay_seconds: 2
 ```
 
 `gpio_pin: 4` means BCM GPIO 4, physical pin 7 on the Raspberry Pi header.

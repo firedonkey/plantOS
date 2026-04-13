@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import random
+import time
 
 
 @dataclass
@@ -32,7 +33,17 @@ class DHT22Sensor:
                 ok=True,
             )
 
-        return self._read_with_circuitpython()
+        retries = int(self.config.get("retries", 5))
+        retry_delay = float(self.config.get("retry_delay_seconds", 2))
+        last_reading: DHT22Reading | None = None
+        for attempt in range(1, retries + 1):
+            reading = self._read_with_circuitpython()
+            if reading.ok:
+                return reading
+            last_reading = reading
+            if attempt < retries:
+                time.sleep(retry_delay)
+        return last_reading or DHT22Reading(None, None, False, "DHT22 read failed")
 
     def _read_with_circuitpython(self) -> DHT22Reading:
         try:
