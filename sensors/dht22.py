@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import random
 
 
 @dataclass
@@ -16,9 +17,17 @@ class DHT22Sensor:
 
     def read(self) -> DHT22Reading:
         if self.mock_mode or not self.config.get("enabled", True):
+            temperature = self._vary(
+                float(self.config.get("mock_temperature_c", 22.0)),
+                float(self.config.get("mock_temperature_variation_c", 0.0)),
+            )
+            humidity = self._vary(
+                float(self.config.get("mock_humidity_percent", 50.0)),
+                float(self.config.get("mock_humidity_variation_percent", 0.0)),
+            )
             return DHT22Reading(
-                temperature_c=float(self.config.get("mock_temperature_c", 22.0)),
-                humidity_percent=float(self.config.get("mock_humidity_percent", 50.0)),
+                temperature_c=round(temperature, 1),
+                humidity_percent=round(max(0.0, min(100.0, humidity)), 1),
                 ok=True,
             )
 
@@ -34,3 +43,6 @@ class DHT22Sensor:
             return DHT22Reading(round(temperature, 2), round(humidity, 2), True)
         except Exception as exc:
             return DHT22Reading(None, None, False, str(exc))
+
+    def _vary(self, base_value: float, variation: float) -> float:
+        return base_value + random.uniform(-variation, variation)

@@ -12,7 +12,9 @@ sensors:
     enabled: true
     gpio_pin: 4
     mock_temperature_c: 22.5
+    mock_temperature_variation_c: 1.5
     mock_humidity_percent: 52.0
+    mock_humidity_variation_percent: 8.0
   moisture:
     enabled: true
     spi_bus: 0
@@ -21,6 +23,7 @@ sensors:
     dry_value: 850
     wet_value: 350
     mock_raw_value: 650
+    mock_raw_variation: 80
 
 actuators:
   relay_active_high: false

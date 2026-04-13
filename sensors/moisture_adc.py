@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import random
 
 
 @dataclass
@@ -17,7 +18,7 @@ class MoistureADCSensor:
 
     def read(self) -> MoistureReading:
         if self.mock_mode or not self.config.get("enabled", True):
-            raw_value = int(self.config.get("mock_raw_value", 650))
+            raw_value = self._mock_raw_value()
             return MoistureReading(raw_value, self._raw_to_percent(raw_value), True)
 
         try:
@@ -25,6 +26,12 @@ class MoistureADCSensor:
             return MoistureReading(raw_value, self._raw_to_percent(raw_value), True)
         except Exception as exc:
             return MoistureReading(None, None, False, str(exc))
+
+    def _mock_raw_value(self) -> int:
+        base_value = int(self.config.get("mock_raw_value", 650))
+        variation = int(self.config.get("mock_raw_variation", 0))
+        raw_value = base_value + random.randint(-variation, variation)
+        return max(0, min(1023, raw_value))
 
     def close(self) -> None:
         if self._spi is not None:
