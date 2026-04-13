@@ -235,6 +235,15 @@ python main.py --once
 python -m flask --app app run --host 0.0.0.0 --port 5000
 ```
 
+For a webcam stress test, run the automation loop with a short loop interval and capture interval:
+
+```bash
+cd device
+python main.py --loop-interval 2 --capture-interval 2
+```
+
+This asks the app to wake up every 2 seconds and capture a webcam image every 2 seconds. Stop with `Ctrl+C`.
+
 ### Send mock device data to the platform
 Start the platform first:
 
