@@ -25,6 +25,9 @@
       <p class="eyebrow">Platform Development</p>
       <h1>{{ app_name }}</h1>
       <p>FastAPI is running. Version {{ version }}.</p>
+      {% if current_user %}
+      <a class="button" href="/devices">View devices</a>
+      {% endif %}
       <a href="/api/health">Health check</a>
     </main>
   </body>

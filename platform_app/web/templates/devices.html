@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Devices - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-logo" href="/">PlantLab</a>
+      <nav class="site-nav" aria-label="Account">
+        <span class="account-label">{{ current_user.name or current_user.email }}</span>
+        <form action="/auth/logout" method="post">
+          <button type="submit">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    <main>
+      <p class="eyebrow">Devices</p>
+      <h1>Your Plant Devices</h1>
+      <p>Add each Raspberry Pi plant monitor here before sending readings to the platform.</p>
+
+      <form class="device-form" action="/devices" method="post">
+        <label>
+          Device name
+          <input name="name" required maxlength="120" placeholder="Kitchen Rose">
+        </label>
+        <label>
+          Plant type
+          <input name="plant_type" maxlength="120" placeholder="Rose">
+        </label>
+        <label>
+          Location
+          <input name="location" maxlength="120" placeholder="Kitchen window">
+        </label>
+        <button type="submit">Add device</button>
+      </form>
+
+      {% if devices %}
+      <section class="device-grid" aria-label="Device list">
+        {% for device in devices %}
+        <article class="device-card">
+          <h2>{{ device.name }}</h2>
+          <p>{{ device.plant_type or "Plant type not set" }}</p>
+          <p>{{ device.location or "Location not set" }}</p>
+          <a href="/api/devices/{{ device.id }}">API details</a>
+        </article>
+        {% endfor %}
+      </section>
+      {% else %}
+      <p class="notice">No devices yet. Add your first plant monitor above.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

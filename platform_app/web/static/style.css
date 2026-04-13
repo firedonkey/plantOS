@@ -56,6 +56,7 @@ main {
 }
 
 h1,
+h2,
 p {
   margin-top: 0;
 }
@@ -186,4 +187,53 @@ button {
   margin: 14px 0 0;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.device-form {
+  display: grid;
+  gap: 12px;
+  margin: 28px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+input {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font: inherit;
+}
+
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.device-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.device-card h2 {
+  margin-bottom: 8px;
+  font-size: 1.2rem;
+}
+
+.device-card p {
+  margin-bottom: 8px;
+  color: var(--muted);
 }
