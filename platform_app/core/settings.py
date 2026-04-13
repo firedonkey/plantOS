@@ -6,6 +6,7 @@ from functools import lru_cache
 class Settings:
     app_name: str = "PlantLab Platform"
     version: str = "0.1.0"
+    database_url: str = "sqlite:///./data/platform.db"
 
 
 @lru_cache
