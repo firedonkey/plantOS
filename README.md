@@ -213,6 +213,28 @@ python -m flask --app app run --host 127.0.0.1 --port 5000
 
 Open `http://127.0.0.1:5000`.
 
+To test a real USB webcam while the rest of the device stays in mock mode, keep:
+
+```yaml
+hardware:
+  mock_mode: true
+
+camera:
+  enabled: true
+  mock_mode: false
+  device_index: 0
+  resolution: 1280x720
+  skip_frames: 30
+```
+
+Then run one cycle and refresh the local device dashboard:
+
+```bash
+cd device
+python main.py --once
+python -m flask --app app run --host 0.0.0.0 --port 5000
+```
+
 ### Send mock device data to the platform
 Start the platform first:
 

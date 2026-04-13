@@ -6,7 +6,9 @@ import subprocess
 class USBCamera:
     def __init__(self, config: dict, mock_mode: bool = False):
         self.config = config
-        self.mock_mode = mock_mode or not config.get("enabled", True)
+        camera_mock_mode = config.get("mock_mode")
+        self.mock_mode = bool(camera_mock_mode) if camera_mock_mode is not None else mock_mode
+        self.mock_mode = self.mock_mode or not config.get("enabled", True)
         self.image_dir = Path(config.get("image_dir", "data/images"))
         self.image_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,9 +37,24 @@ class USBCamera:
             return self._capture_with_fswebcam(image_path)
 
     def _capture_with_fswebcam(self, image_path: Path) -> str | None:
+        device_path = f"/dev/video{int(self.config.get('device_index', 0))}"
+        resolution = str(self.config.get("resolution", "1280x720"))
+        skip_frames = int(self.config.get("skip_frames", 0))
+        command = [
+            "fswebcam",
+            "-d",
+            device_path,
+            "-r",
+            resolution,
+            "--no-banner",
+        ]
+        if skip_frames > 0:
+            command.extend(["--skip", str(skip_frames)])
+        command.append(str(image_path))
+
         try:
             subprocess.run(
-                ["fswebcam", "-r", "1280x720", "--no-banner", str(image_path)],
+                command,
                 check=True,
                 capture_output=True,
                 text=True,
