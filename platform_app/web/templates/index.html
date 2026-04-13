@@ -16,10 +16,8 @@
       <form action="/auth/logout" method="post">
         <button type="submit">Sign out</button>
       </form>
-      {% elif google_auth_configured %}
-      <a class="button" href="/auth/login">Sign in with Google</a>
       {% else %}
-      <p class="notice">Google sign-in is not configured yet. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>.</p>
+      <a class="button" href="/login">Sign in</a>
       {% endif %}
       <a href="/api/health">Health check</a>
     </main>

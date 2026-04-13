@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+  </head>
+  <body class="auth-page">
+    <main class="auth-shell">
+      <a class="quiet-link" href="/">Cancel</a>
+      <section class="auth-card" aria-labelledby="signin-title">
+        <p class="brand-mark">PlantLab</p>
+        <h1 id="signin-title">Welcome Back</h1>
+        <p class="auth-copy">Sign in to monitor your plants, devices, and growth history.</p>
+
+        {% if google_auth_configured %}
+        <a class="auth-button google-button" href="/auth/login">
+          <span class="google-dot">G</span>
+          Sign in with Google
+        </a>
+        {% else %}
+        <p class="notice">Google sign-in is not configured yet. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>.</p>
+        {% endif %}
+
+        <p class="terms-copy">By signing in, you agree to future PlantLab terms and privacy settings.</p>
+      </section>
+    </main>
+  </body>
+</html>

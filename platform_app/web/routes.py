@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from platform_app.core.settings import get_settings
@@ -26,6 +27,23 @@ def index(request: Request):
             "app_name": settings.app_name,
             "version": settings.version,
             "current_user": current_user,
+            "google_auth_configured": settings.google_auth_configured,
+        },
+    )
+
+
+@router.get("/login")
+def login_page(request: Request):
+    settings = get_settings()
+    user_id = request.session.get("user_id")
+    if user_id:
+        return RedirectResponse(url="/", status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "app_name": settings.app_name,
             "google_auth_configured": settings.google_auth_configured,
         },
     )
