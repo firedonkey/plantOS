@@ -244,6 +244,21 @@ python main.py --loop-interval 2 --capture-interval 2
 
 This asks the app to wake up every 2 seconds and capture a webcam image every 2 seconds. Stop with `Ctrl+C`.
 
+To test a real DHT22 while the rest of the device stays in mock mode, keep global mock mode on but set the DHT22 override off:
+
+```yaml
+hardware:
+  mock_mode: true
+
+sensors:
+  dht22:
+    enabled: true
+    mock_mode: false
+    gpio_pin: 4
+```
+
+`gpio_pin: 4` means BCM GPIO 4, physical pin 7 on the Raspberry Pi header.
+
 ### Send mock device data to the platform
 Start the platform first:
 

@@ -10,6 +10,7 @@ hardware:
 sensors:
   dht22:
     enabled: true
+    mock_mode: true
     gpio_pin: 4
     mock_temperature_c: 22.5
     mock_temperature_variation_c: 1.5

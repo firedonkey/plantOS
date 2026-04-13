@@ -13,7 +13,8 @@ class DHT22Reading:
 class DHT22Sensor:
     def __init__(self, config: dict, mock_mode: bool = False):
         self.config = config
-        self.mock_mode = mock_mode
+        sensor_mock_mode = config.get("mock_mode")
+        self.mock_mode = bool(sensor_mock_mode) if sensor_mock_mode is not None else mock_mode
 
     def read(self) -> DHT22Reading:
         if self.mock_mode or not self.config.get("enabled", True):
