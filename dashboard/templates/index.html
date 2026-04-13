@@ -2,51 +2,82 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f7f8f3">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="PlantOS">
     <title>{{ app_name }}</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='plant-icon.svg') }}">
+    <link rel="icon" href="{{ url_for('static', filename='plant-icon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
   </head>
   <body>
-    <main>
-      <header>
-        <p class="eyebrow">Raspberry Pi 3 MVP</p>
-        <h1>{{ app_name }}</h1>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="{{ url_for('static', filename='plant-icon.svg') }}" alt="" aria-hidden="true">
+          <div>
+            <p class="eyebrow">Raspberry Pi 3 MVP</p>
+            <h1>{{ app_name }}</h1>
+          </div>
+        </div>
+        <div class="system-pill">
+          <span class="dot"></span>
+          <span data-field="health_label">{{ latest.health_label if latest else "Waiting" }}</span>
+        </div>
       </header>
 
+      <section class="overview">
+        <div>
+          <p class="eyebrow">Care Loop</p>
+          <h2>Steady readings, simple decisions.</h2>
+        </div>
+        <p class="last-updated">
+          Last update
+          <strong data-field="display_timestamp">{{ latest.display_timestamp if latest else "No reading yet" }}</strong>
+        </p>
+      </section>
+
       {% if latest %}
-      <section class="status-grid">
-        <article>
+      <section class="status-grid" aria-label="Current plant status">
+        <article class="metric">
           <span>Temperature</span>
-          <strong>{{ latest.temperature_c or "n/a" }} C</strong>
+          <strong><span data-field="temperature_c">{{ latest.temperature_c or "n/a" }}</span> C</strong>
         </article>
-        <article>
+        <article class="metric">
           <span>Humidity</span>
-          <strong>{{ latest.humidity_percent or "n/a" }}%</strong>
+          <strong><span data-field="humidity_percent">{{ latest.humidity_percent or "n/a" }}</span>%</strong>
         </article>
-        <article>
+        <article class="metric">
           <span>Moisture</span>
-          <strong>{{ latest.moisture_percent or "n/a" }}%</strong>
+          <strong><span data-field="moisture_percent">{{ latest.moisture_percent or "n/a" }}</span>%</strong>
         </article>
-        <article>
+        <article class="metric">
           <span>Light</span>
-          <strong>{{ "On" if latest.light_on in [true, "True", "true", "1"] else "Off" }}</strong>
-        </article>
-        <article>
-          <span>Pump</span>
-          <strong>{{ latest.pump_event or "n/a" }}</strong>
-        </article>
-        <article>
-          <span>Updated</span>
-          <strong>{{ latest.timestamp or "n/a" }}</strong>
+          <strong data-field="light_label">{{ latest.light_label }}</strong>
         </article>
       </section>
 
-      {% if latest.errors %}
-      <section class="notice">
-        <strong>Errors</strong>
-        <p>{{ latest.errors }}</p>
+      <section class="panel-grid">
+        <article class="panel">
+          <span class="panel-label">Pump</span>
+          <strong data-field="pump_label">{{ latest.pump_label }}</strong>
+          <p>Cool-downs protect the plant from repeated watering.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">Automation</span>
+          <strong>Every {{ loop_interval }} seconds</strong>
+          <p>Mock mode is ready for laptop and Pi dry runs.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">Errors</span>
+          <strong data-field="errors">{{ latest.errors or "None" }}</strong>
+          <p>Hardware messages appear here when mock mode is off.</p>
+        </article>
       </section>
-      {% endif %}
       {% else %}
       <section class="notice">
         <strong>No readings yet</strong>
@@ -54,8 +85,14 @@
       </section>
       {% endif %}
 
-      <section>
-        <h2>Recent Images</h2>
+      <section class="media-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Camera</p>
+            <h2>Recent Images</h2>
+          </div>
+          <p>Still captures will appear after the webcam is enabled.</p>
+        </div>
         {% if images %}
         <div class="image-grid">
           {% for image in images %}
@@ -63,7 +100,10 @@
           {% endfor %}
         </div>
         {% else %}
-        <p>No camera images saved yet.</p>
+        <div class="empty-media">
+          <img src="{{ url_for('static', filename='plant-icon.svg') }}" alt="" aria-hidden="true">
+          <p>No camera images saved yet.</p>
+        </div>
         {% endif %}
       </section>
     </main>

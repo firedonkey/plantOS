@@ -220,6 +220,35 @@ actuators:
     cooldown_seconds: 3600
 ```
 
+## Web dashboard and phone app path
+
+The Flask dashboard is also a lightweight progressive web app.
+
+Run it locally:
+```bash
+source .venv/bin/activate
+python -m flask --app app run --host 127.0.0.1 --port 5000
+```
+
+Run it on the Pi for other devices on the network:
+```bash
+source .venv/bin/activate
+python -m flask --app app run --host 0.0.0.0 --port 5000
+```
+
+On iPhone:
+- open `http://<pi-hostname-or-ip>:5000` in Safari
+- tap Share
+- tap Add to Home Screen
+- launch PlantOS from the Home Screen
+
+The web app includes:
+- mobile-friendly dashboard layout
+- live status refresh
+- app manifest
+- service worker shell cache
+- iPhone Home Screen metadata
+
 ## Coding priorities
 
 Build in this order:

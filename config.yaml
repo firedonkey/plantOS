@@ -1,7 +1,7 @@
 app:
   name: AI Plant Lab Kit
   timezone: America/Los_Angeles
-  loop_interval_seconds: 10
+  loop_interval_seconds: 5
   data_dir: data
 
 hardware:

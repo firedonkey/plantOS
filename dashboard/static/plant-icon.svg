@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="PlantOS">
+  <rect width="192" height="192" rx="24" fill="#dff4e4"/>
+  <circle cx="96" cy="112" r="44" fill="#ffffff"/>
+  <path d="M96 138V82" fill="none" stroke="#2f7d4f" stroke-width="10" stroke-linecap="round"/>
+  <path d="M96 90c-25-4-42-22-45-50 28 2 48 17 53 42" fill="#2f7d4f"/>
+  <path d="M99 101c18-21 43-27 68-13-16 24-40 35-65 24" fill="#41a36b"/>
+  <path d="M74 139h44" fill="none" stroke="#f36f56" stroke-width="10" stroke-linecap="round"/>
+</svg>

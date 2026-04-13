@@ -1,6 +1,7 @@
 from pathlib import Path
+from datetime import datetime
 
-from flask import Flask, render_template, send_from_directory
+from flask import Flask, jsonify, render_template, send_from_directory
 
 from config import load_config
 from services.logger import PlantLogger
@@ -13,7 +14,7 @@ logger = PlantLogger(config["logging"])
 
 @app.route("/")
 def index():
-    latest = logger.latest()
+    latest = _prepare_status(logger.latest())
     image_dir = Path(config["camera"].get("image_dir", "data/images"))
     images = sorted(image_dir.glob("*.jpg"), reverse=True)[:6]
     return render_template(
@@ -21,13 +22,71 @@ def index():
         app_name=config.get("app", {}).get("name", "Plant Dashboard"),
         latest=latest,
         images=[str(path) for path in images],
+        loop_interval=config.get("app", {}).get("loop_interval_seconds", 60),
     )
+
+
+@app.route("/api/status")
+def api_status():
+    return jsonify(_prepare_status(logger.latest()))
 
 
 @app.route("/data/images/<path:filename>")
 def plant_image(filename):
     image_dir = Path(config["camera"].get("image_dir", "data/images"))
     return send_from_directory(image_dir, filename)
+
+
+def _prepare_status(record: dict | None) -> dict | None:
+    if not record:
+        return None
+
+    prepared = dict(record)
+    prepared["display_timestamp"] = _format_timestamp(record.get("timestamp"))
+    prepared["light_label"] = "On" if _is_truthy(record.get("light_on")) else "Off"
+    prepared["pump_label"] = _format_pump_event(record.get("pump_event"))
+    prepared["health_label"] = "Attention" if record.get("errors") else "Healthy"
+    prepared["health_tone"] = "warning" if record.get("errors") else "good"
+    prepared["moisture_tone"] = _moisture_tone(record.get("moisture_percent"))
+    return prepared
+
+
+def _format_timestamp(value) -> str:
+    if not value:
+        return "No reading yet"
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return str(value)
+    return parsed.strftime("%b %-d, %-I:%M %p")
+
+
+def _format_pump_event(value) -> str:
+    labels = {
+        "not_needed": "Not needed",
+        "skipped_no_moisture_reading": "No moisture reading",
+        "skipped_cooldown": "Cooling down",
+    }
+    if not value:
+        return "No event"
+    value = str(value)
+    if value.startswith("ran_"):
+        return f"Ran {value.removeprefix('ran_')}"
+    return labels.get(value, value.replace("_", " ").title())
+
+
+def _is_truthy(value) -> bool:
+    return value is True or str(value).lower() in {"true", "1", "yes", "on"}
+
+
+def _moisture_tone(value) -> str:
+    try:
+        moisture = float(value)
+    except (TypeError, ValueError):
+        return "muted"
+    if moisture < float(config["automation"].get("moisture_threshold_percent", 35)):
+        return "warning"
+    return "good"
 
 
 if __name__ == "__main__":
