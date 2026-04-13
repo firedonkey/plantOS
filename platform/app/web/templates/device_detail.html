@@ -22,6 +22,17 @@
       <p class="eyebrow">Device Dashboard</p>
       <h1>{{ device.name }}</h1>
       <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
+      <div class="refresh-bar" data-auto-refresh="5000">
+        <span>Auto refresh every 5 seconds</span>
+        <button type="button" data-refresh-toggle>Pause</button>
+      </div>
+
+      <section class="detail-section">
+        <h2>Device API</h2>
+        <p>Use this token from the Raspberry Pi or mock sender.</p>
+        <p><code>Device ID: {{ device.id }}</code></p>
+        <p><code>X-Device-Token: {{ device.api_token }}</code></p>
+      </section>
 
       {% if latest_reading %}
       <section class="metric-grid" aria-label="Latest reading">
@@ -90,5 +101,27 @@
         {% endif %}
       </section>
     </main>
+    <script>
+      const refreshBar = document.querySelector("[data-auto-refresh]");
+      if (refreshBar) {
+        const toggle = refreshBar.querySelector("[data-refresh-toggle]");
+        const intervalMs = Number(refreshBar.dataset.autoRefresh);
+        let refreshTimer = window.setTimeout(() => window.location.reload(), intervalMs);
+        let enabled = true;
+
+        toggle.addEventListener("click", () => {
+          enabled = !enabled;
+          toggle.textContent = enabled ? "Pause" : "Resume";
+          refreshBar.querySelector("span").textContent = enabled
+            ? "Auto refresh every 5 seconds"
+            : "Auto refresh paused";
+
+          window.clearTimeout(refreshTimer);
+          if (enabled) {
+            refreshTimer = window.setTimeout(() => window.location.reload(), intervalMs);
+          }
+        });
+      }
+    </script>
   </body>
 </html>

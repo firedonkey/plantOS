@@ -51,3 +51,9 @@ logging:
 
 automation:
   moisture_threshold_percent: 35
+
+platform:
+  url: http://127.0.0.1:8000
+  device_id:
+  device_token:
+  send_interval_seconds: 10

@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
@@ -21,6 +21,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db(database_url: str | None = None) -> None:
     selected_engine = get_engine(database_url) if database_url else engine
     Base.metadata.create_all(selected_engine)
+    _apply_lightweight_sqlite_migrations(selected_engine)
+
+
+def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
+    if not selected_engine.url.drivername.startswith("sqlite"):
+        return
+    inspector = inspect(selected_engine)
+    if "devices" not in inspector.get_table_names():
+        return
+    device_columns = {column["name"] for column in inspector.get_columns("devices")}
+    with selected_engine.begin() as connection:
+        if "api_token" not in device_columns:
+            connection.execute(text("ALTER TABLE devices ADD COLUMN api_token VARCHAR(80)"))
 
 
 def get_session() -> Generator[Session, None, None]:

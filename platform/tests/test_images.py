@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
@@ -30,8 +30,8 @@ def build_client_with_device(upload_dir: str) -> tuple[TestClient, int, int]:
         session.refresh(user)
         session.refresh(other_user)
 
-        device = Device(user_id=user.id, name="Kitchen Rose")
-        other_device = Device(user_id=other_user.id, name="Other Rose")
+        device = Device(user_id=user.id, name="Kitchen Rose", api_token="token-owner")
+        other_device = Device(user_id=other_user.id, name="Other Rose", api_token="token-other")
         session.add_all([device, other_device])
         session.commit()
         session.refresh(device)
@@ -50,6 +50,7 @@ def build_client_with_device(upload_dir: str) -> tuple[TestClient, int, int]:
 
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_optional_current_user] = override_current_user
     get_settings.cache_clear()
     return TestClient(app), device_id, other_device_id
 
@@ -116,5 +117,24 @@ def test_upload_image_rejects_non_image_file(tmp_path, monkeypatch):
         )
 
         assert response.status_code == 400
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_accepts_device_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id)},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["device_id"] == device_id
     finally:
         teardown_overrides()

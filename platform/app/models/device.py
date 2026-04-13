@@ -21,6 +21,7 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(120))
     location: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     plant_type: Mapped[Optional[str]] = mapped_column(String(120), default=None)
+    api_token: Mapped[Optional[str]] = mapped_column(String(80), unique=True, index=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

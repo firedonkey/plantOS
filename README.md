@@ -213,6 +213,40 @@ python -m flask --app app run --host 127.0.0.1 --port 5000
 
 Open `http://127.0.0.1:5000`.
 
+### Send mock device data to the platform
+Start the platform first:
+
+```bash
+cd platform
+source ../.venv/bin/activate
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Sign in, add a device, then open that device dashboard and copy:
+
+- `Device ID`
+- `X-Device-Token`
+
+In another terminal, send one mock reading:
+
+```bash
+cd device
+source ../.venv/bin/activate
+python mock_platform_sender.py --device-id 1 --device-token paste-token-here --once
+```
+
+To send readings every 5 seconds and upload one mock rose image every 3 cycles:
+
+```bash
+python mock_platform_sender.py --device-id 1 --device-token paste-token-here --interval 5 --image-every 3
+```
+
+You can also save the values under `platform:` in `device/config.yaml` and run:
+
+```bash
+python mock_platform_sender.py
+```
+
 ### Raspberry Pi mock test
 Copy the repo to the Pi, keep `hardware.mock_mode: true`, then run:
 ```bash

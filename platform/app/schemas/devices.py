@@ -14,6 +14,7 @@ class DeviceRead(BaseModel):
     name: str
     location: str | None
     plant_type: str | None
+    api_token: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

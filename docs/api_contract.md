@@ -16,9 +16,10 @@ The device app and platform app communicate over HTTP. The device app should not
 }
 ```
 
-Current platform MVP auth: signed-in owner session.
+Auth:
 
-Future device auth: `X-Device-Token`.
+- signed-in owner browser session
+- device API token header: `X-Device-Token`
 
 ## Image Upload
 
@@ -34,6 +35,11 @@ Accepted file types:
 - `image/jpeg`
 - `image/png`
 - `image/webp`
+
+Auth:
+
+- signed-in owner browser session
+- device API token header: `X-Device-Token`
 
 ## Commands
 

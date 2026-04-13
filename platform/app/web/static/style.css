@@ -103,6 +103,23 @@ button {
   color: var(--muted);
 }
 
+.refresh-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: var(--muted);
+}
+
+.refresh-bar button {
+  min-height: 34px;
+}
+
 .auth-page {
   background: #ffffff;
 }

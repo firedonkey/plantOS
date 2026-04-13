@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
@@ -42,6 +42,7 @@ def build_client_with_user(set_session_cookie: bool = False) -> tuple[TestClient
 
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_optional_current_user] = override_current_user
     client = TestClient(app)
     if set_session_cookie:
         client.cookies.set("session", signed_session_cookie({"user_id": user_id}))
@@ -121,6 +122,7 @@ def test_device_detail_page_shows_latest_data():
         assert "Kitchen Rose" in detail_response.text
         assert "42.5%" in detail_response.text
         assert "Recent Readings" in detail_response.text
+        assert "data-auto-refresh=\"5000\"" in detail_response.text
     finally:
         teardown_overrides()
 
