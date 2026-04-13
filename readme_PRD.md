@@ -70,9 +70,10 @@ Existing plant systems:
 
 ### 5.1 Authentication
 
-* User signup
-* User login/logout
-* Session management
+* Google account sign-in for V1
+* login/logout
+* session management
+* additional sign-in methods can be added later
 
 ---
 
@@ -191,6 +192,12 @@ Trigger alerts when:
 * FastAPI
 * REST API for device ingestion and user actions
 * server-rendered dashboard routes
+
+Environment variables:
+
+* `PLANTLAB_SESSION_SECRET`
+* `GOOGLE_CLIENT_ID`
+* `GOOGLE_CLIENT_SECRET`
 
 ---
 

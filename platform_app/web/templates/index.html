@@ -11,6 +11,16 @@
       <p class="eyebrow">Platform Development</p>
       <h1>{{ app_name }}</h1>
       <p>FastAPI is running. Version {{ version }}.</p>
+      {% if current_user %}
+      <p>Signed in as {{ current_user.name or current_user.email }}.</p>
+      <form action="/auth/logout" method="post">
+        <button type="submit">Sign out</button>
+      </form>
+      {% elif google_auth_configured %}
+      <a class="button" href="/auth/login">Sign in with Google</a>
+      {% else %}
+      <p class="notice">Google sign-in is not configured yet. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>.</p>
+      {% endif %}
       <a href="/api/health">Health check</a>
     </main>
   </body>

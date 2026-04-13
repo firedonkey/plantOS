@@ -6,6 +6,9 @@ venv/
 
 data/logs/*.csv
 data/logs/*.json
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 data/images/*.jpg
 data/images/*.jpeg
 data/images/*.png

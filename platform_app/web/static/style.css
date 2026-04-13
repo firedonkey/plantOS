@@ -42,7 +42,29 @@ h1 {
   text-transform: uppercase;
 }
 
-a {
+a,
+button {
   color: var(--green);
   font-weight: 700;
+}
+
+.button,
+button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  font: inherit;
+  text-decoration: none;
+}
+
+.notice {
+  border: 1px solid #dce2d7;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  color: var(--muted);
 }
