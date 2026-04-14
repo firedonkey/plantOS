@@ -26,7 +26,14 @@ def main() -> None:
     parser.add_argument("--device-token", help="Platform device API token.")
     parser.add_argument("--interval", type=int, help="Seconds between mock sends.")
     parser.add_argument("--once", action="store_true", help="Send one reading and exit.")
-    parser.add_argument("--image-every-n-cycles", type=int, default=3, help="Upload one image every N cycles. Use 0 to skip.")
+    parser.add_argument(
+        "--image-every",
+        "--image-every-n-cycles",
+        dest="image_every",
+        type=int,
+        default=3,
+        help="Upload one image every N cycles. Use 0 to skip.",
+    )
     parser.add_argument("--mock-image-fallback", action="store_true", help="Upload bundled mock images when no camera image is captured.")
     parser.add_argument("--skip-commands", action="store_true", help="Do not poll or acknowledge platform commands.")
     args = parser.parse_args()
