@@ -90,6 +90,7 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
             "device_cards": device_cards,
             "suggested_device_name": f"Device {next_device_number}",
             "suggested_plant_type": f"Plant {next_device_number}",
+            "suggested_location": f"Location {next_device_number}",
         },
     )
 

@@ -224,5 +224,6 @@ def test_devices_page_prefills_next_device_defaults():
         assert response.status_code == 200
         assert 'value="Device 2"' in response.text
         assert 'value="Plant 2"' in response.text
+        assert 'value="Location 2"' in response.text
     finally:
         teardown_overrides()
