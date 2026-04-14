@@ -116,7 +116,7 @@ def device_detail_page(
         return RedirectResponse(url="/devices", status_code=303)
 
     latest_reading = get_latest_reading_for_device(session, device.id)
-    recent_readings = list_recent_readings_for_device(session, device.id, limit=10)
+    recent_readings = list_recent_readings_for_device(session, device.id, limit=20)
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     latest_image = recent_images[0] if recent_images else None
@@ -309,7 +309,7 @@ def _relative_time(age_seconds: int) -> str:
 
 
 def _reading_chart(readings: list) -> list[dict]:
-    ordered = list(reversed(readings[:10]))
+    ordered = list(reversed(readings[:20]))
     metrics = [
         {
             "key": "moisture",
@@ -348,14 +348,17 @@ def _reading_chart(readings: list) -> list[dict]:
                     "time": reading.timestamp.strftime("%-I:%M %p"),
                 }
             )
-        latest = values[-1]["value"] if values else None
+        raw_values = [point["value"] for point in values]
         start_time = values[0]["time"] if values else None
         end_time = values[-1]["time"] if values else None
         chart.append(
             {
                 **metric,
                 "points": values,
-                "latest": latest,
+                "count": len(values),
+                "minimum": round(min(raw_values), 1) if raw_values else None,
+                "maximum": round(max(raw_values), 1) if raw_values else None,
+                "average": round(sum(raw_values) / len(raw_values), 1) if raw_values else None,
                 "start_time": start_time,
                 "end_time": end_time,
             }

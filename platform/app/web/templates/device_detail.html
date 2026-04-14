@@ -72,9 +72,10 @@
           <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
           {% endif %}
 
-          <div class="embedded-section">
+            <div class="embedded-section">
             <div class="section-heading">
               <h3>Recent Trends</h3>
+              <span class="section-note">Last 20 readings</span>
             </div>
             {% if reading_chart %}
             <div class="trend-list">
@@ -82,6 +83,9 @@
               <article class="trend-card">
                 <div class="trend-heading">
                   <span>{{ metric.label }}</span>
+                  {% if metric.points %}
+                  <small>{{ metric.count }} values</small>
+                  {% endif %}
                 </div>
                 {% if metric.points %}
                 <div class="chart-shell">
@@ -100,6 +104,11 @@
                       <span>{{ metric.end_time }}</span>
                     </div>
                   </div>
+                </div>
+                <div class="trend-summary" aria-label="{{ metric.label }} summary">
+                  <span>Low <strong>{{ metric.minimum }}{{ metric.unit }}</strong></span>
+                  <span>Avg <strong>{{ metric.average }}{{ metric.unit }}</strong></span>
+                  <span>High <strong>{{ metric.maximum }}{{ metric.unit }}</strong></span>
                 </div>
                 {% else %}
                 <p class="mini-note">No recent values.</p>

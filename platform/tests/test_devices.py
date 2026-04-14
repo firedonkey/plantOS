@@ -16,7 +16,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import User
 from app.models.base import Base
-from app.web.routes import _latest_device_activity
+from app.web.routes import _latest_device_activity, _reading_chart
 
 
 def build_client_with_user(set_session_cookie: bool = False) -> tuple[TestClient, User]:
@@ -157,6 +157,28 @@ def test_latest_device_activity_uses_reading_image_and_device_command_timestamps
     assert activity is not None
     assert activity["source"] == "command"
     assert activity["description"] == "command response"
+
+
+def test_reading_chart_uses_last_20_readings_and_summaries():
+    readings = [
+        SimpleNamespace(
+            moisture=float(index),
+            temperature=20.0 + index,
+            humidity=40.0 + index,
+            timestamp=datetime(2026, 4, 13, 19, index, tzinfo=timezone.utc),
+        )
+        for index in range(25)
+    ]
+
+    chart = _reading_chart(readings)
+    moisture_chart = chart[0]
+
+    assert len(moisture_chart["points"]) == 20
+    assert moisture_chart["points"][0]["value"] == 19.0
+    assert moisture_chart["points"][-1]["value"] == 0.0
+    assert moisture_chart["minimum"] == 0.0
+    assert moisture_chart["maximum"] == 19.0
+    assert moisture_chart["average"] == 9.5
 
 
 def test_devices_page_renders_for_signed_in_user():

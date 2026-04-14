@@ -451,7 +451,7 @@ input {
 .trend-heading {
   display: flex;
   align-items: baseline;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -459,6 +459,13 @@ input {
 .trend-heading span {
   color: var(--muted);
   font-weight: 800;
+}
+
+.trend-heading small,
+.section-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .chart-shell {
@@ -487,9 +494,9 @@ input {
 
 .spark-bars {
   display: grid;
-  grid-template-columns: repeat(10, minmax(8px, 1fr));
+  grid-template-columns: repeat(20, minmax(4px, 1fr));
   align-items: end;
-  gap: 6px;
+  gap: 4px;
   height: 86px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -538,6 +545,26 @@ input {
   justify-content: space-between;
   gap: 8px;
   margin-top: 6px;
+}
+
+.trend-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.trend-summary span {
+  display: grid;
+  gap: 2px;
+}
+
+.trend-summary strong {
+  color: var(--text);
+  font-size: 0.95rem;
 }
 
 .mini-note {
