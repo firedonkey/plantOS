@@ -296,7 +296,7 @@ source ../.venv/bin/activate
 python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --interval 10 --image-every 1
 ```
 
-The platform client also polls for pending pump/light commands every cycle, executes them locally, and acknowledges the result back to the platform. Use `--skip-commands` to send data without polling commands.
+The platform client also polls for pending pump/light commands every cycle, executes them locally, acknowledges the result back to the platform, and sends an immediate status update after commands. Use `--skip-commands` to send data without polling commands. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
 
 When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
 

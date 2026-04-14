@@ -33,7 +33,7 @@ def list_recent_readings_for_device(
         session.scalars(
             select(SensorReading)
             .where(SensorReading.device_id == device_id)
-            .order_by(SensorReading.timestamp.desc())
+            .order_by(SensorReading.timestamp.desc(), SensorReading.id.desc())
             .limit(limit)
         )
     )
@@ -43,6 +43,6 @@ def get_latest_reading_for_device(session: Session, device_id: int) -> SensorRea
     return session.scalar(
         select(SensorReading)
         .where(SensorReading.device_id == device_id)
-        .order_by(SensorReading.timestamp.desc())
+        .order_by(SensorReading.timestamp.desc(), SensorReading.id.desc())
         .limit(1)
     )

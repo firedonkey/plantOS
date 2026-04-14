@@ -60,7 +60,10 @@ def main() -> None:
                 send_image(platform_url, int(device_id), str(device_token), next(image_cycle))
 
             if not args.skip_commands:
-                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
+                handled_count = handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
+                if handled_count:
+                    status_record = automation.status_snapshot(pump_event="command_update")
+                    send_reading(platform_url, int(device_id), str(device_token), status_record)
 
             if args.once:
                 break

@@ -22,12 +22,14 @@ class PlantAutomation:
         self.logger = PlantLogger(config["logging"])
         self.last_pump_time: datetime | None = None
         self.last_capture_time: datetime | None = None
+        self.light_manual_override_until: datetime | None = None
 
     def run_once(self) -> dict:
         now = datetime.now()
         dht = self.dht22.read()
         moisture = self.moisture.read()
-        self.light.apply_schedule(now)
+        if not self._light_manual_override_active(now):
+            self.light.apply_schedule(now)
         image_path = self._maybe_capture(now)
         pump_event = self._maybe_water(now, moisture.percent)
 
@@ -51,6 +53,14 @@ class PlantAutomation:
         }
         self.logger.log(record)
         return record
+
+    def set_light(self, is_on: bool) -> None:
+        if is_on:
+            self.light.on()
+        else:
+            self.light.off()
+        override_seconds = int(self.config["actuators"]["light"].get("manual_override_seconds", 3600))
+        self.light_manual_override_until = datetime.now() + timedelta(seconds=override_seconds)
 
     def status_snapshot(self, pump_event: str = "status_update") -> dict:
         """Read current state without applying schedules, watering, or camera capture."""
@@ -106,3 +116,11 @@ class PlantAutomation:
             return None
         self.last_capture_time = now
         return self.camera.capture()
+
+    def _light_manual_override_active(self, now: datetime) -> bool:
+        if self.light_manual_override_until is None:
+            return False
+        if now < self.light_manual_override_until:
+            return True
+        self.light_manual_override_until = None
+        return False

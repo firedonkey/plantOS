@@ -186,10 +186,10 @@ def execute_command(command: dict, automation: PlantAutomation) -> str:
 
     if target == "light":
         if action == "on":
-            automation.light.on()
+            automation.set_light(True)
             return "light turned on"
         if action == "off":
-            automation.light.off()
+            automation.set_light(False)
             return "light turned off"
 
     raise ValueError(f"Unsupported command: target={target}, action={action}")

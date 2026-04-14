@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Device, SensorReading, User
 from app.models.base import Base
+from app.services.readings import get_latest_reading_for_device, list_recent_readings_for_device
 
 
 def build_client_with_data() -> tuple[TestClient, int, int]:
@@ -141,5 +142,45 @@ def test_ingest_sensor_data_rejects_wrong_device_token():
         )
 
         assert response.status_code == 403
+    finally:
+        teardown_overrides()
+
+
+def test_latest_reading_uses_newest_row_when_timestamps_match():
+    client, device_id, _ = build_client_with_data()
+    try:
+        timestamp = datetime(2026, 4, 13, 19, 54, 20, tzinfo=timezone.utc)
+        first_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "light_on": True,
+                "pump_on": True,
+                "timestamp": timestamp.isoformat(),
+            },
+        )
+        second_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "light_on": False,
+                "pump_on": False,
+                "timestamp": timestamp.isoformat(),
+            },
+        )
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            latest = get_latest_reading_for_device(session, device_id)
+            recent = list_recent_readings_for_device(session, device_id, limit=2)
+
+        assert latest is not None
+        assert latest.light_on is False
+        assert latest.pump_on is False
+        assert [reading.id for reading in recent] == [
+            second_response.json()["id"],
+            first_response.json()["id"],
+        ]
     finally:
         teardown_overrides()

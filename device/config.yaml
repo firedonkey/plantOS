@@ -40,6 +40,7 @@ actuators:
     gpio_pin: 27
     on_hour: 7
     off_hour: 21
+    manual_override_seconds: 3600
 
 camera:
   enabled: true
