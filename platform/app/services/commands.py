@@ -1,10 +1,13 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Command, CommandStatus
 from app.schemas.commands import CommandAck, CommandCreate
+
+
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 60
 
 
 def create_command(session: Session, device_id: int, payload: CommandCreate) -> Command:
@@ -21,7 +24,13 @@ def create_command(session: Session, device_id: int, payload: CommandCreate) -> 
     return command
 
 
-def list_commands_for_device(session: Session, device_id: int, limit: int = 20) -> list[Command]:
+def list_commands_for_device(
+    session: Session,
+    device_id: int,
+    limit: int = 20,
+    timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+) -> list[Command]:
+    expire_stale_commands(session, device_id, timeout_seconds)
     return list(
         session.scalars(
             select(Command)
@@ -32,7 +41,13 @@ def list_commands_for_device(session: Session, device_id: int, limit: int = 20) 
     )
 
 
-def take_pending_commands(session: Session, device_id: int, limit: int = 10) -> list[Command]:
+def take_pending_commands(
+    session: Session,
+    device_id: int,
+    limit: int = 10,
+    timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+) -> list[Command]:
+    expire_stale_commands(session, device_id, timeout_seconds)
     commands = list(
         session.scalars(
             select(Command)
@@ -52,6 +67,35 @@ def take_pending_commands(session: Session, device_id: int, limit: int = 10) -> 
     for command in commands:
         session.refresh(command)
     return commands
+
+
+def expire_stale_commands(
+    session: Session,
+    device_id: int,
+    timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
+    commands = list(
+        session.scalars(
+            select(Command).where(
+                Command.device_id == device_id,
+                Command.status.in_([CommandStatus.PENDING, CommandStatus.SENT]),
+                Command.created_at < cutoff,
+            )
+        )
+    )
+    if not commands:
+        return
+
+    now = datetime.now(timezone.utc)
+    for command in commands:
+        command.status = CommandStatus.TIMED_OUT
+        command.completed_at = now
+        if command.sent_at:
+            command.message = "Timed out waiting for device acknowledgement."
+        else:
+            command.message = "Timed out waiting for device pickup."
+    session.commit()
 
 
 def get_command_for_device(session: Session, device_id: int, command_id: int) -> Command | None:

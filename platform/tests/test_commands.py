@@ -1,14 +1,15 @@
 from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_current_user, get_optional_current_user
 from app.db.session import get_session
 from app.main import app
-from app.models import Device, User
+from app.models import Command, Device, User
 from app.models.base import Base
 
 
@@ -50,7 +51,9 @@ def build_client_with_devices() -> tuple[TestClient, int, int]:
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_current_user] = override_current_user
     app.dependency_overrides[get_optional_current_user] = override_current_user
-    return TestClient(app), device_id, other_device_id
+    client = TestClient(app)
+    client.testing_session_local = TestingSessionLocal
+    return client, device_id, other_device_id
 
 
 def teardown_overrides() -> None:
@@ -143,5 +146,30 @@ def test_device_token_cannot_poll_other_device_commands():
         )
 
         assert response.status_code == 403
+    finally:
+        teardown_overrides()
+
+
+def test_pending_command_times_out_when_device_does_not_pick_it_up():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "off"},
+        )
+        command_id = create_response.json()["id"]
+
+        with client.testing_session_local() as session:
+            command = session.scalar(select(Command).where(Command.id == command_id))
+            command.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            session.commit()
+
+        list_response = client.get(f"/api/devices/{device_id}/commands")
+
+        assert list_response.status_code == 200
+        payload = list_response.json()
+        assert payload[0]["id"] == command_id
+        assert payload[0]["status"] == "timed_out"
+        assert payload[0]["message"] == "Timed out waiting for device pickup."
     finally:
         teardown_overrides()

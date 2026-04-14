@@ -143,29 +143,68 @@
         </article>
       </section>
 
-      <section class="detail-section">
+      <section class="detail-section controls-grid">
         <article class="command-panel">
           <p class="eyebrow">Controls</p>
-          <h2>Commands</h2>
-          <p>Commands are queued for the Raspberry Pi and update after the device acknowledges them.</p>
-          <div class="command-actions">
-            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
-              <input type="hidden" name="target" value="pump">
-              <input type="hidden" name="action" value="run">
-              <input type="hidden" name="value" value="5">
-              <button type="submit">Pump run 5s</button>
-            </form>
-            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
-              <input type="hidden" name="target" value="pump">
-              <button type="submit" name="action" value="off">Pump off</button>
-            </form>
-            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
-              <input type="hidden" name="target" value="light">
-              <button type="submit" name="action" value="on">Light on</button>
-              <button type="submit" name="action" value="off">Light off</button>
-            </form>
+          <h2>Device Controls</h2>
+          <p>Queue simple actions for the Raspberry Pi. The status changes after the device picks up and acknowledges the command.</p>
+          <div class="control-groups">
+            <section class="control-group">
+              <div class="control-group-heading">
+                <h3>Pump</h3>
+                <span class="state-pill">{% if latest_reading and latest_reading.pump_on is not none %}{% if latest_reading.pump_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
+              </div>
+              <p>Run only when water, tubing, and drainage are ready.</p>
+              <div class="command-actions">
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                  <input type="hidden" name="target" value="pump">
+                  <input type="hidden" name="action" value="run">
+                  <input type="hidden" name="value" value="5">
+                  <button type="submit">Run 5s</button>
+                </form>
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                  <input type="hidden" name="target" value="pump">
+                  <button type="submit" name="action" value="off">Stop</button>
+                </form>
+              </div>
+            </section>
+            <section class="control-group">
+              <div class="control-group-heading">
+                <h3>Light</h3>
+                <span class="state-pill">{% if latest_reading and latest_reading.light_on is not none %}{% if latest_reading.light_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
+              </div>
+              <p>Switch the grow light during setup or quick checks.</p>
+              <div class="command-actions">
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                  <input type="hidden" name="target" value="light">
+                  <button type="submit" name="action" value="on">Turn on</button>
+                  <button type="submit" name="action" value="off">Turn off</button>
+                </form>
+              </div>
+            </section>
           </div>
-          <p class="safety-copy">Run the pump only when water, tubing, and drainage are ready.</p>
+        </article>
+
+        <article class="command-history-panel">
+          <h2>Recent Activity</h2>
+          {% if command_activity %}
+          <div class="activity-list">
+            {% for command in command_activity %}
+            <div class="activity-item {{ command.tone }}">
+              <div>
+                <strong>{{ command.label }}</strong>
+                <span>{{ command.time }}</span>
+                {% if command.message %}
+                <p>{{ command.message }}</p>
+                {% endif %}
+              </div>
+              <span class="status-badge {{ command.tone }}">{{ command.status }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="notice">No commands queued yet.</p>
+          {% endif %}
         </article>
       </section>
 
@@ -176,42 +215,42 @@
         <p><code>X-Device-Token: {{ device.api_token }}</code></p>
       </details>
 
-      <section class="detail-section">
-        <h2>Command History</h2>
-        {% if recent_commands %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Target</th>
-                <th>Action</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for command in recent_commands %}
-              <tr>
-                <td>{{ command.created_at.strftime("%b %-d, %-I:%M %p") }}</td>
-                <td>{{ command.target }}</td>
-                <td>{{ command.action }}{% if command.value %} {{ command.value }}{% endif %}</td>
-                <td><span class="status-badge">{{ command.status }}</span></td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="notice">No commands queued yet.</p>
-        {% endif %}
-      </section>
-
     </main>
     <script>
       const refreshHook = document.querySelector("[data-auto-refresh]");
       if (refreshHook) {
         const intervalMs = Number(refreshHook.dataset.autoRefresh);
         window.setTimeout(() => window.location.reload(), intervalMs);
+      }
+
+      document.querySelectorAll("[data-command-form]").forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const submitter = event.submitter;
+          const formData = new FormData(form);
+          if (submitter && submitter.name) {
+            formData.set(submitter.name, submitter.value);
+          }
+
+          try {
+            const response = await fetch(form.getAttribute("action"), {
+              method: "POST",
+              body: formData,
+            });
+            if (response.ok) {
+              sessionStorage.setItem("plantlabScrollY", String(window.scrollY));
+              window.location.reload();
+            }
+          } catch (error) {
+            console.debug("Command submit failed", error);
+          }
+        });
+      });
+
+      const previousScrollY = sessionStorage.getItem("plantlabScrollY");
+      if (previousScrollY) {
+        sessionStorage.removeItem("plantlabScrollY");
+        window.scrollTo(0, Number(previousScrollY));
       }
     </script>
   </body>

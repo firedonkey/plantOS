@@ -130,10 +130,10 @@ def test_device_detail_page_shows_latest_data():
         assert "Kitchen Rose" in detail_response.text
         assert "42.5%" in detail_response.text
         assert "Recent Trends" in detail_response.text
-        assert "Pump off" in detail_response.text
-        assert "pump" in detail_response.text
-        assert "run 5" in detail_response.text
-        assert "pending" in detail_response.text
+        assert "Device Controls" in detail_response.text
+        assert "Stop" in detail_response.text
+        assert "Pump run 5s" in detail_response.text
+        assert "Waiting" in detail_response.text
         assert "data-auto-refresh=\"5000\"" in detail_response.text
         assert "Auto refresh every 5 seconds" not in detail_response.text
     finally:

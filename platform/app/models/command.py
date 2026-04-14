@@ -27,6 +27,7 @@ class CommandStatus(str, Enum):
     SENT = "sent"
     COMPLETED = "completed"
     FAILED = "failed"
+    TIMED_OUT = "timed_out"
 
 
 class Command(Base):

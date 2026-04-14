@@ -117,6 +117,7 @@ def device_detail_page(
     latest_image = recent_images[0] if recent_images else None
     connection = _device_connection(latest_reading.timestamp if latest_reading else None)
     reading_chart = _reading_chart(recent_readings)
+    command_activity = [_command_activity_item(command) for command in recent_commands[:8]]
 
     return templates.TemplateResponse(
         request,
@@ -130,6 +131,7 @@ def device_detail_page(
             "recent_images": recent_images,
             "latest_image": latest_image,
             "recent_commands": recent_commands,
+            "command_activity": command_activity,
             "connection": connection,
             "reading_chart": reading_chart,
         },
@@ -286,3 +288,40 @@ def _chart_percent(value: float, min_value: float, max_value: float) -> int:
         return 0
     bounded = max(min_value, min(max_value, value))
     return round(((bounded - min_value) / (max_value - min_value)) * 100)
+
+
+def _command_activity_item(command) -> dict:
+    status = _enum_value(command.status)
+    status_labels = {
+        "pending": "Waiting",
+        "sent": "Sent",
+        "completed": "Done",
+        "failed": "Failed",
+        "timed_out": "Timed out",
+    }
+    status_tones = {
+        "pending": "waiting",
+        "sent": "sent",
+        "completed": "done",
+        "failed": "failed",
+        "timed_out": "warning",
+    }
+    return {
+        "label": _command_label(command),
+        "status": status_labels.get(status, status.replace("_", " ").title()),
+        "tone": status_tones.get(status, "waiting"),
+        "message": command.message,
+        "time": command.created_at.strftime("%b %-d, %-I:%M %p"),
+    }
+
+
+def _command_label(command) -> str:
+    target = _enum_value(command.target).title()
+    action = _enum_value(command.action)
+    if action == "run" and command.value:
+        return f"{target} run {command.value}s"
+    return f"{target} {action}"
+
+
+def _enum_value(value) -> str:
+    return value.value if hasattr(value, "value") else str(value)
