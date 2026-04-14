@@ -274,13 +274,13 @@ pip install -r requirements-pi.txt
 python main.py --once
 ```
 
-### Send mock device data to the platform
-Start the platform first:
+### Send Raspberry Pi data to the platform
+Start the platform first. Use `0.0.0.0` when another device, such as the Raspberry Pi, needs to connect:
 
 ```bash
 cd platform
 source ../.venv/bin/activate
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Sign in, add a device, then open that device dashboard and copy:
@@ -288,7 +288,26 @@ Sign in, add a device, then open that device dashboard and copy:
 - `Device ID`
 - `X-Device-Token`
 
-In another terminal, send one mock reading:
+On the Raspberry Pi, send real device readings and real captured camera images:
+
+```bash
+cd device
+source ../.venv/bin/activate
+python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --interval 10 --image-every 1
+```
+
+The platform client also polls for pending pump/light commands every cycle, executes them locally, and acknowledges the result back to the platform. Use `--skip-commands` to send data without polling commands.
+
+When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
+
+You can also save the values under `platform:` in `device/config.yaml` and run:
+
+```bash
+python platform_client.py
+```
+
+### Send mock data to the platform
+Use the mock sender when you want to exercise the platform without waiting on real hardware:
 
 ```bash
 cd device
@@ -296,15 +315,11 @@ source ../.venv/bin/activate
 python mock_platform_sender.py --device-id 1 --device-token paste-token-here --once
 ```
 
-To send readings every 5 seconds and upload one mock rose image every 3 cycles:
+To send mock readings every 5 seconds and upload one bundled mock rose image every 3 cycles:
 
 ```bash
 python mock_platform_sender.py --device-id 1 --device-token paste-token-here --interval 5 --image-every 3
 ```
-
-When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence, or run the local automation loop with capture overrides while testing.
-
-Use `--mock-image-fallback` only when you want bundled rose images uploaded during laptop/mock testing.
 
 You can also save the values under `platform:` in `device/config.yaml` and run:
 
@@ -312,8 +327,7 @@ You can also save the values under `platform:` in `device/config.yaml` and run:
 python mock_platform_sender.py
 ```
 
-The platform device dashboard also includes basic command controls for pump and light. Commands are stored in the platform database and are ready for the Pi client to poll with `X-Device-Token`.
-The mock sender polls for pending pump/light commands every cycle, executes them with the local mock actuators, and acknowledges the result back to the platform. Use `--skip-commands` to send data without polling commands.
+The mock sender forces mock mode for DHT22, moisture, and camera. It still polls pending pump/light commands and acknowledges them with mock actuators unless `--skip-commands` is used.
 
 ### Raspberry Pi mock test
 Copy the repo to the Pi, keep `hardware.mock_mode: true`, then run:
