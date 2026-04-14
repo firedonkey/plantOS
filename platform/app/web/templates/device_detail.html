@@ -6,7 +6,7 @@
     <title>{{ device.name }} - {{ app_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
   </head>
-  <body>
+  <body class="device-page">
     <header class="site-header">
       <a class="site-logo" href="/">PlantLab</a>
       <nav class="site-nav" aria-label="Account">
@@ -18,166 +18,200 @@
       </nav>
     </header>
 
-    <main>
-      <p class="eyebrow">Device Dashboard</p>
-      <h1>{{ device.name }}</h1>
-      <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
-      <div class="refresh-bar" data-auto-refresh="5000">
-        <span>Auto refresh every 5 seconds</span>
-        <button type="button" data-refresh-toggle>Pause</button>
-      </div>
+    <main class="device-dashboard">
+      <section class="device-hero">
+        <div>
+          <p class="eyebrow">Device Dashboard</p>
+          <h1>{{ device.name }}</h1>
+          <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
+        </div>
+        <div class="connection-card {{ connection.tone }}">
+          <span>{{ connection.label }}</span>
+          <strong>{{ connection.last_seen }}</strong>
+        </div>
+      </section>
+      <span data-auto-refresh="5000" hidden></span>
 
-      <section class="detail-section">
-        <h2>Device API</h2>
-        <p>Use this token from the Raspberry Pi or mock sender.</p>
-        <p><code>Device ID: {{ device.id }}</code></p>
-        <p><code>X-Device-Token: {{ device.api_token }}</code></p>
+      <section class="dashboard-split">
+        <article class="sensor-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Live Status</p>
+              <h2>Sensor Readings</h2>
+            </div>
+          </div>
+          {% if latest_reading %}
+          <div class="metric-grid" aria-label="Latest reading">
+            <article class="metric-card">
+              <span>Moisture</span>
+              <strong>{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
+            </article>
+            <article class="metric-card">
+              <span>Temperature</span>
+              <strong>{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
+            </article>
+            <article class="metric-card">
+              <span>Humidity</span>
+              <strong>{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
+            </article>
+            <article class="metric-card">
+              <span>Last Reading</span>
+              <strong>{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
+            </article>
+            <article class="metric-card">
+              <span>Light</span>
+              <strong>{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
+            </article>
+            <article class="metric-card">
+              <span>Pump</span>
+              <strong>{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
+            </article>
+          </div>
+          {% else %}
+          <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
+          {% endif %}
+
+          <div class="embedded-section">
+            <div class="section-heading">
+              <h3>Recent Trends</h3>
+            </div>
+            {% if reading_chart %}
+            <div class="trend-list">
+              {% for metric in reading_chart %}
+              <article class="trend-card">
+                <div class="trend-heading">
+                  <span>{{ metric.label }}</span>
+                </div>
+                {% if metric.points %}
+                <div class="chart-shell">
+                  <div class="y-axis" aria-hidden="true">
+                    <span>{{ metric.max }}{{ metric.unit }}</span>
+                    <span>{{ metric.min }}{{ metric.unit }}</span>
+                  </div>
+                  <div class="chart-body">
+                    <div class="spark-bars" aria-label="{{ metric.label }} trend. Y axis {{ metric.min }} to {{ metric.max }}{{ metric.unit }}. X axis time from {{ metric.start_time }} to {{ metric.end_time }}.">
+                      {% for point in metric.points %}
+                      <span style="--bar-height: {{ point.percent }}%" data-tooltip="{{ point.time }} · {{ point.value }}{{ metric.unit }}" title="{{ point.time }} · {{ point.value }}{{ metric.unit }}"></span>
+                      {% endfor %}
+                    </div>
+                    <div class="x-axis" aria-hidden="true">
+                      <span>{{ metric.start_time }}</span>
+                      <span>{{ metric.end_time }}</span>
+                    </div>
+                  </div>
+                </div>
+                {% else %}
+                <p class="mini-note">No recent values.</p>
+                {% endif %}
+              </article>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="notice">No readings recorded.</p>
+            {% endif %}
+          </div>
+        </article>
+
+        <article class="latest-image-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Camera</p>
+              <h2>Latest Capture</h2>
+            </div>
+            {% if latest_image %}
+            <span>{{ latest_image.timestamp.strftime("%b %-d, %-I:%M %p") }}</span>
+            {% endif %}
+          </div>
+          {% if latest_image %}
+          <img src="/{{ latest_image.path }}" alt="Latest plant capture for {{ device.name }}">
+          {% else %}
+          <p class="notice">No image uploaded yet.</p>
+          {% endif %}
+
+          <div class="embedded-section">
+            <h3>Recent Images</h3>
+            {% if recent_images %}
+            <div class="image-grid image-thumbs">
+              {% for image in recent_images %}
+              <img src="/{{ image.path }}" alt="Plant capture for {{ device.name }}">
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="notice">No images uploaded yet.</p>
+            {% endif %}
+          </div>
+        </article>
       </section>
 
       <section class="detail-section">
-        <h2>Commands</h2>
-        <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
-          <button type="submit" name="target" value="pump" formaction="/devices/{{ device.id }}/commands?target=pump">Pump run</button>
-          <input type="hidden" name="action" value="run">
-          <input type="hidden" name="value" value="5">
-        </form>
-        <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
-          <input type="hidden" name="target" value="pump">
-          <button type="submit" name="action" value="off">Pump off</button>
-        </form>
-        <form class="command-form command-row" action="/devices/{{ device.id }}/commands" method="post">
-          <input type="hidden" name="target" value="light">
-          <button type="submit" name="action" value="on">Light on</button>
-          <button type="submit" name="action" value="off">Light off</button>
-        </form>
+        <article class="command-panel">
+          <p class="eyebrow">Controls</p>
+          <h2>Commands</h2>
+          <p>Commands are queued for the Raspberry Pi and update after the device acknowledges them.</p>
+          <div class="command-actions">
+            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
+              <input type="hidden" name="target" value="pump">
+              <input type="hidden" name="action" value="run">
+              <input type="hidden" name="value" value="5">
+              <button type="submit">Pump run 5s</button>
+            </form>
+            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
+              <input type="hidden" name="target" value="pump">
+              <button type="submit" name="action" value="off">Pump off</button>
+            </form>
+            <form class="command-form" action="/devices/{{ device.id }}/commands" method="post">
+              <input type="hidden" name="target" value="light">
+              <button type="submit" name="action" value="on">Light on</button>
+              <button type="submit" name="action" value="off">Light off</button>
+            </form>
+          </div>
+          <p class="safety-copy">Run the pump only when water, tubing, and drainage are ready.</p>
+        </article>
+      </section>
 
+      <details class="detail-section setup-details">
+        <summary>Raspberry Pi Connection</summary>
+        <p>Use these values from the Raspberry Pi platform client.</p>
+        <p><code>Device ID: {{ device.id }}</code></p>
+        <p><code>X-Device-Token: {{ device.api_token }}</code></p>
+      </details>
+
+      <section class="detail-section">
+        <h2>Command History</h2>
         {% if recent_commands %}
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Target</th>
-              <th>Action</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for command in recent_commands %}
-            <tr>
-              <td>{{ command.created_at.strftime("%b %-d, %-I:%M %p") }}</td>
-              <td>{{ command.target }}</td>
-              <td>{{ command.action }}{% if command.value %} {{ command.value }}{% endif %}</td>
-              <td>{{ command.status }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Target</th>
+                <th>Action</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for command in recent_commands %}
+              <tr>
+                <td>{{ command.created_at.strftime("%b %-d, %-I:%M %p") }}</td>
+                <td>{{ command.target }}</td>
+                <td>{{ command.action }}{% if command.value %} {{ command.value }}{% endif %}</td>
+                <td><span class="status-badge">{{ command.status }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% else %}
         <p class="notice">No commands queued yet.</p>
         {% endif %}
       </section>
 
-      {% if latest_reading %}
-      <section class="metric-grid" aria-label="Latest reading">
-        <article class="metric-card">
-          <span>Moisture</span>
-          <strong>{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
-        </article>
-        <article class="metric-card">
-          <span>Temperature</span>
-          <strong>{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
-        </article>
-        <article class="metric-card">
-          <span>Humidity</span>
-          <strong>{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
-        </article>
-        <article class="metric-card">
-          <span>Last Reading</span>
-          <strong>{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
-        </article>
-        <article class="metric-card">
-          <span>Light</span>
-          <strong>{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
-        </article>
-        <article class="metric-card">
-          <span>Pump</span>
-          <strong>{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
-        </article>
-      </section>
-      {% else %}
-      <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
-      {% endif %}
-
-      <section class="detail-section">
-        <div class="section-heading">
-          <h2>Recent Readings</h2>
-          <a href="/api/devices/{{ device.id }}">API details</a>
-        </div>
-        {% if recent_readings %}
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Moisture</th>
-              <th>Temp</th>
-              <th>Humidity</th>
-              <th>Light</th>
-              <th>Pump</th>
-              <th>Pump Event</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for reading in recent_readings %}
-            <tr>
-              <td>{{ reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</td>
-              <td>{{ reading.moisture if reading.moisture is not none else "n/a" }}</td>
-              <td>{{ reading.temperature if reading.temperature is not none else "n/a" }}</td>
-              <td>{{ reading.humidity if reading.humidity is not none else "n/a" }}</td>
-              <td>{% if reading.light_on is none %}n/a{% elif reading.light_on %}on{% else %}off{% endif %}</td>
-              <td>{% if reading.pump_on is none %}n/a{% elif reading.pump_on %}on{% else %}off{% endif %}</td>
-              <td>{{ reading.pump_status or "n/a" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <p class="notice">No readings recorded.</p>
-        {% endif %}
-      </section>
-
-      <section class="detail-section">
-        <h2>Recent Images</h2>
-        {% if recent_images %}
-        <div class="image-grid">
-          {% for image in recent_images %}
-          <img src="/{{ image.path }}" alt="Plant capture for {{ device.name }}">
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="notice">No images uploaded yet. Post an image to <code>/api/image</code> for this device.</p>
-        {% endif %}
-      </section>
     </main>
     <script>
-      const refreshBar = document.querySelector("[data-auto-refresh]");
-      if (refreshBar) {
-        const toggle = refreshBar.querySelector("[data-refresh-toggle]");
-        const intervalMs = Number(refreshBar.dataset.autoRefresh);
-        let refreshTimer = window.setTimeout(() => window.location.reload(), intervalMs);
-        let enabled = true;
-
-        toggle.addEventListener("click", () => {
-          enabled = !enabled;
-          toggle.textContent = enabled ? "Pause" : "Resume";
-          refreshBar.querySelector("span").textContent = enabled
-            ? "Auto refresh every 5 seconds"
-            : "Auto refresh paused";
-
-          window.clearTimeout(refreshTimer);
-          if (enabled) {
-            refreshTimer = window.setTimeout(() => window.location.reload(), intervalMs);
-          }
-        });
+      const refreshHook = document.querySelector("[data-auto-refresh]");
+      if (refreshHook) {
+        const intervalMs = Number(refreshHook.dataset.autoRefresh);
+        window.setTimeout(() => window.location.reload(), intervalMs);
       }
     </script>
   </body>

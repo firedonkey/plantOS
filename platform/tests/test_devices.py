@@ -129,13 +129,13 @@ def test_device_detail_page_shows_latest_data():
         assert detail_response.status_code == 200
         assert "Kitchen Rose" in detail_response.text
         assert "42.5%" in detail_response.text
-        assert "Recent Readings" in detail_response.text
-        assert "not_needed" in detail_response.text
+        assert "Recent Trends" in detail_response.text
         assert "Pump off" in detail_response.text
         assert "pump" in detail_response.text
         assert "run 5" in detail_response.text
         assert "pending" in detail_response.text
         assert "data-auto-refresh=\"5000\"" in detail_response.text
+        assert "Auto refresh every 5 seconds" not in detail_response.text
     finally:
         teardown_overrides()
 
