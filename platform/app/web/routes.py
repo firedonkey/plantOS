@@ -115,7 +115,8 @@ def device_detail_page(
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     latest_image = recent_images[0] if recent_images else None
-    connection = _device_connection(latest_reading.timestamp if latest_reading else None)
+    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    connection = _device_connection(latest_activity)
     reading_chart = _reading_chart(recent_readings)
     command_activity = [_command_activity_item(command) for command in recent_commands[:8]]
 
@@ -193,24 +194,66 @@ async def create_device_command_page(
     return RedirectResponse(url=f"/devices/{device.id}", status_code=303)
 
 
-def _device_connection(timestamp: datetime | None) -> dict:
-    if timestamp is None:
+def _latest_device_activity(latest_reading, latest_image, recent_commands: list) -> dict | None:
+    activities = []
+    if latest_reading is not None:
+        activities.append(
+            {
+                "timestamp": latest_reading.timestamp,
+                "source": "reading",
+                "description": "sensor reading",
+            }
+        )
+    if latest_image is not None:
+        activities.append(
+            {
+                "timestamp": latest_image.timestamp,
+                "source": "image",
+                "description": "camera image",
+            }
+        )
+    for command in recent_commands:
+        timestamp = command.completed_at or command.sent_at
+        if timestamp is not None:
+            activities.append(
+                {
+                    "timestamp": timestamp,
+                    "source": "command",
+                    "description": "command response",
+                }
+            )
+
+    if not activities:
+        return None
+
+    return max(activities, key=lambda activity: _as_utc(activity["timestamp"]))
+
+
+def _device_connection(activity: dict | None) -> dict:
+    if activity is None:
         return {
             "label": "Waiting for data",
             "tone": "muted",
             "last_seen": "No readings yet",
+            "source": "No device contact yet",
         }
 
     now = datetime.now(timezone.utc)
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    timestamp = _as_utc(activity["timestamp"])
     age_seconds = max(0, int((now - timestamp).total_seconds()))
     online = age_seconds <= 90
     return {
         "label": "Online" if online else "Offline",
         "tone": "good" if online else "warning",
         "last_seen": _relative_time(age_seconds),
+        "source": f"Last seen from {activity['description']}",
     }
+
+
+def _as_utc(timestamp: datetime) -> datetime:
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
 
 
 def _relative_time(age_seconds: int) -> str:

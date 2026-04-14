@@ -1,6 +1,8 @@
 from collections.abc import Generator
 from base64 import b64encode
+from datetime import datetime, timezone
 import json
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from itsdangerous import TimestampSigner
@@ -14,6 +16,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import User
 from app.models.base import Base
+from app.web.routes import _latest_device_activity
 
 
 def build_client_with_user(set_session_cookie: bool = False) -> tuple[TestClient, User]:
@@ -134,10 +137,26 @@ def test_device_detail_page_shows_latest_data():
         assert "Stop" in detail_response.text
         assert "Pump run 5s" in detail_response.text
         assert "Waiting" in detail_response.text
+        assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh=\"5000\"" in detail_response.text
         assert "Auto refresh every 5 seconds" not in detail_response.text
     finally:
         teardown_overrides()
+
+
+def test_latest_device_activity_uses_reading_image_and_device_command_timestamps():
+    reading = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 0, tzinfo=timezone.utc))
+    image = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 5, tzinfo=timezone.utc))
+    command = SimpleNamespace(
+        sent_at=datetime(2026, 4, 13, 19, 8, tzinfo=timezone.utc),
+        completed_at=datetime(2026, 4, 13, 19, 10, tzinfo=timezone.utc),
+    )
+
+    activity = _latest_device_activity(reading, image, [command])
+
+    assert activity is not None
+    assert activity["source"] == "command"
+    assert activity["description"] == "command response"
 
 
 def test_devices_page_renders_for_signed_in_user():

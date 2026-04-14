@@ -322,6 +322,12 @@ input {
   font-size: 1.25rem;
 }
 
+.connection-card small {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .connection-card.good {
   border-color: #91c9a6;
 }
