@@ -20,23 +20,7 @@
     <main class="device-overview">
       <p class="eyebrow">Devices</p>
       <h1>Your Plant Devices</h1>
-      <p>Add each Raspberry Pi plant monitor here before sending readings to the platform.</p>
-
-      <form class="device-form" action="/devices" method="post">
-        <label>
-          Device name
-          <input name="name" required maxlength="120" placeholder="Kitchen Rose">
-        </label>
-        <label>
-          Plant type
-          <input name="plant_type" maxlength="120" placeholder="Rose">
-        </label>
-        <label>
-          Location
-          <input name="location" maxlength="120" placeholder="Kitchen window">
-        </label>
-        <button type="submit">Add device</button>
-      </form>
+      <p>Monitor your Raspberry Pi plant labs and jump into the device that needs attention.</p>
 
       {% if device_cards %}
       <section class="device-grid" aria-label="Device list">
@@ -72,8 +56,29 @@
         {% endfor %}
       </section>
       {% else %}
-      <p class="notice">No devices yet. Add your first plant monitor above.</p>
+      <p class="notice">No devices yet. Add your first plant monitor below.</p>
       {% endif %}
+
+      <section class="detail-section">
+        <p class="eyebrow">Setup</p>
+        <h2>Add Device</h2>
+        <p>Add each Raspberry Pi plant monitor before sending readings to the platform.</p>
+        <form class="device-form" action="/devices" method="post">
+          <label>
+            Device name
+            <input name="name" required maxlength="120" placeholder="Kitchen Rose">
+          </label>
+          <label>
+            Plant type
+            <input name="plant_type" maxlength="120" placeholder="Rose">
+          </label>
+          <label>
+            Location
+            <input name="location" maxlength="120" placeholder="Kitchen window">
+          </label>
+          <button type="submit">Add device</button>
+        </form>
+      </section>
     </main>
   </body>
 </html>
