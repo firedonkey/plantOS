@@ -302,6 +302,10 @@ To send readings every 5 seconds and upload one mock rose image every 3 cycles:
 python mock_platform_sender.py --device-id 1 --device-token paste-token-here --interval 5 --image-every 3
 ```
 
+When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence, or run the local automation loop with capture overrides while testing.
+
+Use `--mock-image-fallback` only when you want bundled rose images uploaded during laptop/mock testing.
+
 You can also save the values under `platform:` in `device/config.yaml` and run:
 
 ```bash

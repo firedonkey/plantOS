@@ -19,14 +19,15 @@ DEFAULT_MOCK_IMAGES = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Send mock device readings and images to PlantLab platform.")
+    parser = argparse.ArgumentParser(description="Send device readings and images to PlantLab platform.")
     parser.add_argument("--config", default="config.yaml", help="Path to device config YAML.")
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")
     parser.add_argument("--interval", type=int, help="Seconds between mock sends.")
     parser.add_argument("--once", action="store_true", help="Send one reading and exit.")
-    parser.add_argument("--image-every", type=int, default=3, help="Upload one mock image every N cycles. Use 0 to skip.")
+    parser.add_argument("--image-every-n-cycles", type=int, default=3, help="Upload one image every N cycles. Use 0 to skip.")
+    parser.add_argument("--mock-image-fallback", action="store_true", help="Upload bundled mock images when no camera image is captured.")
     parser.add_argument("--skip-commands", action="store_true", help="Do not poll or acknowledge platform commands.")
     args = parser.parse_args()
 
@@ -52,8 +53,12 @@ def main() -> None:
             send_reading(platform_url, int(device_id), str(device_token), record)
 
             should_upload_image = args.image_every > 0 and cycle % args.image_every == 0
-            if should_upload_image and image_cycle is not None:
-                send_image(platform_url, int(device_id), str(device_token), next(image_cycle))
+            if should_upload_image:
+                image_path = captured_image_path(record, image_cycle if args.mock_image_fallback else None)
+                if image_path is not None:
+                    send_image(platform_url, int(device_id), str(device_token), image_path)
+                else:
+                    print("[platform] no camera image available to upload")
 
             if not args.skip_commands:
                 handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
@@ -84,6 +89,19 @@ def send_reading(platform_url: str, device_id: int, device_token: str, record: d
     )
     response.raise_for_status()
     print(f"[platform] sent reading: {response.json()}")
+
+
+def captured_image_path(record: dict, fallback_cycle) -> Path | None:
+    image_path = record.get("image_path")
+    if image_path:
+        path = Path(str(image_path))
+        if path.exists():
+            return path
+        print(f"[platform] captured image path does not exist: {path}")
+
+    if fallback_cycle is not None:
+        return next(fallback_cycle)
+    return None
 
 
 def send_image(platform_url: str, device_id: int, device_token: str, image_path: Path) -> None:
