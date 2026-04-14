@@ -237,15 +237,42 @@ input {
 
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
 }
 
 .device-card {
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 16px;
   background: #ffffff;
+}
+
+.device-card-image {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.empty-image {
+  background: #eef2eb;
+}
+
+.device-card-body {
+  padding: 16px;
+}
+
+.device-card-topline,
+.device-card-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .device-card h2 {
@@ -256,6 +283,39 @@ input {
 .device-card p {
   margin-bottom: 8px;
   color: var(--muted);
+}
+
+.device-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.device-card-stats span {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.device-card-stats strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.device-card-footer {
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.device-overview {
+  width: min(1120px, calc(100% - 32px));
 }
 
 .metric-grid {
@@ -635,6 +695,12 @@ input {
   color: var(--green);
 }
 
+.status-badge.good {
+  border-color: #91c9a6;
+  background: #f3fbf5;
+  color: var(--green);
+}
+
 .status-badge.warning {
   border-color: #d6b25c;
   background: #fff9e9;
@@ -648,7 +714,8 @@ input {
 }
 
 .status-badge.waiting,
-.status-badge.sent {
+.status-badge.sent,
+.status-badge.muted {
   border-color: #b9c6b7;
   background: #f7f8f3;
   color: var(--muted);

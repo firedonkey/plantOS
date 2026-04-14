@@ -17,7 +17,7 @@
       </nav>
     </header>
 
-    <main>
+    <main class="device-overview">
       <p class="eyebrow">Devices</p>
       <h1>Your Plant Devices</h1>
       <p>Add each Raspberry Pi plant monitor here before sending readings to the platform.</p>
@@ -38,15 +38,36 @@
         <button type="submit">Add device</button>
       </form>
 
-      {% if devices %}
+      {% if device_cards %}
       <section class="device-grid" aria-label="Device list">
-        {% for device in devices %}
+        {% for card in device_cards %}
+        {% set device = card.device %}
         <article class="device-card">
-          <h2>{{ device.name }}</h2>
-          <p>{{ device.plant_type or "Plant type not set" }}</p>
-          <p>{{ device.location or "Location not set" }}</p>
-          <p><code>Device ID: {{ device.id }}</code></p>
-          <a href="/devices/{{ device.id }}">View dashboard</a>
+          {% if card.thumbnail_path %}
+          <img class="device-card-image" src="/{{ card.thumbnail_path }}" alt="Latest plant capture for {{ device.name }}">
+          {% else %}
+          <div class="device-card-image empty-image">No image yet</div>
+          {% endif %}
+          <div class="device-card-body">
+            <div class="device-card-topline">
+              <div>
+                <h2>{{ device.name }}</h2>
+                <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
+              </div>
+              <span class="status-badge {{ card.connection.tone }}">{{ card.connection.label }}</span>
+            </div>
+            <div class="device-card-stats" aria-label="Latest values for {{ device.name }}">
+              <span><strong>{{ card.moisture }}</strong>Moisture</span>
+              <span><strong>{{ card.temperature }}</strong>Temp</span>
+              <span><strong>{{ card.humidity }}</strong>Humidity</span>
+              <span><strong>{{ card.light }}</strong>Light</span>
+              <span><strong>{{ card.pump }}</strong>Pump</span>
+            </div>
+            <div class="device-card-footer">
+              <span>{{ card.connection.last_seen }}</span>
+              <a href="/devices/{{ device.id }}">View dashboard</a>
+            </div>
+          </div>
         </article>
         {% endfor %}
       </section>

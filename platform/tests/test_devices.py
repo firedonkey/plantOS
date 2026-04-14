@@ -167,3 +167,41 @@ def test_devices_page_renders_for_signed_in_user():
         assert "Your Plant Devices" in response.text
     finally:
         teardown_overrides()
+
+
+def test_devices_page_shows_latest_values_on_cards():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 44.4,
+                "temperature": 21.8,
+                "humidity": 53.2,
+                "light_on": True,
+                "pump_on": False,
+            },
+        )
+        assert data_response.status_code == 201
+
+        response = client.get("/devices")
+
+        assert response.status_code == 200
+        assert "Kitchen Rose" in response.text
+        assert "44.4%" in response.text
+        assert "21.8 C" in response.text
+        assert "53.2%" in response.text
+        assert "No image yet" in response.text
+        assert "Online" in response.text
+    finally:
+        teardown_overrides()

@@ -78,6 +78,7 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
         request.session.clear()
         return RedirectResponse(url="/login", status_code=303)
     devices = list_devices_for_user(session, current_user)
+    device_cards = [_device_overview_card(session, device) for device in devices]
 
     return templates.TemplateResponse(
         request,
@@ -85,7 +86,7 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
         {
             "app_name": settings.app_name,
             "current_user": current_user,
-            "devices": devices,
+            "device_cards": device_cards,
         },
     )
 
@@ -229,6 +230,26 @@ def _latest_device_activity(latest_reading, latest_image, recent_commands: list)
     return max(activities, key=lambda activity: _as_utc(activity["timestamp"]))
 
 
+def _device_overview_card(session: Session, device) -> dict:
+    latest_reading = get_latest_reading_for_device(session, device.id)
+    latest_images = list_recent_images_for_device(session, device.id, limit=1)
+    latest_image = latest_images[0] if latest_images else None
+    recent_commands = list_commands_for_device(session, device.id, limit=5)
+    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    connection = _device_connection(latest_activity)
+
+    return {
+        "device": device,
+        "connection": connection,
+        "thumbnail_path": latest_image.path if latest_image is not None else None,
+        "moisture": _metric_value(latest_reading.moisture if latest_reading else None, "%"),
+        "temperature": _metric_value(latest_reading.temperature if latest_reading else None, " C"),
+        "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
+        "light": _bool_label(latest_reading.light_on if latest_reading else None),
+        "pump": _bool_label(latest_reading.pump_on if latest_reading else None),
+    }
+
+
 def _device_connection(activity: dict | None) -> dict:
     if activity is None:
         return {
@@ -254,6 +275,18 @@ def _as_utc(timestamp: datetime) -> datetime:
     if timestamp.tzinfo is None:
         return timestamp.replace(tzinfo=timezone.utc)
     return timestamp.astimezone(timezone.utc)
+
+
+def _metric_value(value: float | None, unit: str) -> str:
+    if value is None:
+        return "n/a"
+    return f"{round(float(value), 1)}{unit}"
+
+
+def _bool_label(value: bool | None) -> str:
+    if value is None:
+        return "n/a"
+    return "on" if value else "off"
 
 
 def _relative_time(age_seconds: int) -> str:
