@@ -45,7 +45,7 @@ camera:
   enabled: true
   mock_mode: false
   device_index: 0
-  capture_interval_seconds: 3600
+  capture_interval_seconds: 10
   image_dir: data/images
   resolution: 1280x720
   skip_frames: 30
