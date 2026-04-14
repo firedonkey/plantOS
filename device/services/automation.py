@@ -52,6 +52,33 @@ class PlantAutomation:
         self.logger.log(record)
         return record
 
+    def status_snapshot(self, pump_event: str = "status_update") -> dict:
+        """Read current state without applying schedules, watering, or camera capture."""
+        now = datetime.now()
+        dht = self.dht22.read()
+        moisture = self.moisture.read()
+
+        errors = []
+        if not dht.ok:
+            errors.append(f"dht22: {dht.error}")
+        if not moisture.ok:
+            errors.append(f"moisture: {moisture.error}")
+
+        record = {
+            "timestamp": now.isoformat(timespec="seconds"),
+            "temperature_c": dht.temperature_c,
+            "humidity_percent": dht.humidity_percent,
+            "moisture_raw": moisture.raw_value,
+            "moisture_percent": moisture.percent,
+            "light_on": self.light.is_on,
+            "pump_on": self.pump.is_on,
+            "pump_event": pump_event,
+            "image_path": None,
+            "errors": "; ".join(errors),
+        }
+        self.logger.log(record)
+        return record
+
     def close(self) -> None:
         self.pump.close()
         self.light.close()

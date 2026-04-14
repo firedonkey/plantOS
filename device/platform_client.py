@@ -68,7 +68,10 @@ def main() -> None:
                     print("[platform] no camera image available to upload")
 
             if not args.skip_commands:
-                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
+                handled_count = handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
+                if handled_count:
+                    status_record = automation.status_snapshot(pump_event="command_update")
+                    send_reading(platform_url, int(device_id), str(device_token), status_record)
 
             if args.once:
                 break
@@ -129,7 +132,7 @@ def handle_pending_commands(
     device_id: int,
     device_token: str,
     automation: PlantAutomation,
-) -> None:
+) -> int:
     commands = poll_pending_commands(platform_url, device_id, device_token)
     for command in commands:
         try:
@@ -151,6 +154,7 @@ def handle_pending_commands(
                 status="failed",
                 message=str(exc),
             )
+    return len(commands)
 
 
 def poll_pending_commands(platform_url: str, device_id: int, device_token: str) -> list[dict]:
