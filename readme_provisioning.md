@@ -1,385 +1,434 @@
-# 🔐🌐 PlantLab — Device Provisioning & Wi-Fi Onboarding PRD
+# 📷🔐 PlantLab — QR-Based Device Provisioning PRD (No Hotspot)
 
 ## 1. Overview
 
-This document defines the device onboarding and Wi-Fi provisioning system for PlantLab.
+This document defines a **QR-based onboarding system** for PlantLab devices.
 
 Goal:
-Enable **non-technical users** to:
+Allow users to fully set up a device by:
 
-1. connect the device to Wi-Fi
-2. claim the device to their account
+* scanning a QR code with the device camera
+* without hotspot setup
+* without manual token entry
 
-👉 without using command line, SSH, or manual token entry.
+👉 “Scan once → everything is configured”
 
 ---
 
 ## 2. Problem
 
-### Current Issues
+Traditional onboarding:
 
-* Requires manual token entry into Raspberry Pi
-* Requires technical knowledge (SSH, config files)
-* No user-friendly Wi-Fi setup
+* requires hotspot setup
+* requires manual input (Wi-Fi, tokens)
+* confusing for non-technical users
 
 ---
 
 ## 3. Solution
 
-Split onboarding into **two independent flows**:
+Use **camera-based QR provisioning**:
 
-### Flow A — Wi-Fi Provisioning
+* Website generates a QR code
+* Raspberry Pi scans QR
+* QR contains:
 
-Device helps user connect it to internet.
-
-### Flow B — Device Claiming
-
-User links device to their account.
+  * Wi-Fi credentials
+  * onboarding token
+* Device auto-configures and registers
 
 ---
 
 ## 4. Goals
 
-* No manual token entry
-* No command line usage
-* Works for non-technical users
-* Scalable to multiple devices
+* zero manual input on device
+* no hotspot required
+* fast onboarding (<30 seconds)
+* secure pairing with user account
 
 ---
 
 ## 5. Non-Goals (V1)
 
-* Mobile app onboarding
-* Bluetooth provisioning
-* Advanced device permissions
+* mobile app scanning
+* BLE provisioning
+* advanced encryption (basic security only)
 
 ---
 
-# 🧩 PART 1 — Wi-Fi Provisioning
+# 🧩 PART 1 — User Flow
 
 ---
 
-## 6. Wi-Fi Setup Flow (Hotspot Mode)
-
-### Step 1 — Device Boot
+## Step 1 — Device Boot
 
 Device checks:
 
-```text
-Is Wi-Fi configured?
-```
-
-If NO:
-👉 enter **Hotspot Mode**
+* if NOT provisioned → enter **QR Scan Mode**
 
 ---
 
-## Step 2 — Create Hotspot
-
-Device creates Wi-Fi:
-
-```text
-PlantLab-Setup-XXXX
-```
-
-Where `XXXX` = last digits of device_id
-
----
-
-## Step 3 — User Connects
+## Step 2 — User Starts Setup
 
 User:
 
-* opens phone/laptop Wi-Fi
-* connects to hotspot
+* logs into website
+* clicks **Add Device**
 
 ---
 
-## Step 4 — Setup Page
+## Step 3 — QR Code Generated
 
-User opens browser:
+Backend generates:
 
-```text
-http://192.168.4.1
-```
+* short-lived onboarding token
 
-OR captive portal auto-opens
+Frontend displays QR code.
 
 ---
 
-## Step 5 — User Inputs Wi-Fi
+## Step 4 — User Shows QR to Device
 
-Form:
+User:
 
-```text
-Wi-Fi Name (SSID)
-Password
-```
+* holds laptop/phone screen in front of device camera
 
 ---
 
-## Step 6 — Device Saves Config
+## Step 5 — Device Scans QR
 
 Device:
 
+* captures frames
+* detects QR
+* parses payload
+
+---
+
+## Step 6 — Device Connects to Wi-Fi
+
+Device:
+
+* extracts SSID + password
 * writes to Wi-Fi config
-* example (Raspberry Pi):
-
-```bash
-/etc/wpa_supplicant/wpa_supplicant.conf
-```
+* connects to network
 
 ---
 
-## Step 7 — Connect to Internet
-
-Device:
-
-* exits hotspot mode
-* connects to home Wi-Fi
-
----
-
-## Step 8 — Confirmation
-
-Show message:
-
-```text
-Device connected successfully.
-Now go to plantlab.com and add your device.
-```
-
----
-
-## 7. System Components (Pi)
-
-* hostapd → hotspot
-* dnsmasq → DHCP
-* Flask/FastAPI → setup page
-
----
-
-# 🧩 PART 2 — Device Claiming
-
----
-
-## 8. Device Identity
-
-Each device has:
-
-* device_id
-* claim_code (human-readable)
-* device_secret (hidden)
-
----
-
-## 9. Device States
-
-| State     | Description       |
-| --------- | ----------------- |
-| unclaimed | not linked        |
-| claimed   | linked to user    |
-| active    | fully operational |
-
----
-
-## 10. User Flow
-
----
-
-### Step 1 — User Login
-
-User logs into website.
-
----
-
-### Step 2 — Add Device
-
-User:
-
-* clicks "Add Device"
-* enters claim_code OR scans QR code
-
----
-
-### Step 3 — Backend Validation
-
-Backend checks:
-
-* device exists
-* claim_code matches
-* device not already claimed
-
----
-
-### Step 4 — Claim Success
-
-Backend:
-
-* links device to user
-* updates state → claimed
-
----
-
-## 11. Device Authentication
+## Step 7 — Device Registers with Backend
 
 Device sends:
 
 ```json
 {
   "device_id": "plab_001",
-  "device_secret": "xxx"
+  "device_secret": "xxx",
+  "onboarding_token": "abc123"
 }
 ```
 
-Backend returns:
+---
+
+## Step 8 — Backend Response
+
+Backend:
+
+* verifies token
+* links device to user
+* returns:
 
 ```json
 {
-  "access_token": "jwt_token"
+  "access_token": "jwt_token",
+  "config": {}
 }
 ```
 
 ---
 
-## 12. Normal Operation
+## Step 9 — Setup Complete
 
 Device:
 
-* uses access_token
-* sends sensor data
-* uploads images
+* stores token
+* enters normal operation
 
 ---
 
-# 🧩 PART 3 — Data Model
+# 🧩 PART 2 — QR Payload Design
 
 ---
 
-## Device Table
+## Payload Format (JSON)
+
+```json
+{
+  "version": 1,
+  "ssid": "HomeWifi",
+  "password": "MyPassword123",
+  "onboarding_token": "abc123xyz",
+  "backend_url": "https://api.plantlab.com",
+  "expires_at": "2026-04-13T18:30:00Z"
+}
+```
+
+---
+
+## Encoding
+
+* JSON → string
+* optionally base64 encode
+
+---
+
+## Constraints
+
+* QR must be scannable from screen
+* payload size should be minimized
+
+---
+
+# 🧩 PART 3 — Device Behavior
+
+---
+
+## QR Scan Mode
+
+Device:
+
+* activates camera
+* scans continuously
+* validates QR payload
+
+---
+
+## Validation
+
+Device checks:
+
+* required fields present
+* not expired
+* valid format
+
+---
+
+## Wi-Fi Setup
+
+Device:
+
+* writes credentials to config
+* example:
+
+```bash
+/etc/wpa_supplicant/wpa_supplicant.conf
+```
+
+* restarts network
+
+---
+
+## Backend Registration
+
+Device:
+
+* sends onboarding request
+* retries if failure
+
+---
+
+## Storage
+
+Device stores:
+
+* access_token
+* Wi-Fi credentials
+* backend URL
+
+---
+
+# 🧩 PART 4 — Backend Design
+
+---
+
+## Generate QR
 
 ```text
-id
+POST /api/device/onboarding-token
+```
+
+Response:
+
+* onboarding_token
+* expiration time
+
+---
+
+## Register Device
+
+```text
+POST /api/device/register
+```
+
+---
+
+## Validation Rules
+
+* onboarding_token must:
+
+  * be valid
+  * not expired
+  * not used before
+
+---
+
+## State Update
+
+Device:
+
+* unclaimed → claimed → active
+
+---
+
+# 🧩 PART 5 — Data Model
+
+---
+
+## Device
+
+```text
 device_id
 device_secret
-claim_code
 user_id
 status
-created_at
 ```
 
 ---
 
-## User Table
+## Onboarding Token
 
 ```text
-id
-email
-password_hash
-```
-
----
-
-## Token Table
-
-```text
-id
-device_id
-access_token
+token
+user_id
 expires_at
+used (boolean)
 ```
-
----
-
-# 🧩 PART 4 — API Design
-
----
-
-## Claim Device
-
-```text
-POST /api/device/claim
-```
-
----
-
-## Device Auth
-
-```text
-POST /api/device/auth
-```
-
----
-
-## Send Data
-
-```text
-POST /api/data
-Authorization: Bearer token
-```
-
----
-
-# 🧩 PART 5 — Device Requirements
-
-Device must:
-
-* detect Wi-Fi status
-* start hotspot if no Wi-Fi
-* host setup web page
-* store credentials
-* authenticate with backend
-* store access_token
-* send data/images
 
 ---
 
 # 🧩 PART 6 — Security
 
-* claim_code = limited use
+---
+
+## Rules
+
+* onboarding_token expires in 5–10 minutes
+* token is one-time use
 * device_secret never exposed
 * HTTPS required
-* tokens expire
 
 ---
 
-# 🧩 PART 7 — Future Enhancements
+## Risks
 
-* QR scanning
-* mobile app onboarding
-* BLE provisioning
-* batch device onboarding (classroom)
+* Wi-Fi password in QR
+* screen visibility
 
 ---
 
-# 🧩 PART 8 — Implementation Plan
+## Mitigation (V1)
+
+* short-lived QR
+* user authentication required
+* optional obfuscation
+
+---
+
+# 🧩 PART 7 — Device Requirements
+
+---
+
+Device must:
+
+* support camera capture
+* detect QR codes
+* parse JSON payload
+* configure Wi-Fi
+* connect to backend
+* store tokens securely
+
+---
+
+# 🧩 PART 8 — UX Design
+
+---
+
+## Setup Page
+
+Display:
+
+* large QR code
+* instructions:
+
+```text
+1. Power on device
+2. Point camera at QR code
+3. Wait for connection
+```
+
+---
+
+## Status Feedback
+
+Show:
+
+* waiting for scan
+* device connected
+* setup complete
+
+---
+
+# 🧩 PART 9 — Edge Cases
+
+---
+
+* QR not detected → retry
+* Wi-Fi wrong → reconnect flow
+* token expired → regenerate QR
+* backend unreachable → retry
+
+---
+
+# 🧩 PART 10 — Implementation Plan
 
 ---
 
 ## Phase 1
 
-* backend APIs
-* device identity model
+* backend token API
+* QR generation
 
 ## Phase 2
 
-* device claim flow
+* device QR scanning
+* Wi-Fi config
 
 ## Phase 3
 
-* hotspot Wi-Fi setup
+* backend registration
 
 ## Phase 4
 
-* UI improvements
+* UX polish
 
 ---
 
 # 🧠 Key Principle
 
-👉 Device connects to internet first
-👉 User claims device second
-👉 Device receives token automatically
+👉 One QR scan handles:
+
+* Wi-Fi setup
+* device pairing
+* authentication
 
 ---
 
@@ -387,10 +436,10 @@ Device must:
 
 Implement:
 
-1. Wi-Fi detection + hotspot mode logic
-2. Setup web server on device
-3. Device claim API
-4. Device authentication API
-5. Token system
+1. QR payload generator (backend)
+2. onboarding token API
+3. QR scanning module (Pi)
+4. Wi-Fi config logic
+5. device registration API
 
 Keep implementation modular and production-ready.
