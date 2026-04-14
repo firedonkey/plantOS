@@ -79,6 +79,7 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
         return RedirectResponse(url="/login", status_code=303)
     devices = list_devices_for_user(session, current_user)
     device_cards = [_device_overview_card(session, device) for device in devices]
+    next_device_number = len(devices) + 1
 
     return templates.TemplateResponse(
         request,
@@ -87,6 +88,8 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
             "app_name": settings.app_name,
             "current_user": current_user,
             "device_cards": device_cards,
+            "suggested_device_name": f"Device {next_device_number}",
+            "suggested_plant_type": f"Plant {next_device_number}",
         },
     )
 

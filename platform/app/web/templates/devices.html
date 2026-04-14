@@ -66,11 +66,11 @@
         <form class="device-form" action="/devices" method="post">
           <label>
             Device name
-            <input name="name" required maxlength="120" placeholder="Kitchen Rose">
+            <input name="name" required maxlength="120" value="{{ suggested_device_name }}">
           </label>
           <label>
             Plant type
-            <input name="plant_type" maxlength="120" placeholder="Rose">
+            <input name="plant_type" maxlength="120" value="{{ suggested_plant_type }}">
           </label>
           <label>
             Location

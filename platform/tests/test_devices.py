@@ -205,3 +205,24 @@ def test_devices_page_shows_latest_values_on_cards():
         assert "Online" in response.text
     finally:
         teardown_overrides()
+
+
+def test_devices_page_prefills_next_device_defaults():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Device 1",
+                "plant_type": "Plant 1",
+            },
+        )
+        assert create_response.status_code == 201
+
+        response = client.get("/devices")
+
+        assert response.status_code == 200
+        assert 'value="Device 2"' in response.text
+        assert 'value="Plant 2"' in response.text
+    finally:
+        teardown_overrides()
