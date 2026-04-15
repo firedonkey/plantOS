@@ -1,5 +1,5 @@
 -r requirements.txt
 
 gpiozero==2.0.1
-spidev==3.6
 adafruit-circuitpython-dht
+adafruit-circuitpython-ads1x15

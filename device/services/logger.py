@@ -9,6 +9,7 @@ class PlantLogger:
         "temperature_c",
         "humidity_percent",
         "moisture_raw",
+        "moisture_smoothed_raw",
         "moisture_percent",
         "light_on",
         "pump_event",

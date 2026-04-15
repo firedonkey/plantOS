@@ -346,6 +346,21 @@ hardware:
   mock_mode: false
 ```
 
+For the ADS1115 moisture sensor, the default device config expects:
+
+- I2C address `0x48`
+- channel `A0`
+- one raw sample every 1 second
+- a 5-sample moving average for the reported moisture percentage
+
+Install the Pi hardware dependencies, then confirm the ADC is visible:
+```bash
+sudo apt install i2c-tools -y
+i2cdetect -y 1
+```
+
+You should see `48` in the scan output. Calibrate `sensors.moisture.dry_value` and `sensors.moisture.wet_value` in `device/config.yaml` after checking raw readings from your actual sensor and soil.
+
 Start with a short pump run time while testing:
 ```yaml
 actuators:

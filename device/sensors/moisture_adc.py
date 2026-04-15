@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from collections import deque
 import random
+import time
 
 
 @dataclass
@@ -8,57 +10,114 @@ class MoistureReading:
     percent: float | None
     ok: bool
     error: str | None = None
+    smoothed_raw_value: float | None = None
 
 
 class MoistureADCSensor:
     def __init__(self, config: dict, mock_mode: bool = False):
         self.config = config
-        self.mock_mode = mock_mode
-        self._spi = None
+        self.mock_mode = mock_mode or bool(config.get("mock_mode", False))
+        self._ads = None
+        self._channel = None
+        self._i2c = None
+        self._samples = deque(maxlen=max(1, int(config.get("moving_average_samples", 5))))
 
     def read(self) -> MoistureReading:
-        if self.mock_mode or not self.config.get("enabled", True):
-            raw_value = self._mock_raw_value()
-            return MoistureReading(raw_value, self._raw_to_percent(raw_value), True)
-
         try:
-            raw_value = self._read_mcp3008_channel(int(self.config.get("adc_channel", 0)))
-            return MoistureReading(raw_value, self._raw_to_percent(raw_value), True)
+            raw_values = self._read_sample_window()
+            latest_raw = raw_values[-1]
+            smoothed_raw = sum(self._samples) / len(self._samples)
+            return MoistureReading(
+                raw_value=latest_raw,
+                smoothed_raw_value=round(smoothed_raw, 1),
+                percent=self._raw_to_percent(smoothed_raw),
+                ok=True,
+            )
         except Exception as exc:
-            return MoistureReading(None, None, False, str(exc))
+            return MoistureReading(None, None, False, f"ADS1115 read failed: {exc}")
+
+    def _read_sample_window(self) -> list[int]:
+        sample_count = max(1, int(self.config.get("moving_average_samples", 5)))
+        interval = max(0.0, float(self.config.get("read_interval_seconds", 1)))
+        raw_values = []
+
+        for sample_index in range(sample_count):
+            raw_value = self._read_single_raw_value()
+            self._samples.append(raw_value)
+            raw_values.append(raw_value)
+            # Keep sensor sampling simple and predictable for debugging on a Pi.
+            if sample_index < sample_count - 1 and interval > 0:
+                time.sleep(interval)
+
+        return raw_values
+
+    def _read_single_raw_value(self) -> int:
+        if self.mock_mode or not self.config.get("enabled", True):
+            return self._mock_raw_value()
+
+        adc_type = str(self.config.get("adc_type", "ads1115")).lower()
+        if adc_type != "ads1115":
+            raise ValueError(f"Unsupported moisture adc_type: {adc_type}")
+        return self._read_ads1115_channel()
 
     def _mock_raw_value(self) -> int:
         base_value = int(self.config.get("mock_raw_value", 650))
         variation = int(self.config.get("mock_raw_variation", 0))
         raw_value = base_value + random.randint(-variation, variation)
-        return max(0, min(1023, raw_value))
+        dry = int(self.config.get("dry_value", 26000))
+        wet = int(self.config.get("wet_value", 12000))
+        upper_bound = max(dry, wet, base_value)
+        return max(0, min(upper_bound, raw_value))
 
     def close(self) -> None:
-        if self._spi is not None:
-            self._spi.close()
-            self._spi = None
+        if self._i2c is not None and hasattr(self._i2c, "deinit"):
+            self._i2c.deinit()
+        self._ads = None
+        self._channel = None
+        self._i2c = None
 
-    def _raw_to_percent(self, raw_value: int) -> float:
-        dry = float(self.config.get("dry_value", 850))
-        wet = float(self.config.get("wet_value", 350))
+    def _raw_to_percent(self, raw_value: float) -> float:
+        dry = float(self.config.get("dry_value", 26000))
+        wet = float(self.config.get("wet_value", 12000))
         if dry == wet:
             return 0.0
         percent = (dry - raw_value) / (dry - wet) * 100.0
         return round(max(0.0, min(100.0, percent)), 1)
 
-    def _read_mcp3008_channel(self, channel: int) -> int:
-        if channel < 0 or channel > 7:
-            raise ValueError("MCP3008 channel must be between 0 and 7")
+    def _read_ads1115_channel(self) -> int:
+        if self._channel is None:
+            try:
+                import board
+                import busio
+                import adafruit_ads1x15.ads1115 as ADS
+                from adafruit_ads1x15.analog_in import AnalogIn
+            except Exception as exc:
+                raise RuntimeError(
+                    "ADS1115 libraries unavailable. Install device/requirements-pi.txt on the Raspberry Pi."
+                ) from exc
 
-        if self._spi is None:
-            import spidev
+            channel_index = int(self.config.get("adc_channel", 0))
+            channel_map = {
+                0: ADS.P0,
+                1: ADS.P1,
+                2: ADS.P2,
+                3: ADS.P3,
+            }
+            if channel_index not in channel_map:
+                raise ValueError("ADS1115 channel must be between 0 and 3")
 
-            self._spi = spidev.SpiDev()
-            self._spi.open(
-                int(self.config.get("spi_bus", 0)),
-                int(self.config.get("spi_device", 0)),
-            )
-            self._spi.max_speed_hz = 1350000
+            address = _parse_int(self.config.get("i2c_address", "0x48"))
+            self._i2c = busio.I2C(board.SCL, board.SDA)
+            self._ads = ADS.ADS1115(self._i2c, address=address)
+            self._ads.gain = float(self.config.get("gain", 1))
+            if self.config.get("data_rate"):
+                self._ads.data_rate = int(self.config["data_rate"])
+            self._channel = AnalogIn(self._ads, channel_map[channel_index])
 
-        response = self._spi.xfer2([1, (8 + channel) << 4, 0])
-        return ((response[1] & 3) << 8) + response[2]
+        return int(self._channel.value)
+
+
+def _parse_int(value) -> int:
+    if isinstance(value, int):
+        return value
+    return int(str(value), 0)

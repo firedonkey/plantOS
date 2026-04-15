@@ -20,13 +20,21 @@ sensors:
     mock_humidity_variation_percent: 8.0
   moisture:
     enabled: true
-    spi_bus: 0
-    spi_device: 0
+    mock_mode: false
+    adc_type: ads1115
+    i2c_address: 0x48
     adc_channel: 0
-    dry_value: 850
-    wet_value: 350
-    mock_raw_value: 650
-    mock_raw_variation: 80
+    gain: 1
+    data_rate: 128
+    read_interval_seconds: 1
+    moving_average_samples: 5
+    # Calibrate these with your sensor:
+    # dry_value is the raw ADS1115 reading in dry air or very dry soil.
+    # wet_value is the raw ADS1115 reading in water or very wet soil.
+    dry_value: 26000
+    wet_value: 12000
+    mock_raw_value: 19000
+    mock_raw_variation: 1200
 
 actuators:
   relay_active_high: false
