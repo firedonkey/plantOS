@@ -441,6 +441,29 @@ input {
   gap: 12px;
 }
 
+.range-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.range-picker a {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-decoration: none;
+}
+
+.range-picker a.active {
+  border-color: var(--green);
+  background: #f3fbf5;
+  color: var(--green);
+}
+
 .trend-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -494,9 +517,9 @@ input {
 
 .spark-bars {
   display: grid;
-  grid-template-columns: repeat(20, minmax(4px, 1fr));
+  grid-template-columns: repeat(var(--point-count), minmax(3px, 1fr));
   align-items: end;
-  gap: 4px;
+  gap: 3px;
   height: 86px;
   border: 1px solid var(--line);
   border-radius: 8px;

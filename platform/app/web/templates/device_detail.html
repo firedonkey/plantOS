@@ -72,11 +72,16 @@
           <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
           {% endif %}
 
-            <div class="embedded-section">
+          <div class="embedded-section">
             <div class="section-heading">
               <h3>Recent Trends</h3>
-              <span class="section-note">Last 20 readings</span>
+              <span class="section-note">{{ chart_range.title }}</span>
             </div>
+            <nav class="range-picker" aria-label="Chart range">
+              {% for range_option in chart_ranges %}
+              <a class="{% if range_option.key == chart_range.key %}active{% endif %}" href="/devices/{{ device.id }}?range={{ range_option.key }}">{{ range_option.label }}</a>
+              {% endfor %}
+            </nav>
             {% if reading_chart %}
             <div class="trend-list">
               {% for metric in reading_chart %}
@@ -94,7 +99,7 @@
                     <span>{{ metric.min }}{{ metric.unit }}</span>
                   </div>
                   <div class="chart-body">
-                    <div class="spark-bars" aria-label="{{ metric.label }} trend. Y axis {{ metric.min }} to {{ metric.max }}{{ metric.unit }}. X axis time from {{ metric.start_time }} to {{ metric.end_time }}.">
+                    <div class="spark-bars" style="--point-count: {{ metric.point_count }}" aria-label="{{ metric.label }} trend. Y axis {{ metric.min }} to {{ metric.max }}{{ metric.unit }}. X axis time from {{ metric.start_time }} to {{ metric.end_time }}.">
                       {% for point in metric.points %}
                       <span style="--bar-height: {{ point.percent }}%" data-tooltip="{{ point.time }} · {{ point.value }}{{ metric.unit }}" title="{{ point.time }} · {{ point.value }}{{ metric.unit }}"></span>
                       {% endfor %}

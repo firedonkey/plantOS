@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,11 +30,16 @@ def list_recent_readings_for_device(
     session: Session,
     device_id: int,
     limit: int = 50,
+    since: datetime | None = None,
 ) -> list[SensorReading]:
+    filters = [SensorReading.device_id == device_id]
+    if since is not None:
+        filters.append(SensorReading.timestamp >= since)
+
     return list(
         session.scalars(
             select(SensorReading)
-            .where(SensorReading.device_id == device_id)
+            .where(*filters)
             .order_by(SensorReading.timestamp.desc(), SensorReading.id.desc())
             .limit(limit)
         )

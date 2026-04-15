@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -27,6 +27,14 @@ from app.services.users import get_user_by_id
 router = APIRouter(tags=["web"])
 WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=WEB_DIR / "templates")
+MAX_CHART_POINTS = 60
+CHART_RANGES = [
+    {"key": "1h", "label": "1 hour", "title": "Last 1 hour", "delta": timedelta(hours=1)},
+    {"key": "24h", "label": "24 hours", "title": "Last 24 hours", "delta": timedelta(hours=24)},
+    {"key": "7d", "label": "7 days", "title": "Last 7 days", "delta": timedelta(days=7)},
+    {"key": "30d", "label": "30 days", "title": "Last 30 days", "delta": timedelta(days=30)},
+    {"key": "1y", "label": "1 year", "title": "Last 1 year", "delta": timedelta(days=365)},
+]
 
 
 @router.get("/")
@@ -115,14 +123,16 @@ def device_detail_page(
     if device is None:
         return RedirectResponse(url="/devices", status_code=303)
 
+    chart_range = _selected_chart_range(request.query_params.get("range"))
+    since = datetime.now(timezone.utc) - chart_range["delta"]
     latest_reading = get_latest_reading_for_device(session, device.id)
-    recent_readings = list_recent_readings_for_device(session, device.id, limit=20)
+    recent_readings = list_recent_readings_for_device(session, device.id, limit=2000, since=since)
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     latest_image = recent_images[0] if recent_images else None
     latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
-    reading_chart = _reading_chart(recent_readings)
+    reading_chart = _reading_chart(recent_readings, max_points=MAX_CHART_POINTS)
     command_activity = [_command_activity_item(command) for command in recent_commands[:8]]
 
     return templates.TemplateResponse(
@@ -140,6 +150,8 @@ def device_detail_page(
             "command_activity": command_activity,
             "connection": connection,
             "reading_chart": reading_chart,
+            "chart_range": chart_range,
+            "chart_ranges": CHART_RANGES,
         },
     )
 
@@ -308,8 +320,15 @@ def _relative_time(age_seconds: int) -> str:
     return f"{days} day{'s' if days != 1 else ''} ago"
 
 
-def _reading_chart(readings: list) -> list[dict]:
-    ordered = list(reversed(readings[:20]))
+def _selected_chart_range(range_key: str | None) -> dict:
+    for chart_range in CHART_RANGES:
+        if chart_range["key"] == range_key:
+            return chart_range
+    return CHART_RANGES[1]
+
+
+def _reading_chart(readings: list, max_points: int = MAX_CHART_POINTS) -> list[dict]:
+    ordered = _sample_chart_readings(list(reversed(readings)), max_points)
     metrics = [
         {
             "key": "moisture",
@@ -355,6 +374,7 @@ def _reading_chart(readings: list) -> list[dict]:
             {
                 **metric,
                 "points": values,
+                "point_count": max(len(values), 1),
                 "count": len(values),
                 "minimum": round(min(raw_values), 1) if raw_values else None,
                 "maximum": round(max(raw_values), 1) if raw_values else None,
@@ -364,6 +384,19 @@ def _reading_chart(readings: list) -> list[dict]:
             }
         )
     return chart
+
+
+def _sample_chart_readings(readings: list, max_points: int) -> list:
+    if max_points <= 0 or len(readings) <= max_points:
+        return readings
+
+    sampled = []
+    last_index = len(readings) - 1
+    sample_count = max_points - 1
+    for index in range(max_points):
+        source_index = round((index / sample_count) * last_index)
+        sampled.append(readings[source_index])
+    return sampled
 
 
 def _chart_percent(value: float, min_value: float, max_value: float) -> int:

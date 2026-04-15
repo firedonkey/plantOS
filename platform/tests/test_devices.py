@@ -133,6 +133,9 @@ def test_device_detail_page_shows_latest_data():
         assert "Kitchen Rose" in detail_response.text
         assert "42.5%" in detail_response.text
         assert "Recent Trends" in detail_response.text
+        assert "Last 24 hours" in detail_response.text
+        assert "?range=1h" in detail_response.text
+        assert "?range=7d" in detail_response.text
         assert "Device Controls" in detail_response.text
         assert "Stop" in detail_response.text
         assert "Pump run 5s" in detail_response.text
@@ -159,7 +162,7 @@ def test_latest_device_activity_uses_reading_image_and_device_command_timestamps
     assert activity["description"] == "command response"
 
 
-def test_reading_chart_uses_last_20_readings_and_summaries():
+def test_reading_chart_summarizes_available_readings():
     readings = [
         SimpleNamespace(
             moisture=float(index),
@@ -173,12 +176,32 @@ def test_reading_chart_uses_last_20_readings_and_summaries():
     chart = _reading_chart(readings)
     moisture_chart = chart[0]
 
-    assert len(moisture_chart["points"]) == 20
-    assert moisture_chart["points"][0]["value"] == 19.0
+    assert len(moisture_chart["points"]) == 25
+    assert moisture_chart["points"][0]["value"] == 24.0
     assert moisture_chart["points"][-1]["value"] == 0.0
     assert moisture_chart["minimum"] == 0.0
-    assert moisture_chart["maximum"] == 19.0
-    assert moisture_chart["average"] == 9.5
+    assert moisture_chart["maximum"] == 24.0
+    assert moisture_chart["average"] == 12.0
+
+
+def test_reading_chart_downsamples_large_ranges():
+    readings = [
+        SimpleNamespace(
+            moisture=float(index),
+            temperature=20.0 + index,
+            humidity=40.0 + index,
+            timestamp=datetime(2026, 4, 13, 19, index % 60, tzinfo=timezone.utc),
+        )
+        for index in range(75)
+    ]
+
+    chart = _reading_chart(readings, max_points=20)
+    moisture_chart = chart[0]
+
+    assert len(moisture_chart["points"]) == 20
+    assert moisture_chart["point_count"] == 20
+    assert moisture_chart["points"][0]["value"] == 74.0
+    assert moisture_chart["points"][-1]["value"] == 0.0
 
 
 def test_devices_page_renders_for_signed_in_user():
