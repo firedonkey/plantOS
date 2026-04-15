@@ -39,9 +39,11 @@ class PlantLogger:
 
     def _log_csv(self, record: dict) -> None:
         exists = self.log_path.exists()
+        if exists and self._csv_header_changed():
+            self._rewrite_csv_with_current_header()
         with self.log_path.open("a", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=self.FIELDNAMES)
-            if not exists:
+            if not exists or self.log_path.stat().st_size == 0:
                 writer.writeheader()
             writer.writerow({field: record.get(field, "") for field in self.FIELDNAMES})
 
@@ -52,7 +54,32 @@ class PlantLogger:
     def _latest_csv(self) -> dict | None:
         with self.log_path.open("r", encoding="utf-8", newline="") as handle:
             rows = list(csv.DictReader(handle))
-        return rows[-1] if rows else None
+        return self._clean_csv_row(rows[-1]) if rows else None
+
+    def _csv_header_changed(self) -> bool:
+        with self.log_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle)
+            header = next(reader, [])
+        return header != self.FIELDNAMES
+
+    def _rewrite_csv_with_current_header(self) -> None:
+        with self.log_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = [self._clean_csv_row(row) for row in reader]
+
+        with self.log_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=self.FIELDNAMES)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field, "") for field in self.FIELDNAMES})
+
+    def _clean_csv_row(self, row: dict) -> dict:
+        cleaned = {key: value for key, value in row.items() if key is not None}
+        extra_values = row.get(None) or []
+        missing_fields = [field for field in self.FIELDNAMES if field not in cleaned]
+        for field, value in zip(missing_fields, extra_values):
+            cleaned[field] = value
+        return cleaned
 
     def _latest_json(self) -> dict | None:
         with self.log_path.open("r", encoding="utf-8") as handle:
