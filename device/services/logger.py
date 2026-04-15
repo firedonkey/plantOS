@@ -12,6 +12,7 @@ class PlantLogger:
         "moisture_smoothed_raw",
         "moisture_percent",
         "light_on",
+        "pump_on",
         "pump_event",
         "image_path",
         "errors",
@@ -79,9 +80,43 @@ class PlantLogger:
         missing_fields = [field for field in self.FIELDNAMES if field not in cleaned]
         for field, value in zip(missing_fields, extra_values):
             cleaned[field] = value
-        return cleaned
+        if extra_values:
+            cleaned["_extra_values"] = extra_values
+        return self._repair_shifted_row(cleaned)
+
+    def _repair_shifted_row(self, row: dict) -> dict:
+        moisture_percent = row.get("moisture_percent")
+        shifted_percent = row.get("light_on")
+        if not (_looks_like_raw_value(moisture_percent) and _looks_like_percent(shifted_percent)):
+            row.pop("_extra_values", None)
+            return row
+
+        extra_values = row.pop("_extra_values", [])
+        row["moisture_smoothed_raw"] = moisture_percent
+        row["moisture_percent"] = shifted_percent
+        row["light_on"] = row.get("pump_event", "")
+        row["pump_on"] = row.get("pump_on", "")
+        row["pump_event"] = row.get("image_path", "")
+        row["image_path"] = row.get("errors", "")
+        row["errors"] = extra_values[0] if extra_values else ""
+        return row
 
     def _latest_json(self) -> dict | None:
         with self.log_path.open("r", encoding="utf-8") as handle:
             lines = [line.strip() for line in handle if line.strip()]
         return json.loads(lines[-1]) if lines else None
+
+
+def _looks_like_raw_value(value) -> bool:
+    try:
+        return float(value) > 100
+    except (TypeError, ValueError):
+        return False
+
+
+def _looks_like_percent(value) -> bool:
+    try:
+        percent = float(value)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= percent <= 100
