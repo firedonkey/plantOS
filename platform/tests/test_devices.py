@@ -141,8 +141,8 @@ def test_device_detail_page_shows_latest_data():
         assert "Pump run 5s" in detail_response.text
         assert "Waiting" in detail_response.text
         assert "Last seen from sensor reading" in detail_response.text
-        assert "data-auto-refresh=\"5000\"" in detail_response.text
-        assert "Auto refresh every 5 seconds" not in detail_response.text
+        assert "data-auto-refresh" not in detail_response.text
+        assert "Raspberry Pi Connection" in detail_response.text
     finally:
         teardown_overrides()
 

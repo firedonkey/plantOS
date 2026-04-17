@@ -31,7 +31,6 @@
           <small>{{ connection.source }}</small>
         </div>
       </section>
-      <span data-auto-refresh="5000" hidden></span>
 
       <section class="dashboard-split">
         <article class="sensor-panel">
@@ -232,11 +231,11 @@
 
     </main>
     <script>
-      const refreshHook = document.querySelector("[data-auto-refresh]");
-      if (refreshHook) {
-        const intervalMs = Number(refreshHook.dataset.autoRefresh);
-        window.setTimeout(() => window.location.reload(), intervalMs);
-      }
+      document.querySelectorAll(".range-picker a").forEach((link) => {
+        link.addEventListener("click", () => {
+          sessionStorage.setItem("plantlabScrollY", String(window.scrollY));
+        });
+      });
 
       document.querySelectorAll("[data-command-form]").forEach((form) => {
         form.addEventListener("submit", async (event) => {
