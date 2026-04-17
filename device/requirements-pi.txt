@@ -1,5 +1,6 @@
 -r requirements.txt
 
 gpiozero==2.0.1
+lgpio
 adafruit-circuitpython-dht
 adafruit-circuitpython-ads1x15
