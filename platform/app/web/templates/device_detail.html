@@ -259,6 +259,7 @@
               activeCommandKeys.add(commandKey);
               updateCommandButtons();
               sessionStorage.setItem("plantlabScrollY", String(window.scrollY));
+              scheduleDashboardRefresh(1000);
               await refreshDashboardSummary();
             }
           } catch (error) {
@@ -279,6 +280,7 @@
       const latestImage = document.querySelector("[data-latest-image]");
       const activityList = document.querySelector("[data-activity-list]");
       let activeCommandKeys = new Set({{ active_command_keys | tojson }});
+      let summaryRefreshTimer = null;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
         button.dataset.label = button.textContent;
@@ -416,7 +418,16 @@
           updateActivity(payload.command_activity);
         } catch (error) {
           console.debug("Dashboard summary refresh skipped", error);
+        } finally {
+          scheduleDashboardRefresh(activeCommandKeys.size ? 1000 : 5000);
         }
+      }
+
+      function scheduleDashboardRefresh(delayMs) {
+        if (summaryRefreshTimer) {
+          window.clearTimeout(summaryRefreshTimer);
+        }
+        summaryRefreshTimer = window.setTimeout(refreshDashboardSummary, delayMs);
       }
 
       function titleCase(value) {
@@ -427,7 +438,7 @@
       }
 
       updateCommandButtons();
-      window.setInterval(refreshDashboardSummary, 5000);
+      scheduleDashboardRefresh(activeCommandKeys.size ? 1000 : 5000);
     </script>
   </body>
 </html>

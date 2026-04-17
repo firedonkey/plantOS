@@ -182,31 +182,45 @@ def handle_pending_commands(
 ) -> int:
     commands = poll_pending_commands(platform_url, device_id, device_token)
     for command in commands:
+        command_started_at = time.monotonic()
+        command_id = int(command["id"])
         try:
             message = execute_command(command, automation)
+            executed_in = time.monotonic() - command_started_at
             state = command_ack_state(automation)
+            ack_started_at = time.monotonic()
             acknowledge_command(
                 platform_url=platform_url,
                 device_id=device_id,
                 device_token=device_token,
-                command_id=int(command["id"]),
+                command_id=command_id,
                 status="completed",
                 message=message,
                 light_on=state["light_on"],
                 pump_on=state["pump_on"],
             )
+            acked_in = time.monotonic() - ack_started_at
+            total = time.monotonic() - command_started_at
+            print(
+                f"[platform] command {command_id} timing: "
+                f"execute={executed_in:.2f}s ack={acked_in:.2f}s total={total:.2f}s"
+            )
         except Exception as exc:
             state = command_ack_state(automation)
+            ack_started_at = time.monotonic()
             acknowledge_command(
                 platform_url=platform_url,
                 device_id=device_id,
                 device_token=device_token,
-                command_id=int(command["id"]),
+                command_id=command_id,
                 status="failed",
                 message=str(exc),
                 light_on=state["light_on"],
                 pump_on=state["pump_on"],
             )
+            acked_in = time.monotonic() - ack_started_at
+            total = time.monotonic() - command_started_at
+            print(f"[platform] command {command_id} failed after {total:.2f}s; ack={acked_in:.2f}s")
     return len(commands)
 
 
