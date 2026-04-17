@@ -293,10 +293,10 @@ On the Raspberry Pi, send real device readings and real captured camera images:
 ```bash
 cd device
 source ../.venv/bin/activate
-python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --interval 10 --image-every 1
+python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --send-interval 600 --command-interval 2 --image-every 1
 ```
 
-The platform client also polls for pending pump/light commands every cycle, executes them locally, acknowledges the result back to the platform, and sends an immediate status update after commands. Use `--skip-commands` to send data without polling commands. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
+The platform client sends readings and polls commands on separate timers. `--send-interval` controls sensor uploads, while `--command-interval` controls how quickly pump/light commands are picked up. `--interval` is still accepted as an alias for `--send-interval`. Use `--skip-commands` to send data without polling commands. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
 
 When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
 
@@ -318,7 +318,7 @@ python mock_platform_sender.py --device-id 1 --device-token paste-token-here --o
 To send mock readings every 5 seconds and upload one bundled mock rose image every 3 cycles:
 
 ```bash
-python mock_platform_sender.py --device-id 1 --device-token paste-token-here --interval 5 --image-every 3
+python mock_platform_sender.py --device-id 1 --device-token paste-token-here --send-interval 5 --command-interval 2 --image-every 3
 ```
 
 You can also save the values under `platform:` in `device/config.yaml` and run:

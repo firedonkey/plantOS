@@ -24,7 +24,9 @@ def main() -> None:
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")
-    parser.add_argument("--interval", type=int, help="Seconds between sends.")
+    parser.add_argument("--interval", type=int, help="Seconds between sensor sends. Alias for --send-interval.")
+    parser.add_argument("--send-interval", type=int, help="Seconds between sensor reading uploads.")
+    parser.add_argument("--command-interval", type=int, help="Seconds between command polls.")
     parser.add_argument("--once", action="store_true", help="Send one reading and exit.")
     parser.add_argument(
         "--image-every",
@@ -43,7 +45,8 @@ def main() -> None:
     platform_url = (args.platform_url or platform_config.get("url") or "http://127.0.0.1:8000").rstrip("/")
     device_id = args.device_id or platform_config.get("device_id")
     device_token = args.device_token or platform_config.get("device_token")
-    interval = int(args.interval or platform_config.get("send_interval_seconds") or 10)
+    send_interval = int(args.send_interval or args.interval or platform_config.get("send_interval_seconds") or 10)
+    command_interval = int(args.command_interval or platform_config.get("command_poll_interval_seconds") or 2)
 
     if not device_id or not device_token:
         raise SystemExit("Set --device-id and --device-token, or add them under platform: in config.yaml.")
@@ -54,30 +57,47 @@ def main() -> None:
 
     try:
         cycle = 0
+        next_send_at = 0.0
+        next_command_poll_at = 0.0
         while True:
-            cycle += 1
-            record = automation.run_once()
-            send_reading(platform_url, int(device_id), str(device_token), record)
+            now = time.monotonic()
+            should_send = now >= next_send_at
+            should_poll_commands = not args.skip_commands and now >= next_command_poll_at
 
-            should_upload_image = args.image_every > 0 and cycle % args.image_every == 0
-            if should_upload_image:
-                image_path = captured_image_path(record, image_cycle if args.mock_image_fallback else None)
-                if image_path is not None:
-                    send_image(platform_url, int(device_id), str(device_token), image_path)
-                else:
-                    print("[platform] no camera image available to upload")
+            if should_send:
+                cycle += 1
+                record = automation.run_once()
+                send_reading(platform_url, int(device_id), str(device_token), record)
 
-            if not args.skip_commands:
+                should_upload_image = args.image_every > 0 and cycle % args.image_every == 0
+                if should_upload_image:
+                    image_path = captured_image_path(record, image_cycle if args.mock_image_fallback else None)
+                    if image_path is not None:
+                        send_image(platform_url, int(device_id), str(device_token), image_path)
+                    else:
+                        print("[platform] no camera image available to upload")
+                next_send_at = time.monotonic() + send_interval
+
+            if should_poll_commands:
                 handled_count = handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
                 if handled_count:
                     status_record = automation.status_snapshot(pump_event="command_update")
                     send_reading(platform_url, int(device_id), str(device_token), status_record)
+                next_command_poll_at = time.monotonic() + command_interval
 
             if args.once:
                 break
-            time.sleep(interval)
+            time.sleep(next_sleep_seconds(next_send_at, next_command_poll_at, args.skip_commands))
     finally:
         automation.close()
+
+
+def next_sleep_seconds(next_send_at: float, next_command_poll_at: float, skip_commands: bool) -> float:
+    next_times = [next_send_at]
+    if not skip_commands:
+        next_times.append(next_command_poll_at)
+    next_due_at = min(next_times)
+    return max(0.2, min(5.0, next_due_at - time.monotonic()))
 
 
 def send_reading(platform_url: str, device_id: int, device_token: str, record: dict) -> None:

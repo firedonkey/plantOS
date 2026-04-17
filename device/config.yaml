@@ -72,3 +72,4 @@ platform:
   device_id:
   device_token:
   send_interval_seconds: 10
+  command_poll_interval_seconds: 2
