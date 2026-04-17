@@ -246,7 +246,17 @@ async def create_device_command_page(
         action=str(form.get("action", "")).strip(),
         value=str(form.get("value", "")).strip() or None,
     )
-    create_command(session, device.id, command_data)
+    command = create_command(session, device.id, command_data)
+
+    if request.headers.get("x-requested-with") == "fetch":
+        return JSONResponse(
+            {
+                "id": command.id,
+                "status": _enum_value(command.status),
+                "key": _command_key(command),
+            },
+            status_code=201,
+        )
 
     return RedirectResponse(url=f"/devices/{device.id}", status_code=303)
 

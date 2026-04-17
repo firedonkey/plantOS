@@ -254,12 +254,16 @@
             const response = await fetch(form.getAttribute("action"), {
               method: "POST",
               body: formData,
+              headers: {
+                Accept: "application/json",
+                "X-Requested-With": "fetch",
+              },
             });
             if (response.ok) {
               activeCommandKeys.add(commandKey);
               updateCommandButtons();
               sessionStorage.setItem("plantlabScrollY", String(window.scrollY));
-              scheduleDashboardRefresh(1000);
+              startFastSummaryRefresh();
               await refreshDashboardSummary();
             }
           } catch (error) {
@@ -281,6 +285,7 @@
       const activityList = document.querySelector("[data-activity-list]");
       let activeCommandKeys = new Set({{ active_command_keys | tojson }});
       let summaryRefreshTimer = null;
+      let fastRefreshUntil = 0;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
         button.dataset.label = button.textContent;
@@ -419,8 +424,14 @@
         } catch (error) {
           console.debug("Dashboard summary refresh skipped", error);
         } finally {
-          scheduleDashboardRefresh(activeCommandKeys.size ? 1000 : 5000);
+          const fastRefreshActive = activeCommandKeys.size || Date.now() < fastRefreshUntil;
+          scheduleDashboardRefresh(fastRefreshActive ? 300 : 5000);
         }
+      }
+
+      function startFastSummaryRefresh() {
+        fastRefreshUntil = Math.max(fastRefreshUntil, Date.now() + 6000);
+        scheduleDashboardRefresh(300);
       }
 
       function scheduleDashboardRefresh(delayMs) {
