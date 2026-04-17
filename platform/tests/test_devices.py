@@ -140,6 +140,7 @@ def test_device_detail_page_shows_latest_data():
         assert "Device Controls" in detail_response.text
         assert "Stop" in detail_response.text
         assert "Pump run 5s" in detail_response.text
+        assert "data-command-key=\"pump:run:5\"" in detail_response.text
         assert "Waiting" in detail_response.text
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text
@@ -183,6 +184,7 @@ def test_device_summary_json_returns_latest_status():
         assert payload["latest_reading"]["light"] == "off"
         assert payload["connection"]["label"] == "Online"
         assert payload["connection"]["source"] == "Last seen from sensor reading"
+        assert payload["active_command_keys"] == []
         assert payload["recent_images"] == []
     finally:
         teardown_overrides()

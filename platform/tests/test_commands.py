@@ -81,6 +81,29 @@ def test_owner_can_create_and_list_command():
         teardown_overrides()
 
 
+def test_duplicate_active_command_returns_existing_command():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        first_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "on"},
+        )
+        second_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "on"},
+        )
+
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+        assert second_response.json()["id"] == first_response.json()["id"]
+
+        list_response = client.get(f"/api/devices/{device_id}/commands")
+        assert list_response.status_code == 200
+        assert len(list_response.json()) == 1
+    finally:
+        teardown_overrides()
+
+
 def test_command_rejects_invalid_target_action():
     client, device_id, _ = build_client_with_devices()
     try:

@@ -11,6 +11,11 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 60
 
 
 def create_command(session: Session, device_id: int, payload: CommandCreate) -> Command:
+    expire_stale_commands(session, device_id)
+    existing_command = find_active_command(session, device_id, payload)
+    if existing_command is not None:
+        return existing_command
+
     command = Command(
         device_id=device_id,
         target=payload.target,
@@ -22,6 +27,21 @@ def create_command(session: Session, device_id: int, payload: CommandCreate) -> 
     session.commit()
     session.refresh(command)
     return command
+
+
+def find_active_command(session: Session, device_id: int, payload: CommandCreate) -> Command | None:
+    return session.scalar(
+        select(Command)
+        .where(
+            Command.device_id == device_id,
+            Command.target == payload.target,
+            Command.action == payload.action,
+            Command.value == payload.value,
+            Command.status.in_([CommandStatus.PENDING, CommandStatus.SENT]),
+        )
+        .order_by(Command.created_at.desc())
+        .limit(1)
+    )
 
 
 def list_commands_for_device(

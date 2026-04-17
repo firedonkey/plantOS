@@ -170,15 +170,15 @@
               </div>
               <p>Run only when water, tubing, and drainage are ready.</p>
               <div class="command-actions">
-                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="pump:run:5">
                   <input type="hidden" name="target" value="pump">
                   <input type="hidden" name="action" value="run">
                   <input type="hidden" name="value" value="5">
-                  <button type="submit">Run 5s</button>
+                  <button type="submit" data-command-button {% if "pump:run:5" in active_command_keys %}disabled{% endif %}>Run 5s</button>
                 </form>
-                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="pump:off:">
                   <input type="hidden" name="target" value="pump">
-                  <button type="submit" name="action" value="off">Stop</button>
+                  <button type="submit" name="action" value="off" data-command-button {% if "pump:off:" in active_command_keys %}disabled{% endif %}>Stop</button>
                 </form>
               </div>
             </section>
@@ -191,8 +191,8 @@
               <div class="command-actions">
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
                   <input type="hidden" name="target" value="light">
-                  <button type="submit" name="action" value="on">Turn on</button>
-                  <button type="submit" name="action" value="off">Turn off</button>
+                  <button type="submit" name="action" value="on" data-command-button data-command-key="light:on:" {% if "light:on:" in active_command_keys %}disabled{% endif %}>Turn on</button>
+                  <button type="submit" name="action" value="off" data-command-button data-command-key="light:off:" {% if "light:off:" in active_command_keys %}disabled{% endif %}>Turn off</button>
                 </form>
               </div>
             </section>
@@ -241,6 +241,10 @@
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
           const submitter = event.submitter;
+          const commandKey = commandKeyForForm(form, submitter);
+          if (activeCommandKeys.has(commandKey)) {
+            return;
+          }
           const formData = new FormData(form);
           if (submitter && submitter.name) {
             formData.set(submitter.name, submitter.value);
@@ -252,8 +256,10 @@
               body: formData,
             });
             if (response.ok) {
+              activeCommandKeys.add(commandKey);
+              updateCommandButtons();
               sessionStorage.setItem("plantlabScrollY", String(window.scrollY));
-              window.location.reload();
+              await refreshDashboardSummary();
             }
           } catch (error) {
             console.debug("Command submit failed", error);
@@ -272,6 +278,11 @@
       const imageGrid = document.querySelector("[data-image-grid]");
       const latestImage = document.querySelector("[data-latest-image]");
       const activityList = document.querySelector("[data-activity-list]");
+      let activeCommandKeys = new Set({{ active_command_keys | tojson }});
+
+      document.querySelectorAll("[data-command-button]").forEach((button) => {
+        button.dataset.label = button.textContent;
+      });
 
       function setField(name, value) {
         document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => {
@@ -339,6 +350,8 @@
           return;
         }
         const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
+        activeCommandKeys = new Set(commands.filter((command) => ["Waiting", "Sent"].includes(command.status)).map((command) => command.key));
+        updateCommandButtons();
         if (activityList.dataset.signature === signature) {
           return;
         }
@@ -368,6 +381,25 @@
         });
       }
 
+      function commandKeyForForm(form, submitter) {
+        if (submitter && submitter.dataset.commandKey) {
+          return submitter.dataset.commandKey;
+        }
+        return form.dataset.commandKey || "";
+      }
+
+      function updateCommandButtons() {
+        document.querySelectorAll("[data-command-form]").forEach((form) => {
+          const formKey = form.dataset.commandKey;
+          form.querySelectorAll("[data-command-button]").forEach((button) => {
+            const key = button.dataset.commandKey || formKey;
+            const isActive = activeCommandKeys.has(key);
+            button.disabled = isActive;
+            button.textContent = isActive ? "Waiting..." : button.dataset.label;
+          });
+        });
+      }
+
       async function refreshDashboardSummary() {
         if (!dashboard) {
           return;
@@ -394,6 +426,7 @@
         return `${value}`.charAt(0).toUpperCase() + `${value}`.slice(1);
       }
 
+      updateCommandButtons();
       window.setInterval(refreshDashboardSummary, 5000);
     </script>
   </body>

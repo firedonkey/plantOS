@@ -153,6 +153,7 @@ def device_detail_page(
             "reading_chart": reading_chart,
             "chart_range": chart_range,
             "chart_ranges": CHART_RANGES,
+            "active_command_keys": _active_command_keys(recent_commands),
         },
     )
 
@@ -190,6 +191,7 @@ def device_summary_json(
             "latest_image": _image_summary(latest_image),
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
+            "active_command_keys": _active_command_keys(recent_commands),
         }
     )
 
@@ -486,6 +488,7 @@ def _command_activity_item(command) -> dict:
     }
     return {
         "label": _command_label(command),
+        "key": _command_key(command),
         "status": status_labels.get(status, status.replace("_", " ").title()),
         "tone": status_tones.get(status, "waiting"),
         "message": command.message,
@@ -499,6 +502,19 @@ def _command_label(command) -> str:
     if action == "run" and command.value:
         return f"{target} run {command.value}s"
     return f"{target} {action}"
+
+
+def _active_command_keys(commands: list) -> list[str]:
+    return [
+        _command_key(command)
+        for command in commands
+        if _enum_value(command.status) in {"pending", "sent"}
+    ]
+
+
+def _command_key(command) -> str:
+    value = command.value or ""
+    return f"{_enum_value(command.target)}:{_enum_value(command.action)}:{value}"
 
 
 def _enum_value(value) -> str:
