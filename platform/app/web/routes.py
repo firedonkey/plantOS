@@ -187,7 +187,7 @@ def device_summary_json(
     return JSONResponse(
         {
             "connection": connection,
-            "latest_reading": _reading_summary(latest_reading),
+            "latest_reading": _reading_summary(latest_reading, recent_commands),
             "latest_image": _image_summary(latest_image),
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
@@ -306,17 +306,44 @@ def _device_overview_card(session: Session, device) -> dict:
     }
 
 
-def _reading_summary(reading) -> dict | None:
+def _reading_summary(reading, recent_commands: list | None = None) -> dict | None:
     if reading is None:
         return None
+    command_state = _latest_completed_command_state(recent_commands or [], reading.timestamp)
+    light_value = command_state.get("light", reading.light_on)
+    pump_value = command_state.get("pump", reading.pump_on)
     return {
         "moisture": _metric_value(reading.moisture, "%"),
         "temperature": _metric_value(reading.temperature, " C"),
         "humidity": _metric_value(reading.humidity, "%"),
         "last_reading": reading.timestamp.strftime("%b %-d, %-I:%M %p"),
-        "light": _bool_label(reading.light_on),
-        "pump": _bool_label(reading.pump_on),
+        "light": _bool_label(light_value),
+        "pump": _bool_label(pump_value),
     }
+
+
+def _latest_completed_command_state(commands: list, reading_timestamp: datetime) -> dict[str, bool]:
+    state = {}
+    reading_time = _as_utc(reading_timestamp)
+    for command in sorted(commands, key=lambda item: _as_utc(item.completed_at or item.created_at), reverse=True):
+        if _enum_value(command.status) != "completed" or command.completed_at is None:
+            continue
+        if _as_utc(command.completed_at) <= reading_time:
+            continue
+
+        target = _enum_value(command.target)
+        action = _enum_value(command.action)
+        if target == "light" and "light" not in state:
+            if action == "on":
+                state["light"] = True
+            elif action == "off":
+                state["light"] = False
+        if target == "pump" and "pump" not in state:
+            if action == "run":
+                state["pump"] = True
+            elif action == "off":
+                state["pump"] = False
+    return state
 
 
 def _image_summary(image) -> dict | None:

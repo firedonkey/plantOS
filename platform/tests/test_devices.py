@@ -16,7 +16,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import User
 from app.models.base import Base
-from app.web.routes import _latest_device_activity, _reading_chart
+from app.web.routes import _latest_device_activity, _latest_completed_command_state, _reading_chart
 
 
 def build_client_with_user(set_session_cookie: bool = False) -> tuple[TestClient, User]:
@@ -203,6 +203,21 @@ def test_latest_device_activity_uses_reading_image_and_device_command_timestamps
     assert activity is not None
     assert activity["source"] == "command"
     assert activity["description"] == "command response"
+
+
+def test_completed_command_overrides_stale_reading_state():
+    reading_time = datetime(2026, 4, 16, 19, 0, tzinfo=timezone.utc)
+    command = SimpleNamespace(
+        target="light",
+        action="on",
+        status="completed",
+        created_at=reading_time,
+        completed_at=datetime(2026, 4, 16, 19, 1, tzinfo=timezone.utc),
+    )
+
+    state = _latest_completed_command_state([command], reading_time)
+
+    assert state["light"] is True
 
 
 def test_reading_chart_summarizes_available_readings():
