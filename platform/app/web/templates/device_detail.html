@@ -18,17 +18,17 @@
       </nav>
     </header>
 
-    <main class="device-dashboard">
+    <main class="device-dashboard" data-summary-url="/devices/{{ device.id }}/summary.json">
       <section class="device-hero">
         <div>
           <p class="eyebrow">Device Dashboard</p>
           <h1>{{ device.name }}</h1>
           <p>{{ device.plant_type or "Plant type not set" }}{% if device.location %} · {{ device.location }}{% endif %}</p>
         </div>
-        <div class="connection-card {{ connection.tone }}">
-          <span>{{ connection.label }}</span>
-          <strong>{{ connection.last_seen }}</strong>
-          <small>{{ connection.source }}</small>
+        <div class="connection-card {{ connection.tone }}" data-connection-card>
+          <span data-field="connection_label">{{ connection.label }}</span>
+          <strong data-field="connection_last_seen">{{ connection.last_seen }}</strong>
+          <small data-field="connection_source">{{ connection.source }}</small>
         </div>
       </section>
 
@@ -44,27 +44,27 @@
           <div class="metric-grid" aria-label="Latest reading">
             <article class="metric-card">
               <span>Moisture</span>
-              <strong>{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
+              <strong data-field="moisture">{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
             </article>
             <article class="metric-card">
               <span>Temperature</span>
-              <strong>{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
+              <strong data-field="temperature">{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
             </article>
             <article class="metric-card">
               <span>Humidity</span>
-              <strong>{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
+              <strong data-field="humidity">{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
             </article>
             <article class="metric-card">
               <span>Last Reading</span>
-              <strong>{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
+              <strong data-field="last_reading">{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
             </article>
             <article class="metric-card">
               <span>Light</span>
-              <strong>{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
+              <strong data-field="light">{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Pump</span>
-              <strong>{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
+              <strong data-field="pump">{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
             </article>
           </div>
           {% else %}
@@ -133,11 +133,11 @@
               <h2>Latest Capture</h2>
             </div>
             {% if latest_image %}
-            <span>{{ latest_image.timestamp.strftime("%b %-d, %-I:%M %p") }}</span>
+            <span data-field="latest_image_timestamp">{{ latest_image.timestamp.strftime("%b %-d, %-I:%M %p") }}</span>
             {% endif %}
           </div>
           {% if latest_image %}
-          <img src="/{{ latest_image.path }}" alt="Latest plant capture for {{ device.name }}">
+          <img data-latest-image src="/{{ latest_image.path }}" alt="Latest plant capture for {{ device.name }}">
           {% else %}
           <p class="notice">No image uploaded yet.</p>
           {% endif %}
@@ -145,7 +145,7 @@
           <div class="embedded-section">
             <h3>Recent Images</h3>
             {% if recent_images %}
-            <div class="image-grid image-thumbs">
+            <div class="image-grid image-thumbs" data-image-grid>
               {% for image in recent_images %}
               <img src="/{{ image.path }}" alt="Plant capture for {{ device.name }}">
               {% endfor %}
@@ -166,7 +166,7 @@
             <section class="control-group">
               <div class="control-group-heading">
                 <h3>Pump</h3>
-                <span class="state-pill">{% if latest_reading and latest_reading.pump_on is not none %}{% if latest_reading.pump_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
+                <span class="state-pill" data-field="pump_state">{% if latest_reading and latest_reading.pump_on is not none %}{% if latest_reading.pump_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
               </div>
               <p>Run only when water, tubing, and drainage are ready.</p>
               <div class="command-actions">
@@ -185,7 +185,7 @@
             <section class="control-group">
               <div class="control-group-heading">
                 <h3>Light</h3>
-                <span class="state-pill">{% if latest_reading and latest_reading.light_on is not none %}{% if latest_reading.light_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
+                <span class="state-pill" data-field="light_state">{% if latest_reading and latest_reading.light_on is not none %}{% if latest_reading.light_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
               </div>
               <p>Switch the grow light during setup or quick checks.</p>
               <div class="command-actions">
@@ -202,7 +202,7 @@
         <article class="command-history-panel">
           <h2>Recent Activity</h2>
           {% if command_activity %}
-          <div class="activity-list">
+          <div class="activity-list" data-activity-list>
             {% for command in command_activity %}
             <div class="activity-item {{ command.tone }}">
               <div>
@@ -266,6 +266,135 @@
         sessionStorage.removeItem("plantlabScrollY");
         window.scrollTo(0, Number(previousScrollY));
       }
+
+      const dashboard = document.querySelector("[data-summary-url]");
+      const connectionCard = document.querySelector("[data-connection-card]");
+      const imageGrid = document.querySelector("[data-image-grid]");
+      const latestImage = document.querySelector("[data-latest-image]");
+      const activityList = document.querySelector("[data-activity-list]");
+
+      function setField(name, value) {
+        document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => {
+          node.textContent = value || "n/a";
+        });
+      }
+
+      function updateConnection(connection) {
+        if (!connection) {
+          return;
+        }
+        setField("connection_label", connection.label);
+        setField("connection_last_seen", connection.last_seen);
+        setField("connection_source", connection.source);
+        if (connectionCard) {
+          connectionCard.classList.remove("good", "warning", "muted");
+          connectionCard.classList.add(connection.tone);
+        }
+      }
+
+      function updateReading(reading) {
+        if (!reading) {
+          return;
+        }
+        setField("moisture", reading.moisture);
+        setField("temperature", reading.temperature);
+        setField("humidity", reading.humidity);
+        setField("last_reading", reading.last_reading);
+        setField("light", reading.light);
+        setField("pump", reading.pump);
+        setField("light_state", titleCase(reading.light));
+        setField("pump_state", titleCase(reading.pump));
+      }
+
+      function updateImages(payload) {
+        if (payload.latest_image && latestImage) {
+          const nextSrc = `${payload.latest_image.src}?v=${Date.now()}`;
+          if (!latestImage.src.endsWith(payload.latest_image.src)) {
+            latestImage.src = nextSrc;
+          }
+          latestImage.alt = payload.latest_image.alt || "Latest plant capture";
+          setField("latest_image_timestamp", payload.latest_image.timestamp);
+        }
+
+        const images = payload.recent_images || [];
+        if (!imageGrid || !images.length) {
+          return;
+        }
+        const signature = images.map((image) => image.src).join("|");
+        if (imageGrid.dataset.signature === signature) {
+          return;
+        }
+        imageGrid.dataset.signature = signature;
+        imageGrid.innerHTML = "";
+        images.forEach((image) => {
+          const img = document.createElement("img");
+          img.src = `${image.src}?v=${Date.now()}`;
+          img.alt = image.alt || "Plant capture";
+          imageGrid.appendChild(img);
+        });
+      }
+
+      function updateActivity(commands) {
+        if (!activityList || !commands) {
+          return;
+        }
+        const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
+        if (activityList.dataset.signature === signature) {
+          return;
+        }
+        activityList.dataset.signature = signature;
+        activityList.innerHTML = "";
+        commands.forEach((command) => {
+          const item = document.createElement("div");
+          item.className = `activity-item ${command.tone}`;
+
+          const content = document.createElement("div");
+          const label = document.createElement("strong");
+          label.textContent = command.label;
+          const time = document.createElement("span");
+          time.textContent = command.time;
+          content.append(label, time);
+          if (command.message) {
+            const message = document.createElement("p");
+            message.textContent = command.message;
+            content.appendChild(message);
+          }
+
+          const status = document.createElement("span");
+          status.className = `status-badge ${command.tone}`;
+          status.textContent = command.status;
+          item.append(content, status);
+          activityList.appendChild(item);
+        });
+      }
+
+      async function refreshDashboardSummary() {
+        if (!dashboard) {
+          return;
+        }
+        try {
+          const response = await fetch(dashboard.dataset.summaryUrl, { cache: "no-store" });
+          if (!response.ok) {
+            return;
+          }
+          const payload = await response.json();
+          updateConnection(payload.connection);
+          updateReading(payload.latest_reading);
+          updateImages(payload);
+          updateActivity(payload.command_activity);
+        } catch (error) {
+          console.debug("Dashboard summary refresh skipped", error);
+        }
+      }
+
+      function titleCase(value) {
+        if (!value || value === "n/a") {
+          return "Unknown";
+        }
+        return `${value}`.charAt(0).toUpperCase() + `${value}`.slice(1);
+      }
+
+      window.setInterval(refreshDashboardSummary, 5000);
     </script>
   </body>
 </html>

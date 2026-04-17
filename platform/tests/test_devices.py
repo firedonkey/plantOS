@@ -131,6 +131,7 @@ def test_device_detail_page_shows_latest_data():
 
         assert detail_response.status_code == 200
         assert "Kitchen Rose" in detail_response.text
+        assert f'data-summary-url="/devices/{device_id}/summary.json"' in detail_response.text
         assert "42.5%" in detail_response.text
         assert "Recent Trends" in detail_response.text
         assert "Last 24 hours" in detail_response.text
@@ -143,6 +144,46 @@ def test_device_detail_page_shows_latest_data():
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text
         assert "Raspberry Pi Connection" in detail_response.text
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_json_returns_latest_status():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 41.0,
+                "temperature": 23.4,
+                "humidity": 52.5,
+                "light_on": False,
+                "pump_on": False,
+                "pump_status": "not_needed",
+            },
+        )
+        assert data_response.status_code == 201
+
+        response = client.get(f"/devices/{device_id}/summary.json")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["latest_reading"]["moisture"] == "41.0%"
+        assert payload["latest_reading"]["temperature"] == "23.4 C"
+        assert payload["latest_reading"]["light"] == "off"
+        assert payload["connection"]["label"] == "Online"
+        assert payload["connection"]["source"] == "Last seen from sensor reading"
+        assert payload["recent_images"] == []
     finally:
         teardown_overrides()
 

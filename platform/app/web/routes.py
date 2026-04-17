@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
@@ -156,6 +157,43 @@ def device_detail_page(
     )
 
 
+@router.get("/devices/{device_id}/summary.json")
+def device_summary_json(
+    request: Request,
+    device_id: int,
+    session: Session = Depends(get_session),
+):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+
+    latest_reading = get_latest_reading_for_device(session, device.id)
+    recent_images = list_recent_images_for_device(session, device.id, limit=6)
+    recent_commands = list_commands_for_device(session, device.id, limit=10)
+    latest_image = recent_images[0] if recent_images else None
+    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    connection = _device_connection(latest_activity)
+
+    return JSONResponse(
+        {
+            "connection": connection,
+            "latest_reading": _reading_summary(latest_reading),
+            "latest_image": _image_summary(latest_image),
+            "recent_images": [_image_summary(image) for image in recent_images],
+            "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
+        }
+    )
+
+
 @router.post("/devices")
 async def create_device_page(
     request: Request,
@@ -263,6 +301,30 @@ def _device_overview_card(session: Session, device) -> dict:
         "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
         "light": _bool_label(latest_reading.light_on if latest_reading else None),
         "pump": _bool_label(latest_reading.pump_on if latest_reading else None),
+    }
+
+
+def _reading_summary(reading) -> dict | None:
+    if reading is None:
+        return None
+    return {
+        "moisture": _metric_value(reading.moisture, "%"),
+        "temperature": _metric_value(reading.temperature, " C"),
+        "humidity": _metric_value(reading.humidity, "%"),
+        "last_reading": reading.timestamp.strftime("%b %-d, %-I:%M %p"),
+        "light": _bool_label(reading.light_on),
+        "pump": _bool_label(reading.pump_on),
+    }
+
+
+def _image_summary(image) -> dict | None:
+    if image is None:
+        return None
+    return {
+        "src": f"/{image.path}",
+        "path": image.path,
+        "timestamp": image.timestamp.strftime("%b %-d, %-I:%M %p"),
+        "alt": "Plant capture",
     }
 
 
