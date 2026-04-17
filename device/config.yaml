@@ -5,7 +5,7 @@ app:
   data_dir: data
 
 hardware:
-  mock_mode: true
+  mock_mode: false
 
 sensors:
   dht22:
