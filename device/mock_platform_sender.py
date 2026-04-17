@@ -1,5 +1,6 @@
 import argparse
 import itertools
+import threading
 import time
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from platform_client import (
     DEFAULT_MOCK_IMAGES,
     handle_pending_commands,
     next_sleep_seconds,
+    run_command_poll_loop,
     send_image,
     send_reading,
 )
@@ -52,14 +54,25 @@ def main() -> None:
     image_paths = [path for path in DEFAULT_MOCK_IMAGES if path.exists()]
     image_cycle = itertools.cycle(image_paths) if image_paths else None
 
+    stop_event = threading.Event()
+    command_thread = None
     try:
+        if not args.skip_commands and not args.once:
+            command_thread = threading.Thread(
+                target=run_command_poll_loop,
+                args=(platform_url, int(device_id), str(device_token), automation, command_interval, stop_event),
+                daemon=True,
+            )
+            command_thread.start()
+
         cycle = 0
         next_send_at = 0.0
-        next_command_poll_at = 0.0
         while True:
             now = time.monotonic()
             should_send = now >= next_send_at
-            should_poll_commands = not args.skip_commands and now >= next_command_poll_at
+
+            if args.once and not args.skip_commands:
+                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
 
             if should_send:
                 cycle += 1
@@ -71,14 +84,13 @@ def main() -> None:
                     send_image(platform_url, int(device_id), str(device_token), next(image_cycle))
                 next_send_at = time.monotonic() + send_interval
 
-            if should_poll_commands:
-                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
-                next_command_poll_at = time.monotonic() + command_interval
-
             if args.once:
                 break
-            time.sleep(next_sleep_seconds(next_send_at, next_command_poll_at, args.skip_commands))
+            stop_event.wait(next_sleep_seconds(next_send_at))
     finally:
+        stop_event.set()
+        if command_thread is not None:
+            command_thread.join(timeout=5)
         automation.close()
 
 

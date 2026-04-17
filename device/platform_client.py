@@ -1,5 +1,6 @@
 import argparse
 import itertools
+import threading
 import time
 from pathlib import Path
 
@@ -55,14 +56,25 @@ def main() -> None:
     image_paths = [path for path in DEFAULT_MOCK_IMAGES if path.exists()]
     image_cycle = itertools.cycle(image_paths) if image_paths else None
 
+    stop_event = threading.Event()
+    command_thread = None
     try:
+        if not args.skip_commands and not args.once:
+            command_thread = threading.Thread(
+                target=run_command_poll_loop,
+                args=(platform_url, int(device_id), str(device_token), automation, command_interval, stop_event),
+                daemon=True,
+            )
+            command_thread.start()
+
         cycle = 0
         next_send_at = 0.0
-        next_command_poll_at = 0.0
         while True:
             now = time.monotonic()
             should_send = now >= next_send_at
-            should_poll_commands = not args.skip_commands and now >= next_command_poll_at
+
+            if args.once and not args.skip_commands:
+                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
 
             if should_send:
                 cycle += 1
@@ -78,23 +90,41 @@ def main() -> None:
                         print("[platform] no camera image available to upload")
                 next_send_at = time.monotonic() + send_interval
 
-            if should_poll_commands:
-                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
-                next_command_poll_at = time.monotonic() + command_interval
-
             if args.once:
                 break
-            time.sleep(next_sleep_seconds(next_send_at, next_command_poll_at, args.skip_commands))
+            stop_event.wait(next_sleep_seconds(next_send_at))
     finally:
+        stop_event.set()
+        if command_thread is not None:
+            command_thread.join(timeout=5)
         automation.close()
 
 
-def next_sleep_seconds(next_send_at: float, next_command_poll_at: float, skip_commands: bool) -> float:
-    next_times = [next_send_at]
-    if not skip_commands:
-        next_times.append(next_command_poll_at)
-    next_due_at = min(next_times)
-    return max(0.2, min(5.0, next_due_at - time.monotonic()))
+def next_sleep_seconds(next_send_at: float) -> float:
+    return max(0.2, min(5.0, next_send_at - time.monotonic()))
+
+
+def run_command_poll_loop(
+    platform_url: str,
+    device_id: int,
+    device_token: str,
+    automation: PlantAutomation,
+    command_interval: int,
+    stop_event: threading.Event,
+) -> None:
+    print(f"[platform] command polling every {command_interval} second(s)")
+    while not stop_event.is_set():
+        started_at = time.monotonic()
+        try:
+            command_count = handle_pending_commands(platform_url, device_id, device_token, automation)
+            if command_count:
+                elapsed = time.monotonic() - started_at
+                print(f"[platform] handled {command_count} command(s) in {elapsed:.2f}s")
+        except requests.RequestException as exc:
+            print(f"[platform] command poll failed: {exc}")
+        except Exception as exc:
+            print(f"[platform] command handling failed: {exc}")
+        stop_event.wait(command_interval)
 
 
 def send_reading(platform_url: str, device_id: int, device_token: str, record: dict) -> None:
