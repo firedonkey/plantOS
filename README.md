@@ -361,6 +361,17 @@ i2cdetect -y 1
 
 You should see `48` in the scan output. Calibrate `sensors.moisture.dry_value` and `sensors.moisture.wet_value` in `device/config.yaml` after checking raw readings from your actual sensor and soil.
 
+For a relay-controlled LED or grow light, the default device config uses GPIO23, which is physical pin 16:
+
+```yaml
+actuators:
+  relay_active_high: false
+  light:
+    gpio_pin: 23
+```
+
+Wire the relay module input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO23. Use the relay `COM` and `NO` screw terminals for the LED power circuit so the LED is normally off and turns on only when the relay is active. Keep testing on low-voltage DC before switching anything higher power.
+
 Start with a short pump run time while testing:
 ```yaml
 actuators:

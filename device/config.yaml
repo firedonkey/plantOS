@@ -45,7 +45,7 @@ actuators:
     cooldown_seconds: 3600
   light:
     enabled: true
-    gpio_pin: 27
+    gpio_pin: 23
     on_hour: 7
     off_hour: 21
     manual_override_seconds: 3600
