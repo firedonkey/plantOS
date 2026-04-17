@@ -190,6 +190,51 @@ def test_device_summary_json_returns_latest_status():
         teardown_overrides()
 
 
+def test_device_summary_uses_command_ack_state_without_new_sensor_reading():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={"name": "Kitchen Rose"},
+        )
+        device_id = create_response.json()["id"]
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 41.0,
+                "temperature": 23.4,
+                "humidity": 52.5,
+                "light_on": False,
+                "pump_on": False,
+            },
+        )
+        assert data_response.status_code == 201
+        command_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "on"},
+        )
+        command_id = command_response.json()["id"]
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        ack_response = client.post(
+            f"/api/devices/{device_id}/commands/{command_id}/ack",
+            json={"status": "completed", "message": "light turned on", "light_on": True, "pump_on": False},
+            headers={"X-Device-Token": create_response.json()["api_token"]},
+        )
+        assert ack_response.status_code == 200
+
+        app.dependency_overrides[get_current_user] = lambda: User(id=1, email="grower@example.com", name="Grower")
+        app.dependency_overrides[get_optional_current_user] = app.dependency_overrides[get_current_user]
+        response = client.get(f"/devices/{device_id}/summary.json")
+
+        assert response.status_code == 200
+        assert response.json()["latest_reading"]["light"] == "on"
+    finally:
+        teardown_overrides()
+
+
 def test_latest_device_activity_uses_reading_image_and_device_command_timestamps():
     reading = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 0, tzinfo=timezone.utc))
     image = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 5, tzinfo=timezone.utc))
@@ -211,6 +256,8 @@ def test_completed_command_overrides_stale_reading_state():
         target="light",
         action="on",
         status="completed",
+        light_on=True,
+        pump_on=None,
         created_at=reading_time,
         completed_at=datetime(2026, 4, 16, 19, 1, tzinfo=timezone.utc),
     )

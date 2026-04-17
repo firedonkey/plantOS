@@ -22,6 +22,8 @@ class CommandCreate(BaseModel):
 class CommandAck(BaseModel):
     status: CommandStatus
     message: str | None = Field(default=None, max_length=240)
+    light_on: bool | None = None
+    pump_on: bool | None = None
 
     @model_validator(mode="after")
     def validate_ack_status(self):
@@ -38,6 +40,8 @@ class CommandRead(BaseModel):
     value: str | None
     status: CommandStatus
     message: str | None
+    light_on: bool | None
+    pump_on: bool | None
     created_at: datetime
     sent_at: datetime | None
     completed_at: datetime | None

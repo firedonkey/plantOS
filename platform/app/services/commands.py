@@ -130,6 +130,8 @@ def get_command_for_device(session: Session, device_id: int, command_id: int) ->
 def acknowledge_command(session: Session, command: Command, payload: CommandAck) -> Command:
     command.status = payload.status
     command.message = payload.message
+    command.light_on = payload.light_on
+    command.pump_on = payload.pump_on
     command.completed_at = datetime.now(timezone.utc)
     session.add(command)
     session.commit()

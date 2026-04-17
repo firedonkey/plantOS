@@ -332,17 +332,10 @@ def _latest_completed_command_state(commands: list, reading_timestamp: datetime)
             continue
 
         target = _enum_value(command.target)
-        action = _enum_value(command.action)
-        if target == "light" and "light" not in state:
-            if action == "on":
-                state["light"] = True
-            elif action == "off":
-                state["light"] = False
-        if target == "pump" and "pump" not in state:
-            if action == "run":
-                state["pump"] = True
-            elif action == "off":
-                state["pump"] = False
+        if target == "light" and "light" not in state and command.light_on is not None:
+            state["light"] = command.light_on
+        if target == "pump" and "pump" not in state and command.pump_on is not None:
+            state["pump"] = command.pump_on
     return state
 
 
@@ -519,6 +512,8 @@ def _command_activity_item(command) -> dict:
         "status": status_labels.get(status, status.replace("_", " ").title()),
         "tone": status_tones.get(status, "waiting"),
         "message": command.message,
+        "light_on": command.light_on,
+        "pump_on": command.pump_on,
         "time": command.created_at.strftime("%b %-d, %-I:%M %p"),
     }
 

@@ -79,10 +79,7 @@ def main() -> None:
                 next_send_at = time.monotonic() + send_interval
 
             if should_poll_commands:
-                handled_count = handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
-                if handled_count:
-                    status_record = automation.status_snapshot(pump_event="command_update")
-                    send_reading(platform_url, int(device_id), str(device_token), status_record)
+                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
                 next_command_poll_at = time.monotonic() + command_interval
 
             if args.once:
@@ -157,6 +154,7 @@ def handle_pending_commands(
     for command in commands:
         try:
             message = execute_command(command, automation)
+            state = command_ack_state(automation)
             acknowledge_command(
                 platform_url=platform_url,
                 device_id=device_id,
@@ -164,8 +162,11 @@ def handle_pending_commands(
                 command_id=int(command["id"]),
                 status="completed",
                 message=message,
+                light_on=state["light_on"],
+                pump_on=state["pump_on"],
             )
         except Exception as exc:
+            state = command_ack_state(automation)
             acknowledge_command(
                 platform_url=platform_url,
                 device_id=device_id,
@@ -173,6 +174,8 @@ def handle_pending_commands(
                 command_id=int(command["id"]),
                 status="failed",
                 message=str(exc),
+                light_on=state["light_on"],
+                pump_on=state["pump_on"],
             )
     return len(commands)
 
@@ -215,6 +218,13 @@ def execute_command(command: dict, automation: PlantAutomation) -> str:
     raise ValueError(f"Unsupported command: target={target}, action={action}")
 
 
+def command_ack_state(automation: PlantAutomation) -> dict:
+    return {
+        "light_on": automation.light.is_on,
+        "pump_on": automation.pump.is_on,
+    }
+
+
 def acknowledge_command(
     platform_url: str,
     device_id: int,
@@ -222,10 +232,17 @@ def acknowledge_command(
     command_id: int,
     status: str,
     message: str,
+    light_on: bool | None = None,
+    pump_on: bool | None = None,
 ) -> None:
     response = requests.post(
         f"{platform_url}/api/devices/{device_id}/commands/{command_id}/ack",
-        json={"status": status, "message": message},
+        json={
+            "status": status,
+            "message": message,
+            "light_on": light_on,
+            "pump_on": pump_on,
+        },
         headers={"X-Device-Token": device_token},
         timeout=10,
     )

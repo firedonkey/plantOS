@@ -72,10 +72,7 @@ def main() -> None:
                 next_send_at = time.monotonic() + send_interval
 
             if should_poll_commands:
-                handled_count = handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
-                if handled_count:
-                    status_record = automation.status_snapshot(pump_event="command_update")
-                    send_reading(platform_url, int(device_id), str(device_token), status_record)
+                handle_pending_commands(platform_url, int(device_id), str(device_token), automation)
                 next_command_poll_at = time.monotonic() + command_interval
 
             if args.once:

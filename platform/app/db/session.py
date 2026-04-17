@@ -42,6 +42,12 @@ def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
                 connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_on BOOLEAN"))
             if "pump_status" not in reading_columns:
                 connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_status VARCHAR(120)"))
+        if "commands" in table_names:
+            command_columns = {column["name"] for column in inspector.get_columns("commands")}
+            if "light_on" not in command_columns:
+                connection.execute(text("ALTER TABLE commands ADD COLUMN light_on BOOLEAN"))
+            if "pump_on" not in command_columns:
+                connection.execute(text("ALTER TABLE commands ADD COLUMN pump_on BOOLEAN"))
 
 
 def get_session() -> Generator[Session, None, None]:

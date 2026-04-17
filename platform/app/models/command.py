@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -44,6 +44,8 @@ class Command(Base):
         index=True,
     )
     message: Mapped[Optional[str]] = mapped_column(String(240), default=None)
+    light_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    pump_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

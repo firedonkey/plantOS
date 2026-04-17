@@ -148,12 +148,14 @@ def test_device_can_poll_and_ack_pending_command():
 
         ack_response = client.post(
             f"/api/devices/{device_id}/commands/{command_id}/ack",
-            json={"status": "completed", "message": "light on"},
+            json={"status": "completed", "message": "light on", "light_on": True, "pump_on": False},
             headers={"X-Device-Token": "token-owner"},
         )
         assert ack_response.status_code == 200
         assert ack_response.json()["status"] == "completed"
         assert ack_response.json()["message"] == "light on"
+        assert ack_response.json()["light_on"] is True
+        assert ack_response.json()["pump_on"] is False
     finally:
         teardown_overrides()
 
