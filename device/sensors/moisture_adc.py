@@ -89,8 +89,7 @@ class MoistureADCSensor:
             try:
                 import board
                 import busio
-                import adafruit_ads1x15.ads1115 as ADS
-                from adafruit_ads1x15.analog_in import AnalogIn
+                from adafruit_ads1x15 import ADS1115, AnalogIn, ads1x15
             except Exception as exc:
                 raise RuntimeError(
                     "ADS1115 libraries unavailable. Install device/requirements-pi.txt on the Raspberry Pi."
@@ -98,17 +97,17 @@ class MoistureADCSensor:
 
             channel_index = int(self.config.get("adc_channel", 0))
             channel_map = {
-                0: ADS.P0,
-                1: ADS.P1,
-                2: ADS.P2,
-                3: ADS.P3,
+                0: ads1x15.Pin.A0,
+                1: ads1x15.Pin.A1,
+                2: ads1x15.Pin.A2,
+                3: ads1x15.Pin.A3,
             }
             if channel_index not in channel_map:
                 raise ValueError("ADS1115 channel must be between 0 and 3")
 
             address = _parse_int(self.config.get("i2c_address", "0x48"))
             self._i2c = busio.I2C(board.SCL, board.SDA)
-            self._ads = ADS.ADS1115(self._i2c, address=address)
+            self._ads = ADS1115(self._i2c, address=address)
             self._ads.gain = float(self.config.get("gain", 1))
             if self.config.get("data_rate"):
                 self._ads.data_rate = int(self.config["data_rate"])
