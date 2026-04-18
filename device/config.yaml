@@ -40,7 +40,7 @@ actuators:
   relay_active_high: false
   pump:
     enabled: true
-    gpio_pin: 17
+    gpio_pin: 24
     run_seconds: 5
     cooldown_seconds: 3600
   light:

@@ -375,9 +375,20 @@ Wire the relay module input side with relay `VCC` to Pi `5V`, relay `GND` to Pi 
 Start with a short pump run time while testing:
 ```yaml
 actuators:
+  relay_active_high: false
   pump:
+    gpio_pin: 24
     run_seconds: 2
     cooldown_seconds: 3600
+```
+
+The default pump relay is active-low and uses GPIO24, which is physical pin 18. Wire the relay input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO24. Use `COM` and `NO` for the pump power circuit so the pump is normally off.
+
+Run a short manual pump relay test before connecting water tubing to the plant:
+```bash
+cd device
+source ../.venv/bin/activate
+python test_pump.py --seconds 2
 ```
 
 ## Web dashboard and phone app path
