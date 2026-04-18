@@ -671,15 +671,6 @@ input {
 .toggle-control {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  min-width: 190px;
-}
-
-.toggle-control-label {
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 800;
 }
 
 .switch-button {
@@ -687,26 +678,28 @@ input {
   align-items: center;
   justify-content: center;
   position: relative;
-  width: 54px;
-  min-width: 54px;
-  min-height: 32px;
-  border: 0;
+  width: 86px;
+  min-width: 86px;
+  min-height: 40px;
+  border: 1px solid #909791;
   border-radius: 8px;
   padding: 0;
-  background: transparent;
+  background: #5f6661;
   overflow: hidden;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.switch-button.is-on {
+  border-color: #11c89c;
+  background: #11c89c;
 }
 
 .switch-track {
   position: absolute;
-  inset: 2px;
+  inset: 0;
   border-radius: 8px;
-  background: #d6d9d3;
+  background: transparent;
   transition: background 120ms ease;
-}
-
-.switch-button.is-on .switch-track {
-  background: #159f91;
 }
 
 .switch-thumb {
@@ -714,16 +707,32 @@ input {
   position: absolute;
   top: 4px;
   left: 4px;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 1px 3px rgba(23, 32, 26, 0.2);
   transition: transform 120ms ease;
+  z-index: 1;
 }
 
 .switch-button.is-on .switch-thumb {
-  transform: translateX(22px);
+  transform: translateX(46px);
+}
+
+.switch-state {
+  position: absolute;
+  right: 12px;
+  z-index: 1;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.switch-button.is-on .switch-state {
+  right: auto;
+  left: 13px;
 }
 
 .switch-button:disabled {
