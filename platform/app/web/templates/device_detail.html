@@ -193,10 +193,14 @@
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-light-switch-form data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}">
                   <input type="hidden" name="target" value="light">
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
-                  <button type="submit" class="switch-button {% if light_is_on %}is-on{% endif %}" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-pressed="{% if light_is_on %}true{% else %}false{% endif %}" {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
+                  <div class="toggle-control {% if light_is_on %}is-on{% endif %}" data-light-toggle>
+                    <span class="toggle-label off">Off</span>
+                    <button type="submit" class="switch-button {% if light_is_on %}is-on{% endif %}" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" aria-pressed="{% if light_is_on %}true{% else %}false{% endif %}" {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
                     <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-                    <span data-switch-label>{% if light_is_on %}On{% else %}Off{% endif %}</span>
-                  </button>
+                      <span class="visually-hidden" data-switch-label>{% if light_is_on %}On{% else %}Off{% endif %}</span>
+                    </button>
+                    <span class="toggle-label on">On</span>
+                  </div>
                 </form>
               </div>
             </section>
@@ -421,14 +425,19 @@
           form.dataset.commandKey = key;
           const actionInput = form.querySelector("[data-light-action]");
           const button = form.querySelector("[data-light-switch]");
+          const toggle = form.querySelector("[data-light-toggle]");
           if (actionInput) {
             actionInput.value = action;
           }
           if (button) {
             button.dataset.commandKey = key;
             button.dataset.label = isOn ? "On" : "Off";
+            button.setAttribute("aria-label", isOn ? "Turn light off" : "Turn light on");
             button.setAttribute("aria-pressed", isOn ? "true" : "false");
             button.classList.toggle("is-on", isOn);
+          }
+          if (toggle) {
+            toggle.classList.toggle("is-on", isOn);
           }
         });
         updateCommandButtons();

@@ -668,11 +668,31 @@ input {
   margin-top: 12px;
 }
 
-.switch-button {
+.toggle-control {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 112px;
+}
+
+.toggle-label {
+  min-width: 28px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.toggle-control:not(.is-on) .toggle-label.off,
+.toggle-control.is-on .toggle-label.on {
+  color: var(--green);
+}
+
+.switch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  min-height: 34px;
+  padding: 5px;
 }
 
 .switch-track {
@@ -696,6 +716,15 @@ input {
 
 .switch-button.is-on .switch-thumb {
   transform: translateX(16px);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .activity-list {
