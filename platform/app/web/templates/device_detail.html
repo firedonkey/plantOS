@@ -194,12 +194,12 @@
                   <input type="hidden" name="target" value="light">
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
                   <div class="toggle-control {% if light_is_on %}is-on{% endif %}" data-light-toggle>
-                    <span class="toggle-label off">Off</span>
                     <button type="submit" class="switch-button {% if light_is_on %}is-on{% endif %}" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" aria-pressed="{% if light_is_on %}true{% else %}false{% endif %}" {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
-                    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      <span class="switch-thumb" aria-hidden="true"></span>
+                      <span class="switch-option off">Off</span>
+                      <span class="switch-option on">On</span>
                       <span class="visually-hidden" data-switch-label>{% if light_is_on %}On{% else %}Off{% endif %}</span>
                     </button>
-                    <span class="toggle-label on">On</span>
                   </div>
                 </form>
               </div>
