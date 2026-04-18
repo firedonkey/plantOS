@@ -142,8 +142,8 @@ def test_device_detail_page_shows_latest_data():
         assert "Pump run 10s" in detail_response.text
         assert "data-command-key=\"pump:run:10\"" in detail_response.text
         assert "data-light-switch" in detail_response.text
-        assert "toggle-switch" in detail_response.text
-        assert "slider" in detail_response.text
+        assert "light-toggle-switch" in detail_response.text
+        assert "light-toggle-slider" in detail_response.text
         assert "data-switch-state" in detail_response.text
         assert "Turn on" not in detail_response.text
         assert "Turn off" not in detail_response.text

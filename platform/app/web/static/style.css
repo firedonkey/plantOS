@@ -668,7 +668,7 @@ input {
   margin-top: 12px;
 }
 
-.toggle-switch {
+.light-toggle-switch {
   position: relative;
   display: inline-block;
   width: 88px;
@@ -676,7 +676,7 @@ input {
   color: #ffffff;
 }
 
-.toggle-switch input[type="checkbox"][data-light-switch] {
+.light-toggle-switch input[type="checkbox"][data-light-switch] {
   position: absolute;
   opacity: 0;
   width: 1px;
@@ -690,7 +690,7 @@ input {
   pointer-events: none;
 }
 
-.slider {
+.light-toggle-slider {
   position: absolute;
   cursor: pointer;
   inset: 0;
@@ -700,7 +700,7 @@ input {
   transition: background-color 0.3s;
 }
 
-.slider::before {
+.light-toggle-slider::before {
   content: "";
   position: absolute;
   width: 34px;
@@ -713,16 +713,16 @@ input {
   transition: transform 0.3s;
 }
 
-.toggle-switch input:checked + .slider {
+.light-toggle-switch input:checked + .light-toggle-slider {
   border-color: #20d0a5;
   background-color: #20d0a5;
 }
 
-.toggle-switch input:checked + .slider::before {
+.light-toggle-switch input:checked + .light-toggle-slider::before {
   transform: translateX(46px);
 }
 
-.slider-label {
+.light-toggle-text {
   position: absolute;
   top: 50%;
   right: 11px;
@@ -732,12 +732,12 @@ input {
   letter-spacing: 0;
 }
 
-.toggle-switch input:checked + .slider .slider-label {
+.light-toggle-switch input:checked + .light-toggle-slider .light-toggle-text {
   right: auto;
   left: 14px;
 }
 
-.toggle-switch input:disabled + .slider {
+.light-toggle-switch input:disabled + .light-toggle-slider {
   opacity: 0.72;
   cursor: default;
 }
