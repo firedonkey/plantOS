@@ -671,21 +671,42 @@ input {
 .toggle-control {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 190px;
+}
+
+.toggle-control-label {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .switch-button {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   position: relative;
-  width: 132px;
-  min-height: 42px;
-  border-color: #91c9a6;
+  width: 54px;
+  min-width: 54px;
+  min-height: 32px;
+  border: 0;
   border-radius: 8px;
-  padding: 4px;
-  background: #f3fbf5;
-  color: var(--text);
+  padding: 0;
+  background: transparent;
   overflow: hidden;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 2px;
+  border-radius: 8px;
+  background: #d6d9d3;
+  transition: background 120ms ease;
+}
+
+.switch-button.is-on .switch-track {
+  background: #159f91;
 }
 
 .switch-thumb {
@@ -693,31 +714,16 @@ input {
   position: absolute;
   top: 4px;
   left: 4px;
-  width: calc(50% - 4px);
-  height: calc(100% - 8px);
-  border-radius: 6px;
-  background: var(--green);
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(23, 32, 26, 0.2);
   transition: transform 120ms ease;
 }
 
 .switch-button.is-on .switch-thumb {
-  transform: translateX(100%);
-}
-
-.switch-option {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  justify-content: center;
-  width: 50%;
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 900;
-}
-
-.switch-button:not(.is-on) .switch-option.off,
-.switch-button.is-on .switch-option.on {
-  color: #ffffff;
+  transform: translateX(22px);
 }
 
 .switch-button:disabled {
