@@ -668,6 +668,36 @@ input {
   margin-top: 12px;
 }
 
+.switch-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 112px;
+}
+
+.switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.switch-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  background: currentColor;
+  transition: transform 120ms ease;
+}
+
+.switch-button.is-on .switch-thumb {
+  transform: translateX(16px);
+}
+
 .activity-list {
   display: grid;
   gap: 0;

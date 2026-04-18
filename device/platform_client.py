@@ -205,6 +205,15 @@ def handle_pending_commands(
                 f"[platform] command {command_id} timing: "
                 f"execute={executed_in:.2f}s ack={acked_in:.2f}s total={total:.2f}s"
             )
+            if command.get("target") == "pump" and command.get("action") == "run":
+                schedule_pump_completion_ack(
+                    platform_url=platform_url,
+                    device_id=device_id,
+                    device_token=device_token,
+                    command_id=command_id,
+                    seconds=pump_run_seconds(command, automation),
+                    automation=automation,
+                )
         except Exception as exc:
             state = command_ack_state(automation)
             ack_started_at = time.monotonic()
@@ -222,6 +231,60 @@ def handle_pending_commands(
             total = time.monotonic() - command_started_at
             print(f"[platform] command {command_id} failed after {total:.2f}s; ack={acked_in:.2f}s")
     return len(commands)
+
+
+def schedule_pump_completion_ack(
+    platform_url: str,
+    device_id: int,
+    device_token: str,
+    command_id: int,
+    seconds: int,
+    automation: PlantAutomation,
+) -> None:
+    thread = threading.Thread(
+        target=acknowledge_pump_completion,
+        args=(platform_url, device_id, device_token, command_id, seconds, automation),
+        daemon=True,
+    )
+    thread.start()
+
+
+def acknowledge_pump_completion(
+    platform_url: str,
+    device_id: int,
+    device_token: str,
+    command_id: int,
+    seconds: int,
+    automation: PlantAutomation,
+) -> None:
+    started_at = time.monotonic()
+    deadline = started_at + seconds + 1
+    while time.monotonic() < deadline and automation.pump.is_on:
+        time.sleep(0.2)
+
+    state = command_ack_state(automation)
+    elapsed = time.monotonic() - started_at
+    if state["pump_on"]:
+        message = f"pump still running after {elapsed:.1f} seconds"
+    elif elapsed < max(0, seconds - 0.5):
+        message = f"pump stopped after {elapsed:.1f} seconds"
+    else:
+        message = f"pump finished after {seconds} seconds"
+
+    try:
+        acknowledge_command(
+            platform_url=platform_url,
+            device_id=device_id,
+            device_token=device_token,
+            command_id=command_id,
+            status="completed",
+            message=message,
+            light_on=state["light_on"],
+            pump_on=state["pump_on"],
+        )
+        print(f"[platform] pump completion status for command {command_id}: {message}")
+    except requests.RequestException as exc:
+        print(f"[platform] pump completion ack failed for command {command_id}: {exc}")
 
 
 def poll_pending_commands(platform_url: str, device_id: int, device_token: str) -> list[dict]:
@@ -244,9 +307,9 @@ def execute_command(command: dict, automation: PlantAutomation) -> str:
 
     if target == "pump":
         if action == "run":
-            seconds = int(value or automation.config["actuators"]["pump"].get("run_seconds", 5))
-            automation.pump.run_for(seconds)
-            return f"pump ran for {seconds} seconds"
+            seconds = pump_run_seconds(command, automation)
+            automation.pump.run_for(seconds, wait=False)
+            return f"pump started for {seconds} seconds"
         if action == "off":
             automation.pump.off()
             return "pump turned off"
@@ -260,6 +323,10 @@ def execute_command(command: dict, automation: PlantAutomation) -> str:
             return "light turned off"
 
     raise ValueError(f"Unsupported command: target={target}, action={action}")
+
+
+def pump_run_seconds(command: dict, automation: PlantAutomation) -> int:
+    return int(command.get("value") or automation.config["actuators"]["pump"].get("run_seconds", 5))
 
 
 def command_ack_state(automation: PlantAutomation) -> dict:

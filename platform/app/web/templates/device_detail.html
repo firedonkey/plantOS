@@ -183,16 +183,20 @@
               </div>
             </section>
             <section class="control-group">
+              {% set light_is_on = latest_reading and latest_reading.light_on %}
               <div class="control-group-heading">
                 <h3>Light</h3>
                 <span class="state-pill" data-field="light_state">{% if latest_reading and latest_reading.light_on is not none %}{% if latest_reading.light_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
               </div>
               <p>Switch the grow light during setup or quick checks.</p>
               <div class="command-actions">
-                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form>
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-light-switch-form data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}">
                   <input type="hidden" name="target" value="light">
-                  <button type="submit" name="action" value="on" data-command-button data-command-key="light:on:" {% if "light:on:" in active_command_keys %}disabled{% endif %}>Turn on</button>
-                  <button type="submit" name="action" value="off" data-command-button data-command-key="light:off:" {% if "light:off:" in active_command_keys %}disabled{% endif %}>Turn off</button>
+                  <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
+                  <button type="submit" class="switch-button {% if light_is_on %}is-on{% endif %}" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-pressed="{% if light_is_on %}true{% else %}false{% endif %}" {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
+                    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                    <span data-switch-label>{% if light_is_on %}On{% else %}Off{% endif %}</span>
+                  </button>
                 </form>
               </div>
             </section>
@@ -288,7 +292,8 @@
       let fastRefreshUntil = 0;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
-        button.dataset.label = button.textContent;
+        const switchLabel = button.querySelector("[data-switch-label]");
+        button.dataset.label = switchLabel ? switchLabel.textContent : button.textContent;
       });
 
       function setField(name, value) {
@@ -322,6 +327,7 @@
         setField("pump", reading.pump);
         setField("light_state", titleCase(reading.light));
         setField("pump_state", titleCase(reading.pump));
+        updateLightSwitch(reading.light);
       }
 
       function updateImages(payload) {
@@ -402,9 +408,39 @@
             const key = button.dataset.commandKey || formKey;
             const isActive = activeCommandKeys.has(key);
             button.disabled = isActive;
-            button.textContent = isActive ? "Waiting..." : button.dataset.label;
+            setButtonLabel(button, isActive ? "Waiting..." : button.dataset.label);
           });
         });
+      }
+
+      function updateLightSwitch(lightValue) {
+        const isOn = `${lightValue}`.toLowerCase() === "on";
+        const action = isOn ? "off" : "on";
+        const key = `light:${action}:`;
+        document.querySelectorAll("[data-light-switch-form]").forEach((form) => {
+          form.dataset.commandKey = key;
+          const actionInput = form.querySelector("[data-light-action]");
+          const button = form.querySelector("[data-light-switch]");
+          if (actionInput) {
+            actionInput.value = action;
+          }
+          if (button) {
+            button.dataset.commandKey = key;
+            button.dataset.label = isOn ? "On" : "Off";
+            button.setAttribute("aria-pressed", isOn ? "true" : "false");
+            button.classList.toggle("is-on", isOn);
+          }
+        });
+        updateCommandButtons();
+      }
+
+      function setButtonLabel(button, label) {
+        const switchLabel = button.querySelector("[data-switch-label]");
+        if (switchLabel) {
+          switchLabel.textContent = label;
+          return;
+        }
+        button.textContent = label;
       }
 
       async function refreshDashboardSummary() {

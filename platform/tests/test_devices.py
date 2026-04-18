@@ -141,6 +141,9 @@ def test_device_detail_page_shows_latest_data():
         assert "Stop" in detail_response.text
         assert "Pump run 20s" in detail_response.text
         assert "data-command-key=\"pump:run:20\"" in detail_response.text
+        assert "data-light-switch" in detail_response.text
+        assert "Turn on" not in detail_response.text
+        assert "Turn off" not in detail_response.text
         assert "Waiting" in detail_response.text
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text
