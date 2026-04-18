@@ -193,14 +193,10 @@
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-light-switch-form data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}">
                   <input type="hidden" name="target" value="light">
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
-                  <div class="toggle-control {% if light_is_on %}is-on{% endif %}" data-light-toggle>
-                    <button type="submit" class="switch-button {% if light_is_on %}is-on{% endif %}" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" aria-pressed="{% if light_is_on %}true{% else %}false{% endif %}" {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
-                      <span class="switch-track" aria-hidden="true"></span>
-                      <span class="switch-thumb" aria-hidden="true"></span>
-                      <span class="switch-state" data-switch-state>{% if light_is_on %}ON{% else %}OFF{% endif %}</span>
-                      <span class="visually-hidden" data-switch-label>{% if light_is_on %}On{% else %}Off{% endif %}</span>
-                    </button>
-                  </div>
+                  <label class="toggle-switch {% if light_is_on %}is-on{% endif %}" data-light-toggle>
+                    <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
+                    <span class="slider" aria-hidden="true"></span>
+                  </label>
                 </form>
               </div>
             </section>
@@ -280,6 +276,15 @@
         });
       });
 
+      document.querySelectorAll("[data-light-switch]").forEach((input) => {
+        input.addEventListener("change", () => {
+          if (input.disabled) {
+            return;
+          }
+          input.closest("form").requestSubmit();
+        });
+      });
+
       const previousScrollY = sessionStorage.getItem("plantlabScrollY");
       if (previousScrollY) {
         sessionStorage.removeItem("plantlabScrollY");
@@ -296,8 +301,7 @@
       let fastRefreshUntil = 0;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
-        const switchLabel = button.querySelector("[data-switch-label]");
-        button.dataset.label = switchLabel ? switchLabel.textContent : button.textContent;
+        button.dataset.label = button.textContent;
       });
 
       function setField(name, value) {
@@ -424,21 +428,15 @@
         document.querySelectorAll("[data-light-switch-form]").forEach((form) => {
           form.dataset.commandKey = key;
           const actionInput = form.querySelector("[data-light-action]");
-          const button = form.querySelector("[data-light-switch]");
+          const input = form.querySelector("[data-light-switch]");
           const toggle = form.querySelector("[data-light-toggle]");
-          const stateLabel = form.querySelector("[data-switch-state]");
           if (actionInput) {
             actionInput.value = action;
           }
-          if (button) {
-            button.dataset.commandKey = key;
-            button.dataset.label = isOn ? "On" : "Off";
-            button.setAttribute("aria-label", isOn ? "Turn light off" : "Turn light on");
-            button.setAttribute("aria-pressed", isOn ? "true" : "false");
-            button.classList.toggle("is-on", isOn);
-          }
-          if (stateLabel) {
-            stateLabel.textContent = isOn ? "ON" : "OFF";
+          if (input) {
+            input.dataset.commandKey = key;
+            input.checked = isOn;
+            input.setAttribute("aria-label", isOn ? "Turn light off" : "Turn light on");
           }
           if (toggle) {
             toggle.classList.toggle("is-on", isOn);
@@ -448,16 +446,7 @@
       }
 
       function setButtonLabel(button, label) {
-        const switchState = button.querySelector("[data-switch-state]");
-        if (switchState) {
-          if (label !== "Waiting...") {
-            switchState.textContent = label.toUpperCase();
-          }
-          return;
-        }
-        const switchLabel = button.querySelector("[data-switch-label]");
-        if (switchLabel) {
-          switchLabel.textContent = label;
+        if (button.matches("[data-light-switch]")) {
           return;
         }
         button.textContent = label;
