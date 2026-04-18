@@ -195,7 +195,7 @@
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
                   <label class="toggle-switch {% if light_is_on %}is-on{% endif %}" data-light-toggle>
                     <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
-                    <span class="slider" aria-hidden="true"></span>
+                    <span class="slider" aria-hidden="true"><span class="slider-label" data-switch-state>{% if light_is_on %}ON{% else %}OFF{% endif %}</span></span>
                   </label>
                 </form>
               </div>
@@ -430,6 +430,7 @@
           const actionInput = form.querySelector("[data-light-action]");
           const input = form.querySelector("[data-light-switch]");
           const toggle = form.querySelector("[data-light-toggle]");
+          const stateLabel = form.querySelector("[data-switch-state]");
           if (actionInput) {
             actionInput.value = action;
           }
@@ -440,6 +441,9 @@
           }
           if (toggle) {
             toggle.classList.toggle("is-on", isOn);
+          }
+          if (stateLabel) {
+            stateLabel.textContent = isOn ? "ON" : "OFF";
           }
         });
         updateCommandButtons();
