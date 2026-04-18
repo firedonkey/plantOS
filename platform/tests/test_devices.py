@@ -123,7 +123,7 @@ def test_device_detail_page_shows_latest_data():
         assert data_response.status_code == 201
         command_response = client.post(
             f"/api/devices/{device_id}/commands",
-            json={"target": "pump", "action": "run", "value": "5"},
+            json={"target": "pump", "action": "run", "value": "20"},
         )
         assert command_response.status_code == 201
 
@@ -139,8 +139,8 @@ def test_device_detail_page_shows_latest_data():
         assert "?range=7d" in detail_response.text
         assert "Device Controls" in detail_response.text
         assert "Stop" in detail_response.text
-        assert "Pump run 5s" in detail_response.text
-        assert "data-command-key=\"pump:run:5\"" in detail_response.text
+        assert "Pump run 20s" in detail_response.text
+        assert "data-command-key=\"pump:run:20\"" in detail_response.text
         assert "Waiting" in detail_response.text
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text

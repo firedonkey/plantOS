@@ -170,11 +170,11 @@
               </div>
               <p>Run only when water, tubing, and drainage are ready.</p>
               <div class="command-actions">
-                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="pump:run:5">
+                <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="pump:run:20">
                   <input type="hidden" name="target" value="pump">
                   <input type="hidden" name="action" value="run">
-                  <input type="hidden" name="value" value="5">
-                  <button type="submit" data-command-button {% if "pump:run:5" in active_command_keys %}disabled{% endif %}>Run 5s</button>
+                  <input type="hidden" name="value" value="20">
+                  <button type="submit" data-command-button {% if "pump:run:20" in active_command_keys %}disabled{% endif %}>Run 20s</button>
                 </form>
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="pump:off:">
                   <input type="hidden" name="target" value="pump">

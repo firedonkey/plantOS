@@ -41,7 +41,7 @@ actuators:
   pump:
     enabled: true
     gpio_pin: 24
-    run_seconds: 5
+    run_seconds: 20
     cooldown_seconds: 3600
   light:
     enabled: true
