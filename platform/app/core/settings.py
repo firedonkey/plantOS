@@ -18,7 +18,9 @@ class Settings:
     app_name: str = "PlantLab Platform"
     version: str = "0.1.0"
     database_url: str = "sqlite:///./data/platform.db"
+    storage_backend: str = "local"
     upload_dir: str = "data/uploads"
+    gcs_bucket_name: str | None = None
     session_secret: str = "dev-only-change-me"
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -32,7 +34,9 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("PLANTLAB_DATABASE_URL", Settings.database_url),
+        storage_backend=os.getenv("PLANTLAB_STORAGE_BACKEND", Settings.storage_backend).lower(),
         upload_dir=os.getenv("PLANTLAB_UPLOAD_DIR", Settings.upload_dir),
+        gcs_bucket_name=os.getenv("GCS_BUCKET_NAME"),
         session_secret=os.getenv("PLANTLAB_SESSION_SECRET", Settings.session_secret),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID"),
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),

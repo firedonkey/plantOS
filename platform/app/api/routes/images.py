@@ -37,7 +37,7 @@ def upload_image(
             session=session,
             upload_file=file,
             device_id=device.id,
-            upload_dir=get_settings().upload_dir,
+            settings=get_settings(),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

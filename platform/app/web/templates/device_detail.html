@@ -137,7 +137,7 @@
             {% endif %}
           </div>
           {% if latest_image %}
-          <img data-latest-image src="/{{ latest_image.path }}" alt="Latest plant capture for {{ device.name }}">
+          <img data-latest-image src="{{ image_src(latest_image.path) }}" alt="Latest plant capture for {{ device.name }}">
           {% else %}
           <p class="notice">No image uploaded yet.</p>
           {% endif %}
@@ -147,7 +147,7 @@
             {% if recent_images %}
             <div class="image-grid image-thumbs" data-image-grid>
               {% for image in recent_images %}
-              <img src="/{{ image.path }}" alt="Plant capture for {{ device.name }}">
+              <img src="{{ image_src(image.path) }}" alt="Plant capture for {{ device.name }}">
               {% endfor %}
             </div>
             {% else %}

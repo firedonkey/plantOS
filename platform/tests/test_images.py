@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Device, User
 from app.models.base import Base
+from app.services.storage import image_src
 
 
 def build_client_with_device(upload_dir: str) -> tuple[TestClient, int, int]:
@@ -138,3 +139,8 @@ def test_upload_image_accepts_device_token(tmp_path, monkeypatch):
         assert response.json()["device_id"] == device_id
     finally:
         teardown_overrides()
+
+
+def test_image_src_supports_local_paths_and_public_urls():
+    assert image_src("data/uploads/device-1/plant.jpg") == "/data/uploads/device-1/plant.jpg"
+    assert image_src("https://storage.googleapis.com/bucket/plant.jpg") == "https://storage.googleapis.com/bucket/plant.jpg"

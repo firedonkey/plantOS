@@ -16,9 +16,10 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version=settings.version)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
-    Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=APP_DIR / "web/static"), name="static")
-    app.mount("/data/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+    if settings.storage_backend == "local":
+        Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+        app.mount("/data/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
     app.add_event_handler("startup", init_db)
     app.include_router(auth.router)
     app.include_router(commands.router)

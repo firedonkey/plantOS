@@ -22,6 +22,7 @@ from app.services.readings import (
     get_latest_reading_for_device,
     list_recent_readings_for_device,
 )
+from app.services.storage import image_src
 from app.services.users import get_user_by_id
 
 
@@ -150,6 +151,7 @@ def device_detail_page(
             "recent_commands": recent_commands,
             "command_activity": command_activity,
             "connection": connection,
+            "image_src": image_src,
             "reading_chart": reading_chart,
             "chart_range": chart_range,
             "chart_ranges": CHART_RANGES,
@@ -388,7 +390,7 @@ def _image_summary(image) -> dict | None:
     if image is None:
         return None
     return {
-        "src": f"/{image.path}",
+        "src": image_src(image.path),
         "path": image.path,
         "timestamp": image.timestamp.strftime("%b %-d, %-I:%M %p"),
         "alt": "Plant capture",
