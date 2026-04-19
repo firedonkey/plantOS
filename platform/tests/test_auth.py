@@ -10,6 +10,8 @@ from app.services.users import upsert_google_user
 
 
 def test_google_login_reports_missing_config(monkeypatch):
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
     get_settings.cache_clear()

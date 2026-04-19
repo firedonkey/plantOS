@@ -32,7 +32,7 @@ async def login(request: Request):
     if not settings.google_auth_configured:
         raise HTTPException(
             status_code=503,
-            detail="Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+            detail="Google sign-in is not configured. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET.",
         )
 
     _register_google_client()

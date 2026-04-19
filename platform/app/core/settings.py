@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 
 PLATFORM_DIR = Path(__file__).resolve().parents[2]
 ROOT_DIR = PLATFORM_DIR.parent
+DEFAULT_CLOUD_SQL_CONNECTION_NAME = "plantlab-493805:us-central1:plantlab"
+DEFAULT_DB_NAME = "plantlab"
+DEFAULT_DB_USER = "plantlab_user"
 
 load_dotenv(ROOT_DIR / ".env")
 load_dotenv(PLATFORM_DIR / ".env", override=True)
@@ -37,7 +40,7 @@ class Settings:
 
     def validate(self) -> None:
         if self.is_production and self.database_url.startswith("sqlite"):
-            raise ValueError("PostgreSQL DATABASE_URL or PLANTLAB_DATABASE_URL is required in production.")
+            raise ValueError("PostgreSQL DATABASE_URL or Cloud SQL DB_PASSWORD is required in production.")
         if self.storage_backend not in {"local", "gcs"}:
             raise ValueError("PLANTLAB_STORAGE_BACKEND must be 'local' or 'gcs'.")
         if self.storage_backend == "local" and not self.upload_dir:
@@ -45,9 +48,9 @@ class Settings:
         if self.storage_backend == "gcs" and not self.gcs_bucket_name:
             raise ValueError("GCS_BUCKET_NAME is required when PLANTLAB_STORAGE_BACKEND=gcs.")
         if bool(self.google_client_id) != bool(self.google_client_secret):
-            raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together.")
+            raise ValueError("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set together.")
         if self.is_production and self.session_secret == Settings.session_secret:
-            raise ValueError("PLANTLAB_SESSION_SECRET must be set to a secure value in production.")
+            raise ValueError("APP_SECRET_KEY must be set to a secure value in production.")
 
 
 @lru_cache
@@ -58,19 +61,25 @@ def get_settings() -> Settings:
         storage_backend=os.getenv("PLANTLAB_STORAGE_BACKEND", Settings.storage_backend).lower(),
         upload_dir=os.getenv("PLANTLAB_UPLOAD_DIR", Settings.upload_dir),
         gcs_bucket_name=_optional_env("GCS_BUCKET_NAME"),
-        session_secret=os.getenv("PLANTLAB_SESSION_SECRET", Settings.session_secret),
-        google_client_id=_optional_env("GOOGLE_CLIENT_ID"),
-        google_client_secret=_optional_env("GOOGLE_CLIENT_SECRET"),
+        session_secret=_required_or_default_secret("APP_SECRET_KEY", legacy_name="PLANTLAB_SESSION_SECRET"),
+        google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
+        google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),
     )
     settings.validate()
     return settings
 
 
-def _optional_env(name: str) -> str | None:
+def _optional_env(name: str, legacy_name: str | None = None) -> str | None:
     value = os.getenv(name)
+    if (value is None or value.strip() == "") and legacy_name:
+        value = os.getenv(legacy_name)
     if value is None or value.strip() == "":
         return None
     return value
+
+
+def _required_or_default_secret(name: str, legacy_name: str | None = None) -> str:
+    return _optional_env(name, legacy_name=legacy_name) or Settings.session_secret
 
 
 def _database_url() -> str:
@@ -78,20 +87,22 @@ def _database_url() -> str:
     if explicit_url:
         return _normalize_database_url(explicit_url)
 
+    is_production = os.getenv("APP_ENV", Settings.app_env).lower() == "production"
     cloud_sql_connection_name = _optional_env("CLOUD_SQL_CONNECTION_NAME")
+    if is_production and not cloud_sql_connection_name:
+        cloud_sql_connection_name = DEFAULT_CLOUD_SQL_CONNECTION_NAME
+
     db_host = _optional_env("DB_HOST")
     db_port = _optional_env("DB_PORT") or "5432"
-    db_name = _optional_env("DB_NAME")
-    db_user = _optional_env("DB_USER")
+    db_name = _optional_env("DB_NAME") or DEFAULT_DB_NAME
+    db_user = _optional_env("DB_USER") or DEFAULT_DB_USER
     db_password = _optional_env("DB_PASSWORD")
     db_parts = {
-        "DB_NAME": db_name,
-        "DB_USER": db_user,
         "DB_PASSWORD": db_password,
     }
 
     if cloud_sql_connection_name:
-        _require_database_parts(db_parts, extra_message="CLOUD_SQL_CONNECTION_NAME requires DB_NAME, DB_USER, and DB_PASSWORD.")
+        _require_database_parts(db_parts, extra_message="Cloud SQL requires DB_PASSWORD.")
         return _cloud_sql_postgres_url(
             connection_name=cloud_sql_connection_name,
             db_name=db_name,
@@ -100,7 +111,7 @@ def _database_url() -> str:
         )
 
     if db_host:
-        _require_database_parts(db_parts, extra_message="DB_HOST requires DB_NAME, DB_USER, and DB_PASSWORD.")
+        _require_database_parts(db_parts, extra_message="DB_HOST requires DB_PASSWORD.")
         return _host_postgres_url(
             host=db_host,
             port=db_port,
@@ -108,9 +119,6 @@ def _database_url() -> str:
             db_user=db_user,
             db_password=db_password,
         )
-
-    if any(db_parts.values()):
-        _require_database_parts(db_parts)
 
     return Settings.database_url
 

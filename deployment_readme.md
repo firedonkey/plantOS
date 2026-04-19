@@ -46,7 +46,7 @@ Typical environment variables:
 PORT=8080
 APP_ENV=production
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
-PLANTLAB_SESSION_SECRET=replace_me
+APP_SECRET_KEY=replace_me
 GCS_BUCKET_NAME=plantlab-images
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 ```
@@ -335,7 +335,7 @@ docker run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e APP_ENV=production \
   -e DATABASE_URL="your_local_or_test_db_url" \
-  -e PLANTLAB_SESSION_SECRET="test-secret" \
+  -e APP_SECRET_KEY="test-secret" \
   -e GCS_BUCKET_NAME="dummy-bucket" \
   plantlab-backend
 ```
@@ -529,7 +529,7 @@ gcloud run deploy $SERVICE_NAME \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars APP_ENV=production,PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME=$BUCKET_NAME,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DB_NAME=$DB_NAME,DB_USER=$DB_USER,CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME \
-  --set-secrets PLANTLAB_SESSION_SECRET=app-secret-key:latest,DB_PASSWORD=db-password:latest \
+  --set-secrets APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest \
   --add-cloudsql-instances $CLOUD_SQL_CONNECTION_NAME
 ```
 
@@ -625,14 +625,14 @@ DB_USER=plantlab_user
 DB_PASSWORD=from-secret-manager
 DB_PORT=5432
 CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
-PLANTLAB_SESSION_SECRET=from-secret-manager
+APP_SECRET_KEY=from-secret-manager
 ```
 
 Cloud Run should use `CLOUD_SQL_CONNECTION_NAME` with the attached Cloud SQL
-instance, plus `DB_PASSWORD` injected from Secret Manager. `DB_HOST=136.112.180.16`
-is useful for direct PostgreSQL connections, such as a laptop migration test,
-but it is not needed by the Cloud Run service when the Cloud SQL socket is
-attached.
+instance, plus `DB_PASSWORD` and `APP_SECRET_KEY` injected from Secret Manager.
+`DB_HOST=136.112.180.16` is useful for direct PostgreSQL connections, such as a
+laptop migration test, but it is not needed by the Cloud Run service when the
+Cloud SQL socket is attached.
 
 ---
 
