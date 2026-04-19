@@ -146,7 +146,6 @@ def run_status_loop(
     status_interval: int,
     stop_event: threading.Event,
 ) -> None:
-    print(f"[platform] status heartbeat every {status_interval} second(s)")
     while not stop_event.is_set():
         try:
             send_status(platform_url, device_id, device_token, automation.actuator_status())
@@ -190,7 +189,6 @@ def send_status(platform_url: str, device_id: int, device_token: str, status: di
         timeout=10,
     )
     response.raise_for_status()
-    print(f"[platform] sent status: {response.json()}")
 
 
 def captured_image_path(record: dict, fallback_cycle) -> Path | None:
