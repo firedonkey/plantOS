@@ -121,3 +121,25 @@ def test_production_rejects_sqlite_database(monkeypatch):
         get_settings()
 
     clear_settings_cache()
+
+
+def test_production_startup_uses_migrations_not_create_all(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")
+    monkeypatch.setenv("PLANTLAB_SESSION_SECRET", "a-secure-production-session-secret")
+    clear_settings_cache()
+
+    from app.db import session as db_session
+
+    create_all_called = False
+
+    def fake_create_all(_engine):
+        nonlocal create_all_called
+        create_all_called = True
+
+    monkeypatch.setattr(db_session.Base.metadata, "create_all", fake_create_all)
+
+    db_session.init_db()
+
+    assert create_all_called is False
+    clear_settings_cache()

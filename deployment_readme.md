@@ -111,6 +111,15 @@ Examples:
 - Prisma / Knex / Sequelize migrations for Node
 - Django migrations
 
+PlantLab uses Alembic for the platform database schema. Before the first
+production deploy, and after each schema change, run this from the
+`platform/` directory with the same database environment variables Cloud Run
+will use:
+
+```bash
+alembic upgrade head
+```
+
 ---
 
 ## 3. Ask Codex to prepare the app for Google Cloud

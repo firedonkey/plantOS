@@ -20,6 +20,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db(database_url: str | None = None) -> None:
     selected_engine = get_engine(database_url) if database_url else engine
+    if database_url is None and get_settings().is_production:
+        # Production schema changes should run through Alembic migrations.
+        return
     Base.metadata.create_all(selected_engine)
     _apply_lightweight_sqlite_migrations(selected_engine)
 
