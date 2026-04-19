@@ -128,11 +128,19 @@ def get_command_for_device(session: Session, device_id: int, command_id: int) ->
 
 
 def acknowledge_command(session: Session, command: Command, payload: CommandAck) -> Command:
+    now = datetime.now(timezone.utc)
     command.status = payload.status
     command.message = payload.message
     command.light_on = payload.light_on
     command.pump_on = payload.pump_on
-    command.completed_at = datetime.now(timezone.utc)
+    command.completed_at = now
+    if payload.light_on is not None:
+        command.device.current_light_on = payload.light_on
+    if payload.pump_on is not None:
+        command.device.current_pump_on = payload.pump_on
+    if payload.light_on is not None or payload.pump_on is not None:
+        command.device.status_message = payload.message
+        command.device.status_updated_at = now
     session.add(command)
     session.commit()
     session.refresh(command)

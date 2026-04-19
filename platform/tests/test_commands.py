@@ -161,6 +161,13 @@ def test_device_can_poll_and_ack_pending_command():
         assert ack_response.json()["message"] == "light on"
         assert ack_response.json()["light_on"] is True
         assert ack_response.json()["pump_on"] is False
+
+        with client.testing_session_local() as session:
+            device = session.get(Device, device_id)
+            assert device.current_light_on is True
+            assert device.current_pump_on is False
+            assert device.status_message == "light on"
+            assert device.status_updated_at is not None
     finally:
         teardown_overrides()
 

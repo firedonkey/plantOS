@@ -191,6 +191,28 @@ def send_status(platform_url: str, device_id: int, device_token: str, status: di
     response.raise_for_status()
 
 
+def send_command_status(
+    platform_url: str,
+    device_id: int,
+    device_token: str,
+    state: dict,
+    message: str,
+) -> None:
+    try:
+        send_status(
+            platform_url,
+            device_id,
+            device_token,
+            {
+                "light_on": state.get("light_on"),
+                "pump_on": state.get("pump_on"),
+                "message": message,
+            },
+        )
+    except requests.RequestException as exc:
+        print(f"[platform] command status update failed: {exc}")
+
+
 def captured_image_path(record: dict, fallback_cycle) -> Path | None:
     image_path = record.get("image_path")
     if image_path:
@@ -231,6 +253,7 @@ def handle_pending_commands(
             message = execute_command(command, automation)
             executed_in = time.monotonic() - command_started_at
             state = command_ack_state(automation)
+            send_command_status(platform_url, device_id, device_token, state, message)
             ack_started_at = time.monotonic()
             acknowledge_command(
                 platform_url=platform_url,
