@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=cloud-run-static-20260419">
+    <link rel="stylesheet" href="/static/style.css?v=landing-20260419">
   </head>
-  <body>
+  <body class="landing-page">
     <header class="site-header">
       <a class="site-logo" href="/">PlantLab</a>
       <nav class="site-nav" aria-label="Account">
@@ -21,14 +21,124 @@
       </nav>
     </header>
 
-    <main>
-      <p class="eyebrow">Platform Development</p>
-      <h1>{{ app_name }}</h1>
-      <p>FastAPI is running. Version {{ version }}.</p>
-      {% if current_user %}
-      <a class="button" href="/devices">View devices</a>
-      {% endif %}
-      <a href="/api/health">Health check</a>
+    <main class="landing-main">
+      <section class="landing-hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Indoor Plant Intelligence</p>
+          <h1 id="hero-title">Watch every plant grow with sensors, images, and cloud control.</h1>
+          <p class="hero-subheadline">PlantLab connects a Raspberry Pi, moisture sensors, camera captures, and a clean cloud dashboard for calmer plant care.</p>
+          <div class="hero-actions">
+            {% if current_user %}
+            <a class="button primary-button" href="/devices">Open dashboard</a>
+            {% else %}
+            <a class="button primary-button" href="/login">Sign in with Google</a>
+            {% endif %}
+            <a class="button ghost-button" href="#how-it-works">See how it works</a>
+          </div>
+        </div>
+        <div class="product-panel" aria-label="PlantLab product preview">
+          <img src="https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1200&q=80" alt="Indoor plant leaves in soft light">
+          <div class="product-readout" aria-label="Latest plant status">
+            <span>Moisture</span>
+            <strong>42%</strong>
+            <span>Light</span>
+            <strong>On</strong>
+            <span>Last seen</span>
+            <strong>Now</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-section split-section" aria-labelledby="what-title">
+        <div>
+          <p class="eyebrow">What is PlantLab</p>
+          <h2 id="what-title">A small plant lab that starts at home.</h2>
+        </div>
+        <p>PlantLab turns a Raspberry Pi into a practical plant monitoring station. It keeps photos, sensor readings, and pump or light controls in one place, so each setup can grow from a simple experiment into a dependable care system.</p>
+      </section>
+
+      <section class="landing-section" aria-labelledby="features-title">
+        <div class="section-heading">
+          <p class="eyebrow">Core Capabilities</p>
+          <h2 id="features-title">Everything needed for the first real grow loop.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-kicker">Camera</span>
+            <h3>Visual Monitoring</h3>
+            <p>Capture plant images over time and review growth changes without opening a terminal.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-kicker">Sensors</span>
+            <h3>Sensor Tracking</h3>
+            <p>Follow moisture, temperature, humidity, pump state, and light state from one live view.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-kicker">Cloud</span>
+            <h3>Cloud Dashboard</h3>
+            <p>Send Raspberry Pi readings to Cloud Run, then check status and controls from any browser.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="landing-section" aria-labelledby="steps-title">
+        <div class="section-heading">
+          <p class="eyebrow">How it works</p>
+          <h2 id="steps-title">Three steps from plant to dashboard.</h2>
+        </div>
+        <div class="step-grid">
+          <article class="step-card">
+            <span>01</span>
+            <h3>Connect the Pi</h3>
+            <p>Attach the camera, sensors, relay, light, and pump to the local device code.</p>
+          </article>
+          <article class="step-card">
+            <span>02</span>
+            <h3>Send readings</h3>
+            <p>The Pi posts sensor data and images to the secure PlantLab backend.</p>
+          </article>
+          <article class="step-card">
+            <span>03</span>
+            <h3>Act with confidence</h3>
+            <p>Use the dashboard to review trends, check images, and control light or watering.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-section why-section" aria-labelledby="why-title">
+        <div>
+          <p class="eyebrow">Why PlantLab</p>
+          <h2 id="why-title">Built for hands-on growing, not black-box automation.</h2>
+        </div>
+        <div class="why-list">
+          <p>Readable Python on the device.</p>
+          <p>Cloud history without losing local debugging.</p>
+          <p>Controls that wait for hardware acknowledgement.</p>
+          <p>A path from mock data to real plants.</p>
+        </div>
+      </section>
+
+      <section class="landing-section vision-section" aria-labelledby="vision-title">
+        <p class="eyebrow">Future Vision</p>
+        <h2 id="vision-title">A care system that learns each plant's rhythm.</h2>
+        <p>Future PlantLab releases can add growth timelines, anomaly alerts, multi-plant rooms, smarter watering schedules, and AI-assisted plant notes.</p>
+      </section>
+
+      <section class="landing-cta" aria-labelledby="cta-title">
+        <h2 id="cta-title">Ready to check on your plants?</h2>
+        <p>Sign in, add a device, and let PlantLab keep the next reading close.</p>
+        {% if current_user %}
+        <a class="button primary-button" href="/devices">Open dashboard</a>
+        {% else %}
+        <a class="button primary-button" href="/login">Start with Google</a>
+        {% endif %}
+      </section>
     </main>
+
+    <footer class="landing-footer">
+      <span>PlantLab</span>
+      <span>Version {{ version }}</span>
+      <a href="/api/health">Health check</a>
+    </footer>
   </body>
 </html>
