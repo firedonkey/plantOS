@@ -46,7 +46,7 @@ Typical environment variables:
 PORT=8080
 APP_ENV=production
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
-SECRET_KEY=replace_me
+PLANTLAB_SESSION_SECRET=replace_me
 GCS_BUCKET_NAME=plantlab-images
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 ```
@@ -335,7 +335,7 @@ docker run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e APP_ENV=production \
   -e DATABASE_URL="your_local_or_test_db_url" \
-  -e SECRET_KEY="test-secret" \
+  -e PLANTLAB_SESSION_SECRET="test-secret" \
   -e GCS_BUCKET_NAME="dummy-bucket" \
   plantlab-backend
 ```
@@ -366,16 +366,17 @@ In the Google Cloud Console:
 2. Enable billing
 3. Note the **Project ID**
 
-You will use it in commands below as:
+For the current PlantLab Google Cloud project, use:
 
 ```bash
-PROJECT_ID=your-project-id
+PROJECT_ID=plantlab-493805
 REGION=us-central1
 SERVICE_NAME=plantlab-api
-DB_INSTANCE=plantlab-postgres
+DB_INSTANCE=plantlab
 DB_NAME=plantlab
 DB_USER=plantlab_user
-BUCKET_NAME=plantlab-images-your-project-id
+BUCKET_NAME=plantlab-images-garylu
+CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
 ```
 
 Pick a region close to your users. If you are in California, `us-west1` or `us-west2` may make sense, but `us-central1` is often commonly used.
@@ -513,8 +514,8 @@ This uploads your code, builds the Docker image, and pushes it to Artifact Regis
 First get the Cloud SQL connection name:
 
 ```bash
-CLOUDSQL_CONNECTION_NAME=$(gcloud sql instances describe $DB_INSTANCE --format='value(connectionName)')
-echo $CLOUDSQL_CONNECTION_NAME
+CLOUD_SQL_CONNECTION_NAME=$(gcloud sql instances describe $DB_INSTANCE --format='value(connectionName)')
+echo $CLOUD_SQL_CONNECTION_NAME
 ```
 
 Deploy:
@@ -525,9 +526,9 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,GCS_BUCKET_NAME=$BUCKET_NAME,GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
-  --set-secrets SECRET_KEY=app-secret-key:latest \
-  --add-cloudsql-instances $CLOUDSQL_CONNECTION_NAME
+  --set-env-vars APP_ENV=production,PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME=$BUCKET_NAME,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DB_NAME=$DB_NAME,DB_USER=$DB_USER,CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME \
+  --set-secrets PLANTLAB_SESSION_SECRET=app-secret-key:latest,DB_PASSWORD=db-password:latest \
+  --add-cloudsql-instances $CLOUD_SQL_CONNECTION_NAME
 ```
 
 ### Important note about database connection strings
@@ -614,13 +615,14 @@ A good production setup might use these:
 ```env
 APP_ENV=production
 PORT=8080
-GOOGLE_CLOUD_PROJECT=your-project-id
-GCS_BUCKET_NAME=plantlab-images-your-project-id
+GOOGLE_CLOUD_PROJECT=plantlab-493805
+PLANTLAB_STORAGE_BACKEND=gcs
+GCS_BUCKET_NAME=plantlab-images-garylu
 DB_NAME=plantlab
 DB_USER=plantlab_user
 DB_PASSWORD=from-secret-manager
-CLOUD_SQL_CONNECTION_NAME=your-project-id:your-region:plantlab-postgres
-SECRET_KEY=from-secret-manager
+CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
+PLANTLAB_SESSION_SECRET=from-secret-manager
 ```
 
 If your code prefers a single `DATABASE_URL`, ask Codex to build it from components in production.
