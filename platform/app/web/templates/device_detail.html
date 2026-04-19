@@ -281,6 +281,8 @@
           if (input.disabled) {
             return;
           }
+          pendingLightState = input.checked ? "on" : "off";
+          renderLightSwitch(pendingLightState, true);
           input.closest("form").requestSubmit();
         });
       });
@@ -299,6 +301,7 @@
       let activeCommandKeys = new Set({{ active_command_keys | tojson }});
       let summaryRefreshTimer = null;
       let fastRefreshUntil = 0;
+      let pendingLightState = null;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
         button.dataset.label = button.textContent;
@@ -327,15 +330,17 @@
         if (!reading) {
           return;
         }
+        const activeLightCommand = Array.from(activeCommandKeys).some((key) => key.startsWith("light:"));
+        const lightValue = pendingLightState && activeLightCommand ? pendingLightState : reading.light;
         setField("moisture", reading.moisture);
         setField("temperature", reading.temperature);
         setField("humidity", reading.humidity);
         setField("last_reading", reading.last_reading);
-        setField("light", reading.light);
+        setField("light", lightValue);
         setField("pump", reading.pump);
-        setField("light_state", titleCase(reading.light));
+        setField("light_state", titleCase(lightValue));
         setField("pump_state", titleCase(reading.pump));
-        updateLightSwitch(reading.light);
+        updateLightSwitch(lightValue);
       }
 
       function updateImages(payload) {
@@ -372,6 +377,9 @@
         }
         const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
         activeCommandKeys = new Set(commands.filter((command) => ["Waiting", "Sent"].includes(command.status)).map((command) => command.key));
+        if (!Array.from(activeCommandKeys).some((key) => key.startsWith("light:"))) {
+          pendingLightState = null;
+        }
         updateCommandButtons();
         if (activityList.dataset.signature === signature) {
           return;
@@ -422,6 +430,11 @@
       }
 
       function updateLightSwitch(lightValue) {
+        renderLightSwitch(lightValue, false);
+        updateCommandButtons();
+      }
+
+      function renderLightSwitch(lightValue, pending) {
         const isOn = `${lightValue}`.toLowerCase() === "on";
         const action = isOn ? "off" : "on";
         const key = `light:${action}:`;
@@ -441,12 +454,12 @@
           }
           if (toggle) {
             toggle.classList.toggle("is-on", isOn);
+            toggle.classList.toggle("is-pending", pending);
           }
           if (stateLabel) {
             stateLabel.textContent = isOn ? "ON" : "OFF";
           }
         });
-        updateCommandButtons();
       }
 
       function setButtonLabel(button, label) {

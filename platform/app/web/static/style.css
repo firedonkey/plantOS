@@ -742,6 +742,10 @@ input {
   cursor: default;
 }
 
+.light-toggle-switch.is-pending .light-toggle-slider {
+  opacity: 0.86;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
