@@ -7,7 +7,7 @@ from app.models import Command, CommandStatus
 from app.schemas.commands import CommandAck, CommandCreate
 
 
-DEFAULT_COMMAND_TIMEOUT_SECONDS = 60
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 20
 
 
 def create_command(session: Session, device_id: int, payload: CommandCreate) -> Command:

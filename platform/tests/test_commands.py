@@ -11,6 +11,11 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Command, Device, User
 from app.models.base import Base
+from app.services.commands import DEFAULT_COMMAND_TIMEOUT_SECONDS
+
+
+def test_default_command_timeout_is_20_seconds():
+    assert DEFAULT_COMMAND_TIMEOUT_SECONDS == 20
 
 
 def build_client_with_devices() -> tuple[TestClient, int, int]:
