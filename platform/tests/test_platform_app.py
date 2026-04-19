@@ -10,6 +10,10 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
+    root_response = client.get("/health")
+    assert root_response.status_code == 200
+    assert root_response.json()["status"] == "ok"
+
 
 def test_index_page():
     client = TestClient(app)
