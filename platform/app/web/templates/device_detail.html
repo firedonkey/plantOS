@@ -186,7 +186,6 @@
               {% set light_is_on = latest_reading and latest_reading.light_on %}
               <div class="control-group-heading">
                 <h3>Light</h3>
-                <span class="state-pill" data-field="light_state">{% if latest_reading and latest_reading.light_on is not none %}{% if latest_reading.light_on %}On{% else %}Off{% endif %}{% else %}Unknown{% endif %}</span>
               </div>
               <p>Switch the grow light during setup or quick checks.</p>
               <div class="command-actions">
