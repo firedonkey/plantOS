@@ -79,16 +79,38 @@ def _database_url() -> str:
         return _normalize_database_url(explicit_url)
 
     cloud_sql_connection_name = _optional_env("CLOUD_SQL_CONNECTION_NAME")
+    db_host = _optional_env("DB_HOST")
+    db_port = _optional_env("DB_PORT") or "5432"
     db_name = _optional_env("DB_NAME")
     db_user = _optional_env("DB_USER")
     db_password = _optional_env("DB_PASSWORD")
-    if cloud_sql_connection_name and db_name and db_user and db_password:
+    db_parts = {
+        "DB_NAME": db_name,
+        "DB_USER": db_user,
+        "DB_PASSWORD": db_password,
+    }
+
+    if cloud_sql_connection_name:
+        _require_database_parts(db_parts, extra_message="CLOUD_SQL_CONNECTION_NAME requires DB_NAME, DB_USER, and DB_PASSWORD.")
         return _cloud_sql_postgres_url(
             connection_name=cloud_sql_connection_name,
             db_name=db_name,
             db_user=db_user,
             db_password=db_password,
         )
+
+    if db_host:
+        _require_database_parts(db_parts, extra_message="DB_HOST requires DB_NAME, DB_USER, and DB_PASSWORD.")
+        return _host_postgres_url(
+            host=db_host,
+            port=db_port,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password,
+        )
+
+    if any(db_parts.values()):
+        _require_database_parts(db_parts)
 
     return Settings.database_url
 
@@ -115,3 +137,26 @@ def _cloud_sql_postgres_url(
     database = quote(db_name)
     socket_path = quote(f"/cloudsql/{connection_name}", safe="/:")
     return f"postgresql+psycopg://{user}:{password}@/{database}?host={socket_path}"
+
+
+def _host_postgres_url(
+    *,
+    host: str,
+    port: str,
+    db_name: str,
+    db_user: str,
+    db_password: str,
+) -> str:
+    user = quote(db_user)
+    password = quote(db_password)
+    database = quote(db_name)
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
+
+
+def _require_database_parts(db_parts: dict[str, str | None], extra_message: str | None = None) -> None:
+    missing = [name for name, value in db_parts.items() if not value]
+    if missing:
+        message = f"Missing database environment variable(s): {', '.join(missing)}."
+        if extra_message:
+            message = f"{message} {extra_message}"
+        raise ValueError(message)

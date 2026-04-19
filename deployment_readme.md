@@ -376,6 +376,7 @@ DB_INSTANCE=plantlab
 DB_NAME=plantlab
 DB_USER=plantlab_user
 DB_HOST=136.112.180.16
+DB_PORT=5432
 BUCKET_NAME=plantlab-images-garylu
 CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
 ```
@@ -622,14 +623,16 @@ GCS_BUCKET_NAME=plantlab-images-garylu
 DB_NAME=plantlab
 DB_USER=plantlab_user
 DB_PASSWORD=from-secret-manager
+DB_PORT=5432
 CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
 PLANTLAB_SESSION_SECRET=from-secret-manager
 ```
 
 Cloud Run should use `CLOUD_SQL_CONNECTION_NAME` with the attached Cloud SQL
-instance. `DB_HOST=136.112.180.16` is useful for direct PostgreSQL connections,
-such as a laptop migration test, but it is not needed by the Cloud Run service
-when the Cloud SQL socket is attached.
+instance, plus `DB_PASSWORD` injected from Secret Manager. `DB_HOST=136.112.180.16`
+is useful for direct PostgreSQL connections, such as a laptop migration test,
+but it is not needed by the Cloud Run service when the Cloud SQL socket is
+attached.
 
 ---
 

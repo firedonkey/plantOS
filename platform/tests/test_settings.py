@@ -96,6 +96,7 @@ def test_cloud_sql_env_builds_socket_database_url(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("PLANTLAB_DATABASE_URL", raising=False)
     monkeypatch.setenv("CLOUD_SQL_CONNECTION_NAME", "plantlab-project:us-west1:plantlab-postgres")
+    monkeypatch.setenv("DB_HOST", "136.112.180.16")
     monkeypatch.setenv("DB_NAME", "plantlab")
     monkeypatch.setenv("DB_USER", "plantlab_user")
     monkeypatch.setenv("DB_PASSWORD", "secret password")
@@ -107,6 +108,41 @@ def test_cloud_sql_env_builds_socket_database_url(monkeypatch):
         "postgresql+psycopg://plantlab_user:secret%20password@/plantlab"
         "?host=/cloudsql/plantlab-project:us-west1:plantlab-postgres"
     )
+    clear_settings_cache()
+
+
+def test_database_host_env_builds_direct_postgres_url(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("PLANTLAB_DATABASE_URL", raising=False)
+    monkeypatch.delenv("CLOUD_SQL_CONNECTION_NAME", raising=False)
+    monkeypatch.setenv("DB_HOST", "136.112.180.16")
+    monkeypatch.setenv("DB_PORT", "5433")
+    monkeypatch.setenv("DB_NAME", "plantlab")
+    monkeypatch.setenv("DB_USER", "plantlab_user")
+    monkeypatch.setenv("DB_PASSWORD", "secret password")
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.database_url == (
+        "postgresql+psycopg://plantlab_user:secret%20password@136.112.180.16:5433/plantlab"
+    )
+    clear_settings_cache()
+
+
+def test_partial_database_env_is_rejected(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("PLANTLAB_DATABASE_URL", raising=False)
+    monkeypatch.delenv("CLOUD_SQL_CONNECTION_NAME", raising=False)
+    monkeypatch.setenv("DB_HOST", "136.112.180.16")
+    monkeypatch.setenv("DB_NAME", "plantlab")
+    monkeypatch.delenv("DB_USER", raising=False)
+    monkeypatch.delenv("DB_PASSWORD", raising=False)
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match="DB_USER, DB_PASSWORD"):
+        get_settings()
+
     clear_settings_cache()
 
 
