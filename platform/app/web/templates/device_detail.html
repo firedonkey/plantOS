@@ -283,6 +283,7 @@
           }
           pendingLightState = input.checked ? "on" : "off";
           renderLightSwitch(pendingLightState, true);
+          prepareLightCommand(input.closest("form"), pendingLightState);
           input.closest("form").requestSubmit();
         });
       });
@@ -432,6 +433,22 @@
       function updateLightSwitch(lightValue) {
         renderLightSwitch(lightValue, false);
         updateCommandButtons();
+      }
+
+      function prepareLightCommand(form, action) {
+        if (!form) {
+          return;
+        }
+        const key = `light:${action}:`;
+        const actionInput = form.querySelector("[data-light-action]");
+        const input = form.querySelector("[data-light-switch]");
+        form.dataset.commandKey = key;
+        if (actionInput) {
+          actionInput.value = action;
+        }
+        if (input) {
+          input.dataset.commandKey = key;
+        }
       }
 
       function renderLightSwitch(lightValue, pending) {
