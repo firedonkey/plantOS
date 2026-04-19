@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ device.name }} - {{ app_name }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') ~ '?v=light-toggle-20260418' }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') ~ '?v=light-toggle-pending-20260418' }}">
   </head>
   <body class="device-page">
     <header class="site-header">
@@ -281,7 +281,14 @@
           if (input.disabled) {
             return;
           }
-          pendingLightState = input.checked ? "on" : "off";
+          const nextLightState = input.checked ? "on" : "off";
+          const commandKey = `light:${nextLightState}:`;
+          pendingLightCommand = {
+            key: commandKey,
+            state: nextLightState,
+            startedAt: Date.now(),
+          };
+          pendingLightState = nextLightState;
           renderLightSwitch(pendingLightState, true);
           prepareLightCommand(input.closest("form"), pendingLightState);
           input.closest("form").requestSubmit();
@@ -303,6 +310,8 @@
       let summaryRefreshTimer = null;
       let fastRefreshUntil = 0;
       let pendingLightState = null;
+      let pendingLightCommand = null;
+      const lightCommandTimeoutMs = 20000;
 
       document.querySelectorAll("[data-command-button]").forEach((button) => {
         button.dataset.label = button.textContent;
@@ -331,8 +340,8 @@
         if (!reading) {
           return;
         }
-        const activeLightCommand = Array.from(activeCommandKeys).some((key) => key.startsWith("light:"));
-        const lightValue = pendingLightState && activeLightCommand ? pendingLightState : reading.light;
+        const pendingLightValue = activePendingLightState();
+        const lightValue = pendingLightValue || reading.light;
         setField("moisture", reading.moisture);
         setField("temperature", reading.temperature);
         setField("humidity", reading.humidity);
@@ -378,9 +387,7 @@
         }
         const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
         activeCommandKeys = new Set(commands.filter((command) => ["Waiting", "Sent"].includes(command.status)).map((command) => command.key));
-        if (!Array.from(activeCommandKeys).some((key) => key.startsWith("light:"))) {
-          pendingLightState = null;
-        }
+        reconcilePendingLightCommand(commands);
         updateCommandButtons();
         if (activityList.dataset.signature === signature) {
           return;
@@ -431,8 +438,37 @@
       }
 
       function updateLightSwitch(lightValue) {
-        renderLightSwitch(lightValue, false);
+        const pendingLightValue = activePendingLightState();
+        renderLightSwitch(pendingLightValue || lightValue, Boolean(pendingLightValue));
         updateCommandButtons();
+      }
+
+      function activePendingLightState() {
+        if (!pendingLightCommand) {
+          return null;
+        }
+        if (Date.now() - pendingLightCommand.startedAt > lightCommandTimeoutMs) {
+          pendingLightCommand = null;
+          pendingLightState = null;
+          return null;
+        }
+        return pendingLightCommand.state;
+      }
+
+      function reconcilePendingLightCommand(commands) {
+        if (!pendingLightCommand) {
+          pendingLightState = null;
+          return;
+        }
+        const matchingCommand = commands.find((command) => command.key === pendingLightCommand.key);
+        if (!matchingCommand) {
+          activePendingLightState();
+          return;
+        }
+        if (["Done", "Timed out", "Failed"].includes(matchingCommand.status)) {
+          pendingLightCommand = null;
+          pendingLightState = null;
+        }
       }
 
       function prepareLightCommand(form, action) {
@@ -497,9 +533,9 @@
           }
           const payload = await response.json();
           updateConnection(payload.connection);
+          updateActivity(payload.command_activity);
           updateReading(payload.latest_reading);
           updateImages(payload);
-          updateActivity(payload.command_activity);
         } catch (error) {
           console.debug("Dashboard summary refresh skipped", error);
         } finally {
