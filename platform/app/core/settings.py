@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -35,6 +36,8 @@ class Settings:
         return self.app_env == "production"
 
     def validate(self) -> None:
+        if self.is_production and self.database_url.startswith("sqlite"):
+            raise ValueError("PostgreSQL DATABASE_URL or PLANTLAB_DATABASE_URL is required in production.")
         if self.storage_backend not in {"local", "gcs"}:
             raise ValueError("PLANTLAB_STORAGE_BACKEND must be 'local' or 'gcs'.")
         if self.storage_backend == "local" and not self.upload_dir:
@@ -51,7 +54,7 @@ class Settings:
 def get_settings() -> Settings:
     settings = Settings(
         app_env=os.getenv("APP_ENV", Settings.app_env).lower(),
-        database_url=os.getenv("PLANTLAB_DATABASE_URL", Settings.database_url),
+        database_url=_database_url(),
         storage_backend=os.getenv("PLANTLAB_STORAGE_BACKEND", Settings.storage_backend).lower(),
         upload_dir=os.getenv("PLANTLAB_UPLOAD_DIR", Settings.upload_dir),
         gcs_bucket_name=_optional_env("GCS_BUCKET_NAME"),
@@ -68,3 +71,47 @@ def _optional_env(name: str) -> str | None:
     if value is None or value.strip() == "":
         return None
     return value
+
+
+def _database_url() -> str:
+    explicit_url = _optional_env("PLANTLAB_DATABASE_URL") or _optional_env("DATABASE_URL")
+    if explicit_url:
+        return _normalize_database_url(explicit_url)
+
+    cloud_sql_connection_name = _optional_env("CLOUD_SQL_CONNECTION_NAME")
+    db_name = _optional_env("DB_NAME")
+    db_user = _optional_env("DB_USER")
+    db_password = _optional_env("DB_PASSWORD")
+    if cloud_sql_connection_name and db_name and db_user and db_password:
+        return _cloud_sql_postgres_url(
+            connection_name=cloud_sql_connection_name,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password,
+        )
+
+    return Settings.database_url
+
+
+def _normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql+psycopg://"):
+        return database_url
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    return database_url
+
+
+def _cloud_sql_postgres_url(
+    *,
+    connection_name: str,
+    db_name: str,
+    db_user: str,
+    db_password: str,
+) -> str:
+    user = quote(db_user)
+    password = quote(db_password)
+    database = quote(db_name)
+    socket_path = quote(f"/cloudsql/{connection_name}", safe="/:")
+    return f"postgresql+psycopg://{user}:{password}@/{database}?host={socket_path}"
