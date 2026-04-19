@@ -1,10 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from io import BytesIO
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 from fastapi import UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.core.settings import Settings
 
@@ -72,3 +76,53 @@ def image_src(path: str) -> str:
     if path.startswith(("http://", "https://", "/")):
         return path
     return f"/{path}"
+
+
+def proxied_image_src(image_id: int) -> str:
+    return f"/api/images/{image_id}/content"
+
+
+def image_response(path: str, settings: Settings) -> Response:
+    if settings.storage_backend == "gcs" or _is_gcs_url(path):
+        bucket_name, object_name = _gcs_object_from_path(path, settings)
+        return _gcs_image_response(bucket_name, object_name)
+
+    media_type, _ = guess_type(path)
+    return FileResponse(path, media_type=media_type or "application/octet-stream")
+
+
+def _gcs_image_response(bucket_name: str, object_name: str) -> Response:
+    try:
+        from google.cloud import storage
+    except ImportError as exc:
+        raise RuntimeError("google-cloud-storage is required for GCS image reads.") from exc
+
+    client = storage.Client()
+    blob = client.bucket(bucket_name).blob(object_name)
+    try:
+        data = blob.download_as_bytes()
+    except Exception as exc:
+        raise RuntimeError("GCS image could not be read.") from exc
+    media_type = blob.content_type or guess_type(object_name)[0] or "application/octet-stream"
+    return StreamingResponse(BytesIO(data), media_type=media_type)
+
+
+def _is_gcs_url(path: str) -> bool:
+    return path.startswith("gs://") or "storage.googleapis.com/" in path
+
+
+def _gcs_object_from_path(path: str, settings: Settings) -> tuple[str, str]:
+    if path.startswith("gs://"):
+        parsed = urlparse(path)
+        return parsed.netloc, unquote(parsed.path.lstrip("/"))
+
+    parsed = urlparse(path)
+    if parsed.netloc == "storage.googleapis.com":
+        parts = parsed.path.lstrip("/").split("/", 1)
+        if len(parts) != 2:
+            raise ValueError("GCS image URL is missing bucket or object path.")
+        return parts[0], unquote(parts[1])
+
+    if not settings.gcs_bucket_name:
+        raise ValueError("GCS_BUCKET_NAME is required to read GCS image paths.")
+    return settings.gcs_bucket_name, path.lstrip("/")

@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import Device, User
+from app.models import Device, Image, User
 from app.models.base import Base
 from app.services.storage import image_src
 
@@ -137,6 +137,48 @@ def test_upload_image_accepts_device_token(tmp_path, monkeypatch):
 
         assert response.status_code == 201
         assert response.json()["device_id"] == device_id
+    finally:
+        teardown_overrides()
+
+
+def test_image_content_serves_owned_local_image(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    try:
+        upload = client.post(
+            "/api/image",
+            data={"device_id": str(device_id)},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+        )
+        image_id = upload.json()["id"]
+
+        response = client.get(f"/api/images/{image_id}/content")
+
+        assert response.status_code == 200
+        assert response.content == b"fake-jpeg"
+        assert response.headers["content-type"].startswith("image/jpeg")
+    finally:
+        teardown_overrides()
+
+
+def test_image_content_rejects_other_users_image(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, _, other_device_id = build_client_with_device(str(tmp_path))
+    try:
+        image_path = tmp_path / "other.jpg"
+        image_path.write_bytes(b"other-jpeg")
+        with next(app.dependency_overrides[get_session]()) as session:
+            image = Image(device_id=other_device_id, path=str(image_path))
+            session.add(image)
+            session.commit()
+            session.refresh(image)
+            image_id = image.id
+
+        response = client.get(f"/api/images/{image_id}/content")
+
+        assert response.status_code == 404
     finally:
         teardown_overrides()
 

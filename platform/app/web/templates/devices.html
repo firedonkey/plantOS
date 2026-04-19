@@ -28,7 +28,7 @@
         {% set device = card.device %}
         <article class="device-card">
           {% if card.thumbnail_path %}
-          <img class="device-card-image" src="/{{ card.thumbnail_path }}" alt="Latest plant capture for {{ device.name }}">
+          <img class="device-card-image" src="{{ card.thumbnail_path }}" alt="Latest plant capture for {{ device.name }}">
           {% else %}
           <div class="device-card-image empty-image">No image yet</div>
           {% endif %}

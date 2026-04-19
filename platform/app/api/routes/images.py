@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_device_from_token, get_optional_current_user
+from app.api.deps import get_current_user, get_device_from_token, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
-from app.models import User
+from app.models import Device, Image, User
 from app.schemas.images import ImageRead
 from app.services.devices import get_device_for_user
 from app.services.images import save_uploaded_image
+from app.services.storage import image_response
 
 
 router = APIRouter(prefix="/api", tags=["images"])
@@ -41,3 +43,24 @@ def upload_image(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/images/{image_id}/content")
+def image_content(
+    image_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    image = session.scalars(
+        select(Image)
+        .join(Device)
+        .where(Image.id == image_id)
+        .where(Device.user_id == current_user.id)
+    ).first()
+    if image is None:
+        raise HTTPException(status_code=404, detail="Image not found.")
+
+    try:
+        return image_response(image.path, get_settings())
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Image content not found.") from exc

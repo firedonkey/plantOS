@@ -22,7 +22,7 @@ from app.services.readings import (
     get_latest_reading_for_device,
     list_recent_readings_for_device,
 )
-from app.services.storage import image_src
+from app.services.storage import proxied_image_src
 from app.services.users import get_user_by_id
 
 
@@ -151,7 +151,7 @@ def device_detail_page(
             "recent_commands": recent_commands,
             "command_activity": command_activity,
             "connection": connection,
-            "image_src": image_src,
+            "image_src": proxied_image_src,
             "reading_chart": reading_chart,
             "chart_range": chart_range,
             "chart_ranges": CHART_RANGES,
@@ -320,7 +320,7 @@ def _device_overview_card(session: Session, device) -> dict:
     return {
         "device": device,
         "connection": connection,
-        "thumbnail_path": latest_image.path if latest_image is not None else None,
+        "thumbnail_path": proxied_image_src(latest_image.id) if latest_image is not None else None,
         "moisture": _metric_value(latest_reading.moisture if latest_reading else None, "%"),
         "temperature": _metric_value(latest_reading.temperature if latest_reading else None, " C"),
         "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
@@ -390,7 +390,7 @@ def _image_summary(image) -> dict | None:
     if image is None:
         return None
     return {
-        "src": image_src(image.path),
+        "src": proxied_image_src(image.id),
         "path": image.path,
         "timestamp": image.timestamp.strftime("%b %-d, %-I:%M %p"),
         "alt": "Plant capture",
