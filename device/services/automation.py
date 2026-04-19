@@ -63,6 +63,16 @@ class PlantAutomation:
         override_seconds = int(self.config["actuators"]["light"].get("manual_override_seconds", 3600))
         self.light_manual_override_until = datetime.now() + timedelta(seconds=override_seconds)
 
+    def actuator_status(self, message: str = "device online") -> dict:
+        now = datetime.now()
+        if not self._light_manual_override_active(now):
+            self.light.apply_schedule(now)
+        return {
+            "light_on": self.light.is_on,
+            "pump_on": self.pump.is_on,
+            "message": message,
+        }
+
     def status_snapshot(self, pump_event: str = "status_update") -> dict:
         """Read current state without applying schedules, watering, or camera capture."""
         now = datetime.now()

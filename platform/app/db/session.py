@@ -34,6 +34,14 @@ def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
             device_columns = {column["name"] for column in inspector.get_columns("devices")}
             if "api_token" not in device_columns:
                 connection.execute(text("ALTER TABLE devices ADD COLUMN api_token VARCHAR(80)"))
+            if "current_light_on" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN current_light_on BOOLEAN"))
+            if "current_pump_on" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN current_pump_on BOOLEAN"))
+            if "status_message" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN status_message VARCHAR(160)"))
+            if "status_updated_at" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN status_updated_at DATETIME"))
         if "sensor_readings" in table_names:
             reading_columns = {column["name"] for column in inspector.get_columns("sensor_readings")}
             if "light_on" not in reading_columns:

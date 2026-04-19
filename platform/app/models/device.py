@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -23,6 +23,10 @@ class Device(Base):
     location: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     plant_type: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     api_token: Mapped[Optional[str]] = mapped_column(String(80), unique=True, index=True, default=None)
+    current_light_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    current_pump_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    status_message: Mapped[Optional[str]] = mapped_column(String(160), default=None)
+    status_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

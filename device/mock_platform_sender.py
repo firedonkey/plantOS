@@ -10,6 +10,7 @@ from platform_client import (
     handle_pending_commands,
     next_sleep_seconds,
     run_command_poll_loop,
+    run_status_loop,
     send_image,
     send_reading,
 )
@@ -25,6 +26,7 @@ def main() -> None:
     parser.add_argument("--interval", type=int, help="Seconds between mock sends. Alias for --send-interval.")
     parser.add_argument("--send-interval", type=int, help="Seconds between mock reading uploads.")
     parser.add_argument("--command-interval", type=int, help="Seconds between command polls.")
+    parser.add_argument("--status-interval", type=int, help="Seconds between mock actuator status heartbeats.")
     parser.add_argument("--once", action="store_true", help="Send one mock reading and exit.")
     parser.add_argument(
         "--image-every",
@@ -46,6 +48,7 @@ def main() -> None:
     device_token = args.device_token or platform_config.get("device_token")
     send_interval = int(args.send_interval or args.interval or platform_config.get("send_interval_seconds") or 10)
     command_interval = int(args.command_interval or platform_config.get("command_poll_interval_seconds") or 2)
+    status_interval = int(args.status_interval or platform_config.get("status_interval_seconds") or 10)
 
     if not device_id or not device_token:
         raise SystemExit("Set --device-id and --device-token, or add them under platform: in config.yaml.")
@@ -56,6 +59,7 @@ def main() -> None:
 
     stop_event = threading.Event()
     command_thread = None
+    status_thread = None
     try:
         if not args.skip_commands and not args.once:
             command_thread = threading.Thread(
@@ -64,6 +68,12 @@ def main() -> None:
                 daemon=True,
             )
             command_thread.start()
+            status_thread = threading.Thread(
+                target=run_status_loop,
+                args=(platform_url, int(device_id), str(device_token), automation, status_interval, stop_event),
+                daemon=True,
+            )
+            status_thread.start()
 
         cycle = 0
         next_send_at = 0.0
@@ -91,6 +101,8 @@ def main() -> None:
         stop_event.set()
         if command_thread is not None:
             command_thread.join(timeout=5)
+        if status_thread is not None:
+            status_thread.join(timeout=5)
         automation.close()
 
 

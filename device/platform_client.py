@@ -28,6 +28,7 @@ def main() -> None:
     parser.add_argument("--interval", type=int, help="Seconds between sensor sends. Alias for --send-interval.")
     parser.add_argument("--send-interval", type=int, help="Seconds between sensor reading uploads.")
     parser.add_argument("--command-interval", type=int, help="Seconds between command polls.")
+    parser.add_argument("--status-interval", type=int, help="Seconds between lightweight actuator status heartbeats.")
     parser.add_argument("--once", action="store_true", help="Send one reading and exit.")
     parser.add_argument(
         "--image-every",
@@ -48,6 +49,7 @@ def main() -> None:
     device_token = args.device_token or platform_config.get("device_token")
     send_interval = int(args.send_interval or args.interval or platform_config.get("send_interval_seconds") or 10)
     command_interval = int(args.command_interval or platform_config.get("command_poll_interval_seconds") or 2)
+    status_interval = int(args.status_interval or platform_config.get("status_interval_seconds") or 10)
 
     if not device_id or not device_token:
         raise SystemExit("Set --device-id and --device-token, or add them under platform: in config.yaml.")
@@ -58,6 +60,7 @@ def main() -> None:
 
     stop_event = threading.Event()
     command_thread = None
+    status_thread = None
     try:
         if not args.skip_commands and not args.once:
             command_thread = threading.Thread(
@@ -66,6 +69,12 @@ def main() -> None:
                 daemon=True,
             )
             command_thread.start()
+            status_thread = threading.Thread(
+                target=run_status_loop,
+                args=(platform_url, int(device_id), str(device_token), automation, status_interval, stop_event),
+                daemon=True,
+            )
+            status_thread.start()
 
         cycle = 0
         next_send_at = 0.0
@@ -97,6 +106,8 @@ def main() -> None:
         stop_event.set()
         if command_thread is not None:
             command_thread.join(timeout=5)
+        if status_thread is not None:
+            status_thread.join(timeout=5)
         automation.close()
 
 
@@ -127,6 +138,25 @@ def run_command_poll_loop(
         stop_event.wait(command_interval)
 
 
+def run_status_loop(
+    platform_url: str,
+    device_id: int,
+    device_token: str,
+    automation: PlantAutomation,
+    status_interval: int,
+    stop_event: threading.Event,
+) -> None:
+    print(f"[platform] status heartbeat every {status_interval} second(s)")
+    while not stop_event.is_set():
+        try:
+            send_status(platform_url, device_id, device_token, automation.actuator_status())
+        except requests.RequestException as exc:
+            print(f"[platform] status heartbeat failed: {exc}")
+        except Exception as exc:
+            print(f"[platform] status heartbeat skipped: {exc}")
+        stop_event.wait(status_interval)
+
+
 def send_reading(platform_url: str, device_id: int, device_token: str, record: dict) -> None:
     payload = {
         "device_id": device_id,
@@ -146,6 +176,21 @@ def send_reading(platform_url: str, device_id: int, device_token: str, record: d
     )
     response.raise_for_status()
     print(f"[platform] sent reading: {response.json()}")
+
+
+def send_status(platform_url: str, device_id: int, device_token: str, status: dict) -> None:
+    response = requests.post(
+        f"{platform_url}/api/devices/{device_id}/status",
+        json={
+            "light_on": status.get("light_on"),
+            "pump_on": status.get("pump_on"),
+            "message": status.get("message"),
+        },
+        headers={"X-Device-Token": device_token},
+        timeout=10,
+    )
+    response.raise_for_status()
+    print(f"[platform] sent status: {response.json()}")
 
 
 def captured_image_path(record: dict, fallback_cycle) -> Path | None:

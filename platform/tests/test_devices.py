@@ -241,7 +241,49 @@ def test_device_summary_uses_command_ack_state_without_new_sensor_reading():
         teardown_overrides()
 
 
+def test_device_status_heartbeat_overrides_stale_reading_state():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device = create_response.json()
+        device_id = device["id"]
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 41.0,
+                "temperature": 23.4,
+                "humidity": 52.5,
+                "light_on": False,
+                "pump_on": False,
+            },
+        )
+        assert data_response.status_code == 201
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        status_response = client.post(
+            f"/api/devices/{device_id}/status",
+            json={"light_on": True, "pump_on": False, "message": "device online"},
+            headers={"X-Device-Token": device["api_token"]},
+        )
+        assert status_response.status_code == 200
+
+        app.dependency_overrides[get_current_user] = lambda: User(id=1, email="grower@example.com", name="Grower")
+        app.dependency_overrides[get_optional_current_user] = app.dependency_overrides[get_current_user]
+        response = client.get(f"/devices/{device_id}/summary.json")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["latest_reading"]["light"] == "on"
+        assert payload["latest_reading"]["pump"] == "off"
+        assert payload["connection"]["source"] == "Last seen from device online"
+    finally:
+        teardown_overrides()
+
+
 def test_latest_device_activity_uses_reading_image_and_device_command_timestamps():
+    device = SimpleNamespace(status_updated_at=None, status_message=None)
     reading = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 0, tzinfo=timezone.utc))
     image = SimpleNamespace(timestamp=datetime(2026, 4, 13, 19, 5, tzinfo=timezone.utc))
     command = SimpleNamespace(
@@ -249,7 +291,7 @@ def test_latest_device_activity_uses_reading_image_and_device_command_timestamps
         completed_at=datetime(2026, 4, 13, 19, 10, tzinfo=timezone.utc),
     )
 
-    activity = _latest_device_activity(reading, image, [command])
+    activity = _latest_device_activity(device, reading, image, [command])
 
     assert activity is not None
     assert activity["source"] == "command"

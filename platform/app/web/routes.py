@@ -131,7 +131,7 @@ def device_detail_page(
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     latest_image = recent_images[0] if recent_images else None
-    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
     reading_chart = _reading_chart(recent_readings, max_points=MAX_CHART_POINTS)
     command_activity = [_command_activity_item(command) for command in recent_commands[:8]]
@@ -181,13 +181,13 @@ def device_summary_json(
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     latest_image = recent_images[0] if recent_images else None
-    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
 
     return JSONResponse(
         {
             "connection": connection,
-            "latest_reading": _reading_summary(latest_reading, recent_commands),
+            "latest_reading": _reading_summary(device, latest_reading, recent_commands),
             "latest_image": _image_summary(latest_image),
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
@@ -261,8 +261,16 @@ async def create_device_command_page(
     return RedirectResponse(url=f"/devices/{device.id}", status_code=303)
 
 
-def _latest_device_activity(latest_reading, latest_image, recent_commands: list) -> dict | None:
+def _latest_device_activity(device, latest_reading, latest_image, recent_commands: list) -> dict | None:
     activities = []
+    if device.status_updated_at is not None:
+        activities.append(
+            {
+                "timestamp": device.status_updated_at,
+                "source": "status",
+                "description": device.status_message or "device status",
+            }
+        )
     if latest_reading is not None:
         activities.append(
             {
@@ -301,8 +309,11 @@ def _device_overview_card(session: Session, device) -> dict:
     latest_images = list_recent_images_for_device(session, device.id, limit=1)
     latest_image = latest_images[0] if latest_images else None
     recent_commands = list_commands_for_device(session, device.id, limit=5)
-    latest_activity = _latest_device_activity(latest_reading, latest_image, recent_commands)
+    latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
+    status_state = _device_status_state(device, latest_reading.timestamp if latest_reading else None)
+    light_value = status_state.get("light", latest_reading.light_on if latest_reading else None)
+    pump_value = status_state.get("pump", latest_reading.pump_on if latest_reading else None)
 
     return {
         "device": device,
@@ -311,17 +322,27 @@ def _device_overview_card(session: Session, device) -> dict:
         "moisture": _metric_value(latest_reading.moisture if latest_reading else None, "%"),
         "temperature": _metric_value(latest_reading.temperature if latest_reading else None, " C"),
         "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
-        "light": _bool_label(latest_reading.light_on if latest_reading else None),
-        "pump": _bool_label(latest_reading.pump_on if latest_reading else None),
+        "light": _bool_label(light_value),
+        "pump": _bool_label(pump_value),
     }
 
 
-def _reading_summary(reading, recent_commands: list | None = None) -> dict | None:
+def _reading_summary(device, reading, recent_commands: list | None = None) -> dict | None:
     if reading is None:
-        return None
+        if device.status_updated_at is None:
+            return None
+        return {
+            "moisture": "n/a",
+            "temperature": "n/a",
+            "humidity": "n/a",
+            "last_reading": device.status_updated_at.strftime("%b %-d, %-I:%M %p"),
+            "light": _bool_label(device.current_light_on),
+            "pump": _bool_label(device.current_pump_on),
+        }
     command_state = _latest_completed_command_state(recent_commands or [], reading.timestamp)
-    light_value = command_state.get("light", reading.light_on)
-    pump_value = command_state.get("pump", reading.pump_on)
+    status_state = _device_status_state(device, reading.timestamp)
+    light_value = status_state.get("light", command_state.get("light", reading.light_on))
+    pump_value = status_state.get("pump", command_state.get("pump", reading.pump_on))
     return {
         "moisture": _metric_value(reading.moisture, "%"),
         "temperature": _metric_value(reading.temperature, " C"),
@@ -330,6 +351,20 @@ def _reading_summary(reading, recent_commands: list | None = None) -> dict | Non
         "light": _bool_label(light_value),
         "pump": _bool_label(pump_value),
     }
+
+
+def _device_status_state(device, since: datetime | None) -> dict[str, bool]:
+    if device.status_updated_at is None:
+        return {}
+    if since is not None and _as_utc(device.status_updated_at) <= _as_utc(since):
+        return {}
+
+    state = {}
+    if device.current_light_on is not None:
+        state["light"] = device.current_light_on
+    if device.current_pump_on is not None:
+        state["pump"] = device.current_pump_on
+    return state
 
 
 def _latest_completed_command_state(commands: list, reading_timestamp: datetime) -> dict[str, bool]:

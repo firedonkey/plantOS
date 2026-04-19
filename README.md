@@ -293,10 +293,10 @@ On the Raspberry Pi, send real device readings and real captured camera images:
 ```bash
 cd device
 source ../.venv/bin/activate
-python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --send-interval 600 --command-interval 2 --image-every 1
+python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --send-interval 600 --command-interval 2 --status-interval 10 --image-every 1
 ```
 
-The platform client sends readings and polls commands on separate timers. `--send-interval` controls sensor uploads, while `--command-interval` controls how quickly pump/light commands are picked up. Command polling runs in its own lightweight background loop, so slow sensor reads, camera capture, or image uploads do not block light/pump commands. `--interval` is still accepted as an alias for `--send-interval`. Use `--skip-commands` to send data without polling commands. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
+The platform client sends readings, polls commands, and reports actuator status on separate timers. `--send-interval` controls sensor uploads, `--command-interval` controls how quickly pump/light commands are picked up, and `--status-interval` controls lightweight light/pump status heartbeats. Command polling and status heartbeats run in lightweight background loops, so slow sensor reads, camera capture, or image uploads do not block light/pump commands. `--interval` is still accepted as an alias for `--send-interval`. Use `--skip-commands` to send data without polling commands or status heartbeats. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
 
 When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
 
