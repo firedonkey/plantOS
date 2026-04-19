@@ -375,6 +375,7 @@ SERVICE_NAME=plantlab-api
 DB_INSTANCE=plantlab
 DB_NAME=plantlab
 DB_USER=plantlab_user
+DB_HOST=136.112.180.16
 BUCKET_NAME=plantlab-images-garylu
 CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
 ```
@@ -625,7 +626,10 @@ CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
 PLANTLAB_SESSION_SECRET=from-secret-manager
 ```
 
-If your code prefers a single `DATABASE_URL`, ask Codex to build it from components in production.
+Cloud Run should use `CLOUD_SQL_CONNECTION_NAME` with the attached Cloud SQL
+instance. `DB_HOST=136.112.180.16` is useful for direct PostgreSQL connections,
+such as a laptop migration test, but it is not needed by the Cloud Run service
+when the Cloud SQL socket is attached.
 
 ---
 
@@ -638,7 +642,7 @@ You have a few choices.
 For example:
 
 ```bash
-export DATABASE_URL='your_cloud_sql_connection_string'
+export DATABASE_URL='postgresql+psycopg://plantlab_user:YOUR_DB_PASSWORD@136.112.180.16:5432/plantlab'
 alembic upgrade head
 ```
 
