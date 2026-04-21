@@ -11,27 +11,50 @@ class NetworkManager:
     """Network command wrapper.
 
     Dry-run mode is the default so the provisioning flow can be tested without
-    changing the Pi network stack. Replace or extend these commands when moving
-    from prototype SoftAP to real hostapd/dnsmasq setup.
+    changing the Pi network stack. Real mode uses NetworkManager/nmcli because
+    the current Raspberry Pi image runs NetworkManager.
     """
 
-    def __init__(self, dry_run: bool = True, connect_timeout_seconds: int = 45):
+    def __init__(
+        self,
+        dry_run: bool = True,
+        connect_timeout_seconds: int = 45,
+        hotspot_password: str = "plantlabsetup",
+    ):
         self.dry_run = dry_run
         self.connect_timeout_seconds = connect_timeout_seconds
+        self.hotspot_password = hotspot_password
         self.wifi = WiFiConnectionLayer(
             dry_run=dry_run,
             connect_timeout_seconds=connect_timeout_seconds,
+            mode="networkmanager",
         )
 
     def start_softap(self, ssid: str = "PlantLab-Setup") -> None:
         logger.info("starting SoftAP ssid=%s dry_run=%s", ssid, self.dry_run)
-        self._run(["sudo", "systemctl", "start", "hostapd"], dry_run_message="hostapd start skipped")
-        self._run(["sudo", "systemctl", "start", "dnsmasq"], dry_run_message="dnsmasq start skipped")
+        self._run(
+            [
+                "sudo",
+                "nmcli",
+                "dev",
+                "wifi",
+                "hotspot",
+                "ifname",
+                "wlan0",
+                "ssid",
+                ssid,
+                "password",
+                self.hotspot_password,
+            ],
+            dry_run_message="NetworkManager hotspot start skipped",
+        )
 
     def stop_softap(self) -> None:
         logger.info("stopping SoftAP dry_run=%s", self.dry_run)
-        self._run(["sudo", "systemctl", "stop", "hostapd"], dry_run_message="hostapd stop skipped")
-        self._run(["sudo", "systemctl", "stop", "dnsmasq"], dry_run_message="dnsmasq stop skipped")
+        self._run(
+            ["sudo", "nmcli", "connection", "down", "Hotspot"],
+            dry_run_message="NetworkManager hotspot stop skipped",
+        )
 
     def connect_wifi(self, ssid: str, password: str) -> WiFiStatus:
         logger.info("connecting to Wi-Fi ssid=%s dry_run=%s", ssid, self.dry_run)

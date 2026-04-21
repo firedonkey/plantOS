@@ -43,14 +43,22 @@ For the real SoftAP flow, the target local address is:
 http://192.168.4.1
 ```
 
-When real `hostapd`, `dnsmasq`, and `nmcli` setup is ready, run:
+For the current Raspberry Pi OS image, real mode uses NetworkManager/nmcli.
+NetworkManager hotspot mode usually serves the setup page at:
+
+```text
+http://10.42.0.1:8080
+```
+
+Run real mode only when you have Ethernet access to the Pi:
 
 ```bash
-sudo ../.venv/bin/python provision.py \
-  --backend-url https://marspotatolab.com \
+python provision.py \
+  --backend-url https://plantlab-provision-api-418533861080.us-central1.run.app \
   --host 0.0.0.0 \
-  --port 80 \
-  --real-network
+  --port 8080 \
+  --real-network \
+  --reset
 ```
 
 ## Local Config File
@@ -77,7 +85,7 @@ The service uses these states:
 
 ## Production Hardening TODOs
 
-- Replace dry-run SoftAP commands with tested `hostapd` and `dnsmasq` configuration.
+- Add a fallback SoftAP implementation for non-NetworkManager Pi images.
 - Add recovery behavior that re-enters AP mode after Wi-Fi or backend registration failure.
 - Encrypt or otherwise protect stored Wi-Fi credentials.
 - Remove the claim token after both success and unrecoverable failure.

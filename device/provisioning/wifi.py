@@ -46,6 +46,7 @@ class WiFiConnectionLayer:
         retries: int = 3,
         connect_timeout_seconds: int = 45,
         connectivity_host: str = "8.8.8.8",
+        mode: str = "networkmanager",
         runner: CommandRunner | None = None,
     ):
         self.config_path = Path(config_path)
@@ -53,6 +54,7 @@ class WiFiConnectionLayer:
         self.retries = retries
         self.connect_timeout_seconds = connect_timeout_seconds
         self.connectivity_host = connectivity_host
+        self.mode = mode
         self.runner = runner or self._default_runner
 
     def scan_networks(self) -> WiFiStatus:
@@ -231,6 +233,9 @@ class WiFiConnectionLayer:
 
     def connect(self, ssid: str, password: str) -> WiFiStatus:
         """Write credentials, restart networking, and wait for connectivity."""
+        if self.mode == "networkmanager":
+            return self.connect_with_networkmanager(ssid, password)
+
         last_status = WiFiStatus(
             ok=False,
             stage="connect",
@@ -249,6 +254,39 @@ class WiFiConnectionLayer:
             if not restart_status.ok:
                 restart_status.attempts = attempt
                 last_status = restart_status
+                continue
+
+            connectivity_status = self.test_connectivity()
+            connectivity_status.attempts = attempt
+            if connectivity_status.ok:
+                return connectivity_status
+
+            last_status = connectivity_status
+
+        return WiFiStatus(
+            ok=False,
+            stage=last_status.stage,
+            message=f"Wi-Fi connection failed after {self.retries} attempt(s): {last_status.message}",
+            attempts=self.retries,
+            details=last_status.details,
+        )
+
+    def connect_with_networkmanager(self, ssid: str, password: str) -> WiFiStatus:
+        """Connect using NetworkManager and nmcli."""
+        last_status = WiFiStatus(
+            ok=False,
+            stage="networkmanager_connect",
+            message="NetworkManager Wi-Fi connection was not attempted.",
+        )
+
+        for attempt in range(1, self.retries + 1):
+            logger.info("NetworkManager Wi-Fi connect attempt %s/%s ssid=%s", attempt, self.retries, ssid)
+
+            status = self._nmcli_connect(ssid, password)
+            status.attempts = attempt
+            if not status.ok:
+                last_status = status
+                time.sleep(2)
                 continue
 
             connectivity_status = self.test_connectivity()
@@ -312,6 +350,42 @@ class WiFiConnectionLayer:
             networks.append(WiFiNetwork(ssid=ssid, signal=signal, security=security))
 
         return _network_status(networks, source="nmcli")
+
+    def _nmcli_connect(self, ssid: str, password: str) -> WiFiStatus:
+        if not ssid.strip():
+            return WiFiStatus(
+                ok=False,
+                stage="networkmanager_connect",
+                message="Wi-Fi SSID is required.",
+            )
+
+        if self.dry_run:
+            logger.info("[dry-run] would connect with NetworkManager to ssid=%s", ssid)
+            return WiFiStatus(
+                ok=True,
+                stage="networkmanager_connect",
+                message="Dry-run NetworkManager Wi-Fi connect succeeded.",
+            )
+
+        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
+        if password:
+            command.extend(["password", password])
+
+        result = self._run(command, timeout=60)
+        if result.returncode != 0:
+            return WiFiStatus(
+                ok=False,
+                stage="networkmanager_connect",
+                message="NetworkManager could not connect to Wi-Fi.",
+                details={"stderr": result.stderr, "stdout": result.stdout},
+            )
+
+        return WiFiStatus(
+            ok=True,
+            stage="networkmanager_connect",
+            message="NetworkManager connected to Wi-Fi.",
+        )
+
 
     def _scan_with_iwlist(self) -> WiFiStatus:
         result = self._run(["sudo", "iwlist", "wlan0", "scan"], timeout=30)
