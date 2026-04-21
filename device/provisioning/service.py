@@ -49,7 +49,12 @@ class ProvisioningService:
         self._set_state(ProvisioningState.AP_MODE)
         self.network.start_softap(ssid="PlantLab-Setup")
 
-        server = LocalSetupServer(host=self.host, port=self.port, backend_url=self.backend_url)
+        server = LocalSetupServer(
+            host=self.host,
+            port=self.port,
+            backend_url=self.backend_url,
+            network_manager=self.network,
+        )
         try:
             server.start()
             logger.info("open http://192.168.4.1 or http://<pi-ip>:%s to provision", self.port)

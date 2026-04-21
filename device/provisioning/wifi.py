@@ -23,6 +23,13 @@ class WiFiStatus:
     details: dict = field(default_factory=dict)
 
 
+@dataclass
+class WiFiNetwork:
+    ssid: str
+    signal: int | None = None
+    security: str | None = None
+
+
 class WiFiConnectionLayer:
     """Small Raspberry Pi Wi-Fi layer.
 
@@ -47,6 +54,30 @@ class WiFiConnectionLayer:
         self.connect_timeout_seconds = connect_timeout_seconds
         self.connectivity_host = connectivity_host
         self.runner = runner or self._default_runner
+
+    def scan_networks(self) -> WiFiStatus:
+        """Scan nearby Wi-Fi networks and return a de-duplicated SSID list.
+
+        Scanning is read-only, so it still runs in dry-run mode. Dry-run only
+        skips operations that write credentials or restart networking.
+        """
+        scanners = [
+            self._scan_with_nmcli,
+            self._scan_with_iwlist,
+        ]
+        errors = []
+        for scanner in scanners:
+            status = scanner()
+            if status.ok:
+                return status
+            errors.append(status.details)
+
+        return WiFiStatus(
+            ok=False,
+            stage="wifi_scan",
+            message="Could not scan Wi-Fi networks.",
+            details={"errors": errors},
+        )
 
     def credentials_exist(self, ssid: str | None = None) -> WiFiStatus:
         """Check whether Wi-Fi credentials are already present on disk."""
@@ -257,6 +288,78 @@ class WiFiConnectionLayer:
     def _run(self, command: list[str], timeout: int) -> subprocess.CompletedProcess:
         return self.runner(command, timeout)
 
+    def _scan_with_nmcli(self) -> WiFiStatus:
+        result = self._run(
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "yes"],
+            timeout=20,
+        )
+        if result.returncode != 0:
+            return WiFiStatus(
+                ok=False,
+                stage="wifi_scan",
+                message="nmcli scan failed.",
+                details={"command": "nmcli", "stderr": result.stderr},
+            )
+
+        networks = []
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if not parts or not parts[0].strip():
+                continue
+            ssid = parts[0].strip()
+            signal = _parse_int(parts[1]) if len(parts) > 1 else None
+            security = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
+            networks.append(WiFiNetwork(ssid=ssid, signal=signal, security=security))
+
+        return _network_status(networks, source="nmcli")
+
+    def _scan_with_iwlist(self) -> WiFiStatus:
+        result = self._run(["sudo", "iwlist", "wlan0", "scan"], timeout=30)
+        if result.returncode != 0:
+            return WiFiStatus(
+                ok=False,
+                stage="wifi_scan",
+                message="iwlist scan failed.",
+                details={"command": "iwlist", "stderr": result.stderr},
+            )
+
+        networks = []
+        current_ssid = None
+        current_signal = None
+        current_security = None
+
+        for raw_line in result.stdout.splitlines():
+            line = raw_line.strip()
+            if line.startswith("Cell "):
+                if current_ssid:
+                    networks.append(
+                        WiFiNetwork(
+                            ssid=current_ssid,
+                            signal=current_signal,
+                            security=current_security,
+                        )
+                    )
+                current_ssid = None
+                current_signal = None
+                current_security = None
+            elif "ESSID:" in line:
+                current_ssid = line.split("ESSID:", 1)[1].strip().strip('"')
+            elif "Quality=" in line:
+                current_signal = _parse_quality(line)
+            elif "Encryption key:" in line:
+                current_security = "secured" if "on" in line.lower() else "open"
+
+        if current_ssid:
+            networks.append(
+                WiFiNetwork(
+                    ssid=current_ssid,
+                    signal=current_signal,
+                    security=current_security,
+                )
+            )
+
+        return _network_status(networks, source="iwlist")
+
     @staticmethod
     def _default_runner(command: list[str], timeout: int) -> subprocess.CompletedProcess:
         try:
@@ -278,3 +381,54 @@ class WiFiConnectionLayer:
 
 def _escape_wpa_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _parse_int(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value.strip())
+    except ValueError:
+        return None
+
+
+def _parse_quality(line: str) -> int | None:
+    try:
+        quality = line.split("Quality=", 1)[1].split(" ", 1)[0]
+        numerator, denominator = quality.split("/", 1)
+        return round((int(numerator) / int(denominator)) * 100)
+    except (IndexError, ValueError, ZeroDivisionError):
+        return None
+
+
+def _network_status(networks: list[WiFiNetwork], source: str) -> WiFiStatus:
+    unique = {}
+    for network in networks:
+        if not network.ssid:
+            continue
+        existing = unique.get(network.ssid)
+        if existing is None or (network.signal or 0) > (existing.signal or 0):
+            unique[network.ssid] = network
+
+    sorted_networks = sorted(
+        unique.values(),
+        key=lambda network: network.signal if network.signal is not None else -1,
+        reverse=True,
+    )
+
+    return WiFiStatus(
+        ok=True,
+        stage="wifi_scan",
+        message=f"Found {len(sorted_networks)} Wi-Fi network(s).",
+        details={
+            "source": source,
+            "networks": [
+                {
+                    "ssid": network.ssid,
+                    "signal": network.signal,
+                    "security": network.security,
+                }
+                for network in sorted_networks
+            ],
+        },
+    )

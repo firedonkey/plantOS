@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from flask import Flask, jsonify, render_template_string, request
 from werkzeug.serving import make_server
 
+from .network import NetworkManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,22 @@ SETUP_TEMPLATE = """
         font: inherit;
       }
 
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #cfd8cf;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+        font: inherit;
+      }
+
       input:focus {
+        outline: 2px solid rgba(47, 125, 75, 0.22);
+        border-color: var(--green);
+      }
+
+      select:focus {
         outline: 2px solid rgba(47, 125, 75, 0.22);
         border-color: var(--green);
       }
@@ -190,7 +207,10 @@ SETUP_TEMPLATE = """
         <form id="provision-form" novalidate>
           <label>
             Wi-Fi SSID
-            <input id="ssid" name="ssid" required autocomplete="off" placeholder="HomeWiFi">
+            <select id="ssid-select" name="ssid_select">
+              <option value="">Scanning nearby Wi-Fi...</option>
+            </select>
+            <input id="ssid" name="ssid" required autocomplete="off" placeholder="Or type Wi-Fi name manually">
           </label>
 
           <label>
@@ -222,6 +242,7 @@ SETUP_TEMPLATE = """
     <script>
       const form = document.querySelector("#provision-form");
       const ssidInput = document.querySelector("#ssid");
+      const ssidSelect = document.querySelector("#ssid-select");
       const passwordInput = document.querySelector("#password");
       const claimTokenInput = document.querySelector("#claim-token");
       const backendUrlInput = document.querySelector("#backend-url");
@@ -240,7 +261,7 @@ SETUP_TEMPLATE = """
       }
 
       function validateForm() {
-        const ssid = ssidInput.value.trim();
+        const ssid = selectedSsid();
         const claimToken = claimTokenInput.value.trim();
         const backendUrl = backendUrlInput.value.trim();
 
@@ -261,6 +282,50 @@ SETUP_TEMPLATE = """
         return "";
       }
 
+      function selectedSsid() {
+        return ssidInput.value.trim() || ssidSelect.value.trim();
+      }
+
+      function setSsidOptions(networks) {
+        ssidSelect.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = networks.length ? "Select nearby Wi-Fi" : "No networks found";
+        ssidSelect.appendChild(placeholder);
+
+        networks.forEach((network) => {
+          const option = document.createElement("option");
+          option.value = network.ssid;
+          const signal = Number.isInteger(network.signal) ? ` (${network.signal}%)` : "";
+          option.textContent = `${network.ssid}${signal}`;
+          ssidSelect.appendChild(option);
+        });
+      }
+
+      async function loadNetworks() {
+        try {
+          const response = await fetch("/wifi/networks", {
+            headers: {
+              Accept: "application/json"
+            }
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.message || "Wi-Fi scan failed.");
+          }
+          setSsidOptions(data.networks || []);
+        } catch (error) {
+          setSsidOptions([]);
+          setStatus("Could not scan Wi-Fi. Type your Wi-Fi name manually.", "error");
+        }
+      }
+
+      ssidSelect.addEventListener("change", () => {
+        if (ssidSelect.value) {
+          ssidInput.value = ssidSelect.value;
+        }
+      });
+
       togglePasswordButton.addEventListener("click", () => {
         const isHidden = passwordInput.type === "password";
         passwordInput.type = isHidden ? "text" : "password";
@@ -278,7 +343,7 @@ SETUP_TEMPLATE = """
         }
 
         const payload = {
-          ssid: ssidInput.value.trim(),
+          ssid: selectedSsid(),
           password: passwordInput.value,
           claim_token: claimTokenInput.value.trim(),
           backend_url: backendUrlInput.value.trim()
@@ -309,6 +374,8 @@ SETUP_TEMPLATE = """
           setStatus(error.message || "Something went wrong. Please try again.", "error");
         }
       });
+
+      loadNetworks();
     </script>
   </body>
 </html>
@@ -324,10 +391,11 @@ class ProvisioningPayload:
 
 
 class LocalSetupServer:
-    def __init__(self, host: str, port: int, backend_url: str):
+    def __init__(self, host: str, port: int, backend_url: str, network_manager: NetworkManager):
         self.host = host
         self.port = port
         self.backend_url = backend_url
+        self.network_manager = network_manager
         self.app = Flask(__name__)
         self.payload: ProvisioningPayload | None = None
         self.payload_received = threading.Event()
@@ -343,6 +411,26 @@ class LocalSetupServer:
         @self.app.get("/health")
         def health():
             return jsonify({"ok": True, "service": "plantlab-local-setup"})
+
+        @self.app.get("/wifi/networks")
+        def wifi_networks():
+            status = self.network_manager.scan_wifi_networks()
+            if not status.ok:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "wifi_scan_failed",
+                        "message": status.message,
+                        "networks": [],
+                    }
+                ), 503
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": status.message,
+                    "networks": status.details.get("networks", []),
+                }
+            )
 
         @self.app.post("/provision")
         def provision():
