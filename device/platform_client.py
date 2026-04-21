@@ -1,5 +1,6 @@
 import argparse
 import itertools
+import json
 import threading
 import time
 from pathlib import Path
@@ -42,17 +43,30 @@ def main() -> None:
     parser.add_argument("--skip-commands", action="store_true", help="Do not poll or acknowledge platform commands.")
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config_path = Path(args.config)
+    provisioning_config = {}
+    if config_path.suffix.lower() == ".json":
+        config = load_config("config.yaml")
+        provisioning_config = load_provisioning_config(config_path)
+    else:
+        config = load_config(config_path)
+        default_provisioning_config = Path("data/provisioning/device_config.json")
+        if default_provisioning_config.exists():
+            provisioning_config = load_provisioning_config(default_provisioning_config)
+
     platform_config = config.get("platform", {})
     platform_url = (args.platform_url or platform_config.get("url") or "http://127.0.0.1:8000").rstrip("/")
-    device_id = args.device_id or platform_config.get("device_id")
-    device_token = args.device_token or platform_config.get("device_token")
+    device_id = args.device_id or platform_config.get("device_id") or provisioning_config.get("platform_device_id")
+    device_token = args.device_token or platform_config.get("device_token") or provisioning_config.get("device_access_token")
     send_interval = int(args.send_interval or args.interval or platform_config.get("send_interval_seconds") or 10)
     command_interval = int(args.command_interval or platform_config.get("command_poll_interval_seconds") or 2)
     status_interval = int(args.status_interval or platform_config.get("status_interval_seconds") or 10)
 
     if not device_id or not device_token:
-        raise SystemExit("Set --device-id and --device-token, or add them under platform: in config.yaml.")
+        raise SystemExit(
+            "Set --device-id and --device-token, add them under platform: in config.yaml, "
+            "or pass the provisioning JSON with --config."
+        )
 
     automation = PlantAutomation(config)
     image_paths = [path for path in DEFAULT_MOCK_IMAGES if path.exists()]
@@ -109,6 +123,13 @@ def main() -> None:
         if status_thread is not None:
             status_thread.join(timeout=5)
         automation.close()
+
+
+def load_provisioning_config(path: str | Path) -> dict:
+    config_path = Path(path)
+    if not config_path.exists():
+        return {}
+    return json.loads(config_path.read_text(encoding="utf-8"))
 
 
 def next_sleep_seconds(next_send_at: float) -> float:
