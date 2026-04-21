@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from flask import Flask, jsonify, render_template_string, request
 from werkzeug.serving import make_server
 
-from .backend import BackendRegistrationClient
 from .network import NetworkManager
 
 
@@ -534,14 +533,6 @@ class LocalSetupServer:
                         "message": "Wi-Fi SSID, SN, and setup service are required.",
                     }
                 ), 400
-
-            if not claim_token:
-                setup = BackendRegistrationClient(backend_url).create_setup_code(
-                    serial_number=serial_number,
-                    device_name=device_name or None,
-                    location=location or None,
-                )
-                claim_token = str(setup["setup_code"])
 
             self.payload = ProvisioningPayload(
                 ssid=ssid,

@@ -97,9 +97,22 @@ class ProvisioningService:
 
             self._set_state(ProvisioningState.BACKEND_REGISTERING)
             backend = BackendRegistrationClient(payload.backend_url)
+            claim_token = payload.claim_token
+            if not claim_token:
+                logger.info(
+                    "creating setup code after Wi-Fi reconnect for serial_number=%s",
+                    payload.serial_number,
+                )
+                setup = backend.create_setup_code(
+                    serial_number=payload.serial_number,
+                    device_name=payload.device_name or None,
+                    location=payload.location or None,
+                )
+                claim_token = str(setup["setup_code"])
+
             registration = backend.register_device(
                 device_id=device_id,
-                claim_token=payload.claim_token,
+                claim_token=claim_token,
                 hardware_version=self.hardware_version,
                 software_version=self.software_version,
                 capabilities=self.capabilities,
