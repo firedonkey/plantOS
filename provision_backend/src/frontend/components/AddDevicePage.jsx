@@ -16,6 +16,7 @@ const ONBOARDING_STEPS = [
 ];
 
 export default function AddDevicePage() {
+  const [serialNumber, setSerialNumber] = useState("123");
   const [claimToken, setClaimToken] = useState("");
   const [setupUrl, setSetupUrl] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -40,8 +41,16 @@ export default function AddDevicePage() {
     setCopied(false);
     setSetupUrl("");
 
+    const normalizedSerialNumber = serialNumber.trim();
+    if (!normalizedSerialNumber) {
+      setStatus("error");
+      setMessage("Enter the serial number from the device label.");
+      return;
+    }
+
     try {
       const result = await requestDeviceClaimToken({
+        serialNumber: normalizedSerialNumber,
         signal: abortController.signal
       });
       setClaimToken(result.setupCode);
@@ -56,7 +65,7 @@ export default function AddDevicePage() {
       setStatus("error");
       setMessage(error.message || "Could not create a setup code.");
     }
-  }, []);
+  }, [serialNumber]);
 
   const handleCopyToken = useCallback(async () => {
     try {
@@ -94,6 +103,21 @@ export default function AddDevicePage() {
             {status === "success" && <span className="status-pill">Ready</span>}
             {status === "error" && <span className="status-pill error">Error</span>}
           </div>
+
+          <p className="claim-copy">
+            Enter the serial number from the device label or QR code. For this
+            test build, use serial number 123.
+          </p>
+
+          <label className="serial-number-field">
+            Serial number
+            <input
+              value={serialNumber}
+              onChange={(event) => setSerialNumber(event.target.value)}
+              placeholder="123"
+              autoComplete="off"
+            />
+          </label>
 
           <p className="claim-copy">
             Setup codes are short-lived and can only be used once. The device

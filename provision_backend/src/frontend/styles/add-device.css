@@ -64,6 +64,28 @@
   gap: 16px;
 }
 
+.serial-number-field {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  color: #17201a;
+  font-weight: 800;
+}
+
+.serial-number-field input {
+  min-height: 42px;
+  border: 1px solid #cfd8cf;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #17201a;
+  font: inherit;
+}
+
+.serial-number-field input:focus {
+  outline: 2px solid rgba(47, 125, 75, 0.22);
+  border-color: #2f7d4b;
+}
+
 .status-pill {
   border: 1px solid #b8d8c0;
   border-radius: 8px;

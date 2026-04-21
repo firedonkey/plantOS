@@ -10,6 +10,16 @@ export const claimTokenResponseSchema = z.object({
 
 export const claimTokenPayloadSchema = z.object({}).strict();
 
+export const setupCodePayloadSchema = z
+  .object({
+    serial_number: z
+      .string()
+      .trim()
+      .min(1, "serial_number is required.")
+      .max(80, "serial_number is too long.")
+  })
+  .strict();
+
 export const registerDeviceSchema = z.object({
   device_id: z
     .string()

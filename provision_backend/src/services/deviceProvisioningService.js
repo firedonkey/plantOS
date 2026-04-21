@@ -18,26 +18,66 @@ function buildDefaultDeviceName(deviceId) {
 }
 
 export async function createClaimTokenForUser(userId) {
+  return createClaimTokenForUserAndSerial(userId, null);
+}
+
+export async function createClaimTokenForUserAndSerial(userId, serialNumber) {
   const claimToken = generateClaimToken();
   const createdAt = nowUtc();
   const expiresAt = expiresAtFromNow(config.claimTokenTtlMinutes);
 
-  const query = `
-    INSERT INTO device_claim_tokens (
-      claim_token,
-      user_id,
-      created_at,
-      expires_at,
-      used_at,
-      used_by_device_id
-    )
-    VALUES ($1, $2, $3, $4, NULL, NULL)
-    RETURNING claim_token, expires_at
-  `;
+  const normalizedSerialNumber = serialNumber?.trim() || null;
 
-  const { rows } = await withTransaction((client) =>
-    client.query(query, [claimToken, userId, createdAt, expiresAt])
-  );
+  const { rows } = await withTransaction(async (client) => {
+    if (normalizedSerialNumber) {
+      const serialResult = await client.query(
+        `
+          SELECT serial_number, status, claimed_by_user_id
+          FROM device_serial_numbers
+          WHERE serial_number = $1
+          FOR UPDATE
+        `,
+        [normalizedSerialNumber]
+      );
+      const serial = serialResult.rows[0];
+      if (!serial) {
+        throw new ApiError(
+          404,
+          "serial_number_not_found",
+          "Device serial number was not found."
+        );
+      }
+      if (serial.status !== "available" && serial.claimed_by_user_id !== userId) {
+        throw new ApiError(
+          409,
+          "serial_number_not_available",
+          "Device serial number is not available."
+        );
+      }
+    }
+
+    const query = `
+      INSERT INTO device_claim_tokens (
+        claim_token,
+        serial_number,
+        user_id,
+        created_at,
+        expires_at,
+        used_at,
+        used_by_device_id
+      )
+      VALUES ($1, $2, $3, $4, $5, NULL, NULL)
+      RETURNING claim_token, serial_number, expires_at
+    `;
+
+    return client.query(query, [
+      claimToken,
+      normalizedSerialNumber,
+      userId,
+      createdAt,
+      expiresAt
+    ]);
+  });
 
   return rows[0];
 }
@@ -48,6 +88,7 @@ export async function registerDeviceFromClaim(payload) {
       `
         SELECT
           dct.claim_token,
+          dct.serial_number,
           dct.user_id,
           dct.created_at,
           dct.expires_at,
@@ -212,6 +253,22 @@ export async function registerDeviceFromClaim(payload) {
       `,
       [payload.claim_token, deviceRow.id]
     );
+
+    if (claim.serial_number) {
+      await client.query(
+        `
+          UPDATE device_serial_numbers
+          SET
+            status = 'claimed',
+            claimed_by_user_id = $2,
+            claimed_by_device_id = $3,
+            claimed_at = COALESCE(claimed_at, NOW()),
+            updated_at = NOW()
+          WHERE serial_number = $1
+        `,
+        [claim.serial_number, claim.user_id, deviceRow.id]
+      );
+    }
 
     return {
       ok: true,

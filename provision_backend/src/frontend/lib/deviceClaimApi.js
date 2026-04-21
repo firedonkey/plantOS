@@ -7,15 +7,15 @@ export class ClaimTokenError extends Error {
   }
 }
 
-export async function requestDeviceClaimToken({ signal } = {}) {
-  const response = await fetch("/api/devices/claim-token", {
+export async function requestDeviceClaimToken({ serialNumber, signal } = {}) {
+  const response = await fetch("/api/devices/setup-code", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json"
     },
     credentials: "include",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ serial_number: serialNumber }),
     signal
   });
 

@@ -1,13 +1,38 @@
 export async function ensureProvisioningSchema(pool) {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS device_serial_numbers (
+      serial_number TEXT PRIMARY KEY,
+      hardware_model TEXT,
+      status TEXT NOT NULL DEFAULT 'available',
+      claimed_by_user_id INTEGER REFERENCES users(id),
+      claimed_by_device_id INTEGER REFERENCES devices(id),
+      claimed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO device_serial_numbers (serial_number, hardware_model, status)
+    VALUES ('123', 'raspberry_pi_3_test', 'available')
+    ON CONFLICT (serial_number) DO NOTHING
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS device_claim_tokens (
       claim_token TEXT PRIMARY KEY,
+      serial_number TEXT REFERENCES device_serial_numbers(serial_number),
       user_id INTEGER NOT NULL REFERENCES users(id),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL,
       used_at TIMESTAMPTZ,
       used_by_device_id INTEGER REFERENCES devices(id)
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS serial_number TEXT REFERENCES device_serial_numbers(serial_number)
   `);
 
   await pool.query(`

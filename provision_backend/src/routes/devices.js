@@ -4,12 +4,14 @@ import { getConfig } from "../config.js";
 import {
   claimTokenPayloadSchema,
   registerDeviceResponseSchema,
-  registerDeviceSchema
+  registerDeviceSchema,
+  setupCodePayloadSchema
 } from "../models/provisioningSchemas.js";
 import { ApiError } from "../lib/errors.js";
 import { requireAuthenticatedUser } from "../middleware/requireAuthenticatedUser.js";
 import {
   createClaimTokenForUser,
+  createClaimTokenForUserAndSerial,
   registerDeviceFromClaim
 } from "../services/deviceProvisioningService.js";
 
@@ -38,6 +40,35 @@ devicesRouter.post(
         expires_at: new Date(claimToken.expires_at).toISOString()
       });
     } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+devicesRouter.post(
+  "/setup-code",
+  requireAuthenticatedUser,
+  async (req, res, next) => {
+    try {
+      const payload = setupCodePayloadSchema.parse(req.body ?? {});
+      const claimToken = await createClaimTokenForUserAndSerial(
+        req.user.id,
+        payload.serial_number
+      );
+      return res.status(201).json({
+        ok: true,
+        serial_number: claimToken.serial_number,
+        claim_token: claimToken.claim_token,
+        setup_code: claimToken.claim_token,
+        setup_url: buildSetupUrl(claimToken.claim_token),
+        expires_at: new Date(claimToken.expires_at).toISOString()
+      });
+    } catch (error) {
+      if (error.name === "ZodError") {
+        return next(
+          new ApiError(422, "validation_error", "Request body is invalid.", error.flatten())
+        );
+      }
       return next(error);
     }
   }
