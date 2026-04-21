@@ -107,6 +107,33 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
     )
 
 
+@router.get("/devices/add")
+def add_device_page(request: Request, session: Session = Depends(get_session)):
+    settings = get_settings()
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
+    devices = list_devices_for_user(session, current_user)
+    next_device_number = len(devices) + 1
+
+    return templates.TemplateResponse(
+        request,
+        "add_device.html",
+        {
+            "app_name": settings.app_name,
+            "current_user": current_user,
+            "suggested_device_name": f"Device {next_device_number}",
+            "suggested_location": f"Location {next_device_number}",
+        },
+    )
+
+
 @router.get("/devices/{device_id}")
 def device_detail_page(
     request: Request,

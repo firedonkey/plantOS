@@ -16,7 +16,9 @@ export const setupCodePayloadSchema = z
       .string()
       .trim()
       .min(1, "serial_number is required.")
-      .max(80, "serial_number is too long.")
+      .max(80, "serial_number is too long."),
+    device_name: z.string().trim().max(120, "device_name is too long.").optional(),
+    location: z.string().trim().max(120, "location is too long.").optional()
   })
   .strict();
 

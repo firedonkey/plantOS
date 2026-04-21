@@ -53,7 +53,11 @@ devicesRouter.post(
       const payload = setupCodePayloadSchema.parse(req.body ?? {});
       const claimToken = await createClaimTokenForUserAndSerial(
         req.user.id,
-        payload.serial_number
+        payload.serial_number,
+        {
+          deviceName: payload.device_name,
+          location: payload.location
+        }
       );
       return res.status(201).json({
         ok: true,

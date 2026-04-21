@@ -22,6 +22,8 @@ export async function ensureProvisioningSchema(pool) {
     CREATE TABLE IF NOT EXISTS device_claim_tokens (
       claim_token TEXT PRIMARY KEY,
       serial_number TEXT REFERENCES device_serial_numbers(serial_number),
+      device_name TEXT,
+      location TEXT,
       user_id INTEGER NOT NULL REFERENCES users(id),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL,
@@ -33,6 +35,16 @@ export async function ensureProvisioningSchema(pool) {
   await pool.query(`
     ALTER TABLE device_claim_tokens
       ADD COLUMN IF NOT EXISTS serial_number TEXT REFERENCES device_serial_numbers(serial_number)
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS device_name TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS location TEXT
   `);
 
   await pool.query(`

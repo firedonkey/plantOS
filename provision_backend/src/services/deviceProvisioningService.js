@@ -21,12 +21,14 @@ export async function createClaimTokenForUser(userId) {
   return createClaimTokenForUserAndSerial(userId, null);
 }
 
-export async function createClaimTokenForUserAndSerial(userId, serialNumber) {
+export async function createClaimTokenForUserAndSerial(userId, serialNumber, metadata = {}) {
   const claimToken = generateClaimToken();
   const createdAt = nowUtc();
   const expiresAt = expiresAtFromNow(config.claimTokenTtlMinutes);
 
   const normalizedSerialNumber = serialNumber?.trim() || null;
+  const deviceName = metadata.deviceName?.trim() || null;
+  const location = metadata.location?.trim() || null;
 
   const { rows } = await withTransaction(async (client) => {
     if (normalizedSerialNumber) {
@@ -60,19 +62,23 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber) {
       INSERT INTO device_claim_tokens (
         claim_token,
         serial_number,
+        device_name,
+        location,
         user_id,
         created_at,
         expires_at,
         used_at,
         used_by_device_id
       )
-      VALUES ($1, $2, $3, $4, $5, NULL, NULL)
-      RETURNING claim_token, serial_number, expires_at
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
+      RETURNING claim_token, serial_number, device_name, location, expires_at
     `;
 
     return client.query(query, [
       claimToken,
       normalizedSerialNumber,
+      deviceName,
+      location,
       userId,
       createdAt,
       expiresAt
@@ -89,6 +95,8 @@ export async function registerDeviceFromClaim(payload) {
         SELECT
           dct.claim_token,
           dct.serial_number,
+          dct.device_name,
+          dct.location,
           dct.user_id,
           dct.created_at,
           dct.expires_at,
@@ -158,13 +166,15 @@ export async function registerDeviceFromClaim(payload) {
         `
           UPDATE devices
           SET
+            name = COALESCE($3, name),
+            location = COALESCE($4, location),
             api_token = $2,
             status_message = 'online',
             status_updated_at = NOW()
           WHERE id = $1
           RETURNING id, name
         `,
-        [existingDevice.id, deviceAccessToken]
+        [existingDevice.id, deviceAccessToken, claim.device_name, claim.location]
       );
       deviceRow = rows[0];
 
@@ -192,17 +202,19 @@ export async function registerDeviceFromClaim(payload) {
           INSERT INTO devices (
             user_id,
             name,
+            location,
             api_token,
             status_message,
             status_updated_at,
             created_at
           )
-          VALUES ($1, $2, $3, 'online', NOW(), NOW())
+          VALUES ($1, $2, $3, $4, 'online', NOW(), NOW())
           RETURNING id, name
         `,
         [
           claim.user_id,
-          buildDefaultDeviceName(payload.device_id),
+          claim.device_name || buildDefaultDeviceName(payload.device_id),
+          claim.location || null,
           deviceAccessToken
         ]
       );

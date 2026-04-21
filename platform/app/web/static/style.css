@@ -485,6 +485,12 @@ label {
   font-weight: 700;
 }
 
+.optional-label {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 input {
   min-height: 42px;
   border: 1px solid var(--line);

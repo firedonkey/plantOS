@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from flask import Flask, jsonify, render_template_string, request
 from werkzeug.serving import make_server
 
+from .backend import BackendRegistrationClient
 from .network import NetworkManager
 
 
@@ -214,7 +215,7 @@ SETUP_TEMPLATE = """
         <p class="eyebrow">PlantLab Local Setup</p>
         <h1>PlantLab Setup</h1>
         <p>Connect this device to your home Wi-Fi and add it to your PlantLab account.</p>
-        <p>Get a setup code from the PlantLab website by opening Add Device, then paste it below.</p>
+        <p>Enter your Wi-Fi details and the device SN from the label or QR code.</p>
 
         <form id="provision-form" novalidate>
           <label>
@@ -233,12 +234,20 @@ SETUP_TEMPLATE = """
             </div>
           </label>
 
-          <label id="setup-code-field">
+          <label>
+            SN
+            <input id="serial-number" name="serial_number" required autocomplete="off" placeholder="123">
+          </label>
+
+          <label class="hidden" id="setup-code-field">
             Setup code
             <input id="claim-token" name="claim_token" required autocomplete="one-time-code" placeholder="PL-ABC123XYZ">
           </label>
 
           <input id="backend-url" name="backend_url" type="hidden" value="{{ backend_url }}">
+          <input id="return-url" name="return_url" type="hidden">
+          <input id="device-name" name="device_name" type="hidden">
+          <input id="location" name="location" type="hidden">
 
           <button class="submit-button" id="submit-button" type="submit">Save and connect</button>
         </form>
@@ -253,9 +262,13 @@ SETUP_TEMPLATE = """
       const ssidInput = document.querySelector("#ssid");
       const ssidSelect = document.querySelector("#ssid-select");
       const passwordInput = document.querySelector("#password");
+      const serialNumberInput = document.querySelector("#serial-number");
       const claimTokenInput = document.querySelector("#claim-token");
       const backendUrlInput = document.querySelector("#backend-url");
       const setupCodeField = document.querySelector("#setup-code-field");
+      const returnUrlInput = document.querySelector("#return-url");
+      const deviceNameInput = document.querySelector("#device-name");
+      const locationInput = document.querySelector("#location");
       const togglePasswordButton = document.querySelector("#toggle-password");
       const submitButton = document.querySelector("#submit-button");
       const statusBox = document.querySelector("#status");
@@ -272,14 +285,15 @@ SETUP_TEMPLATE = """
 
       function validateForm() {
         const ssid = selectedSsid();
+        const serialNumber = serialNumberInput.value.trim();
         const claimToken = claimTokenInput.value.trim();
         const backendUrl = backendUrlInput.value.trim();
 
         if (!ssid) {
           return "Enter your home Wi-Fi name.";
         }
-        if (!claimToken) {
-          return "Paste the setup code from the PlantLab website.";
+        if (!serialNumber && !claimToken) {
+          return "Enter the device SN.";
         }
         if (!backendUrl) {
           return "Setup service is not configured. Restart setup and try again.";
@@ -299,13 +313,29 @@ SETUP_TEMPLATE = """
       function applySetupCodeFromUrl() {
         const params = new URLSearchParams(window.location.search);
         const setupCode = params.get("setup_code");
-        if (!setupCode) {
-          return;
-        }
+        const serialNumber = params.get("sn");
+        const returnUrl = params.get("return_url");
+        const deviceName = params.get("device_name");
+        const location = params.get("location");
 
-        claimTokenInput.value = setupCode.trim();
-        setupCodeField.classList.add("hidden");
-        setStatus("Setup code received. Enter your home Wi-Fi details.", "success");
+        if (setupCode) {
+          claimTokenInput.value = setupCode.trim();
+          setupCodeField.classList.add("hidden");
+          serialNumberInput.required = false;
+          setStatus("Device authorization received. Enter your home Wi-Fi details.", "success");
+        }
+        if (serialNumber) {
+          serialNumberInput.value = serialNumber.trim();
+        }
+        if (returnUrl) {
+          returnUrlInput.value = returnUrl.trim();
+        }
+        if (deviceName) {
+          deviceNameInput.value = deviceName.trim();
+        }
+        if (location) {
+          locationInput.value = location.trim();
+        }
 
         const cleanUrl = `${window.location.origin}${window.location.pathname}`;
         window.history.replaceState({}, document.title, cleanUrl);
@@ -384,8 +414,12 @@ SETUP_TEMPLATE = """
         const payload = {
           ssid: selectedSsid(),
           password: passwordInput.value,
+          serial_number: serialNumberInput.value.trim(),
           claim_token: claimTokenInput.value.trim(),
-          backend_url: backendUrlInput.value.trim()
+          backend_url: backendUrlInput.value.trim(),
+          return_url: returnUrlInput.value.trim(),
+          device_name: deviceNameInput.value.trim(),
+          location: locationInput.value.trim()
         };
 
         submitButton.disabled = true;
@@ -408,6 +442,11 @@ SETUP_TEMPLATE = """
 
           setStatus("Setup saved. PlantLab is connecting to your Wi-Fi now.", "success");
           form.reset();
+          if (data.redirect_url) {
+            setTimeout(() => {
+              window.location.href = data.redirect_url;
+            }, 2500);
+          }
         } catch (error) {
           submitButton.disabled = false;
           setStatus(error.message || "Something went wrong. Please try again.", "error");
@@ -428,6 +467,10 @@ class ProvisioningPayload:
     password: str
     claim_token: str
     backend_url: str
+    serial_number: str = ""
+    return_url: str = ""
+    device_name: str = ""
+    location: str = ""
 
 
 class LocalSetupServer:
@@ -477,22 +520,38 @@ class LocalSetupServer:
             data = request.get_json(silent=True) or {}
             ssid = str(data.get("ssid", "")).strip()
             password = str(data.get("password", ""))
+            serial_number = str(data.get("serial_number", "")).strip()
             claim_token = str(data.get("claim_token", "")).strip()
             backend_url = str(data.get("backend_url", "")).strip()
-            if not ssid or not claim_token or not backend_url:
+            return_url = str(data.get("return_url", "")).strip()
+            device_name = str(data.get("device_name", "")).strip()
+            location = str(data.get("location", "")).strip()
+            if not ssid or not backend_url or (not claim_token and not serial_number):
                 return jsonify(
                     {
                         "ok": False,
                         "error": "validation_error",
-                        "message": "Wi-Fi SSID, claim token, and backend URL are required.",
+                        "message": "Wi-Fi SSID, SN, and setup service are required.",
                     }
                 ), 400
+
+            if not claim_token:
+                setup = BackendRegistrationClient(backend_url).create_setup_code(
+                    serial_number=serial_number,
+                    device_name=device_name or None,
+                    location=location or None,
+                )
+                claim_token = str(setup["setup_code"])
 
             self.payload = ProvisioningPayload(
                 ssid=ssid,
                 password=password,
                 claim_token=claim_token,
                 backend_url=backend_url,
+                serial_number=serial_number,
+                return_url=return_url,
+                device_name=device_name,
+                location=location,
             )
             self.payload_received.set()
             threading.Thread(target=self.shutdown, daemon=True).start()
@@ -500,6 +559,7 @@ class LocalSetupServer:
                 {
                     "ok": True,
                     "message": "Provisioning details received. Device is connecting to Wi-Fi.",
+                    "redirect_url": return_url,
                 }
             )
 

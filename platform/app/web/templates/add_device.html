@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Add Device - {{ app_name }}</title>
+    <link rel="stylesheet" href="/static/style.css?v=provision-add-20260420">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-logo" href="/">PlantLab</a>
+      <nav class="site-nav" aria-label="Account">
+        <a class="button" href="/devices">Devices</a>
+        <span class="account-label">{{ current_user.name or current_user.email }}</span>
+      </nav>
+    </header>
+
+    <main>
+      <p class="eyebrow">Setup</p>
+      <h1>Add Device</h1>
+      <p>Name this device first. The next step opens the local PlantLab setup page for Wi-Fi and SN.</p>
+
+      <form class="device-form" id="device-setup-form">
+        <label>
+          Device name
+          <input id="device-name" name="device_name" required maxlength="120" value="{{ suggested_device_name }}">
+        </label>
+        <label>
+          Location <span class="optional-label">optional</span>
+          <input id="device-location" name="location" maxlength="120" value="{{ suggested_location }}">
+        </label>
+        <button id="setup-button" type="submit">Setup</button>
+      </form>
+
+      <div class="setup-result" id="setup-result" hidden>
+        <p class="setup-result-title">Ready for local setup</p>
+        <p>Connect your phone or laptop to <strong>PlantLab-Setup</strong>, then continue.</p>
+        <a class="primary-button" id="continue-setup-link" href="#">Continue setup</a>
+      </div>
+      <p class="setup-error" id="setup-error" hidden></p>
+    </main>
+
+    <script>
+      const form = document.querySelector("#device-setup-form");
+      const nameInput = document.querySelector("#device-name");
+      const locationInput = document.querySelector("#device-location");
+      const setupResult = document.querySelector("#setup-result");
+      const setupError = document.querySelector("#setup-error");
+      const continueSetupLink = document.querySelector("#continue-setup-link");
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        setupError.hidden = true;
+        setupResult.hidden = true;
+
+        const deviceName = nameInput.value.trim();
+        const location = locationInput.value.trim();
+        if (!deviceName) {
+          setupError.textContent = "Enter a device name.";
+          setupError.hidden = false;
+          return;
+        }
+
+        const setupUrl = new URL("http://10.42.0.1:8080/");
+        setupUrl.searchParams.set("device_name", deviceName);
+        if (location) {
+          setupUrl.searchParams.set("location", location);
+        }
+        setupUrl.searchParams.set("return_url", `${window.location.origin}/devices`);
+
+        continueSetupLink.href = setupUrl.toString();
+        setupResult.hidden = false;
+      });
+    </script>
+  </body>
+</html>

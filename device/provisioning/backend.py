@@ -39,3 +39,28 @@ class BackendRegistrationClient:
         if not data.get("ok") or not data.get("device_access_token"):
             raise ValueError(f"backend registration failed: {data}")
         return data
+
+    def create_setup_code(
+        self,
+        *,
+        serial_number: str,
+        device_name: str | None = None,
+        location: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {"serial_number": serial_number}
+        if device_name:
+            payload["device_name"] = device_name
+        if location:
+            payload["location"] = location
+
+        logger.info("creating setup code for serial_number=%s with backend=%s", serial_number, self.backend_url)
+        response = requests.post(
+            f"{self.backend_url}/api/devices/setup-code",
+            json=payload,
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("ok") or not data.get("setup_code"):
+            raise ValueError(f"setup code creation failed: {data}")
+        return data
