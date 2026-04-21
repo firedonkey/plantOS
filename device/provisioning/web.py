@@ -116,6 +116,14 @@ SETUP_TEMPLATE = """
         gap: 8px;
       }
 
+      .manual-ssid {
+        display: none;
+      }
+
+      .manual-ssid.visible {
+        display: block;
+      }
+
       .secondary-button {
         min-height: 42px;
         border: 1px solid #cfd8cf;
@@ -210,7 +218,7 @@ SETUP_TEMPLATE = """
             <select id="ssid-select" name="ssid_select">
               <option value="">Scanning nearby Wi-Fi...</option>
             </select>
-            <input id="ssid" name="ssid" required autocomplete="off" placeholder="Or type Wi-Fi name manually">
+            <input class="manual-ssid" id="ssid" name="ssid" autocomplete="off" placeholder="Type Wi-Fi name">
           </label>
 
           <label>
@@ -283,7 +291,7 @@ SETUP_TEMPLATE = """
       }
 
       function selectedSsid() {
-        return ssidInput.value.trim() || ssidSelect.value.trim();
+        return ssidSelect.value === "__manual__" ? ssidInput.value.trim() : ssidSelect.value.trim();
       }
 
       function setSsidOptions(networks) {
@@ -300,6 +308,16 @@ SETUP_TEMPLATE = """
           option.textContent = `${network.ssid}${signal}`;
           ssidSelect.appendChild(option);
         });
+
+        const manualOption = document.createElement("option");
+        manualOption.value = "__manual__";
+        manualOption.textContent = "My Wi-Fi is not listed";
+        ssidSelect.appendChild(manualOption);
+
+        ssidInput.classList.toggle("visible", networks.length === 0);
+        if (networks.length === 0) {
+          ssidSelect.value = "__manual__";
+        }
       }
 
       async function loadNetworks() {
@@ -321,8 +339,10 @@ SETUP_TEMPLATE = """
       }
 
       ssidSelect.addEventListener("change", () => {
-        if (ssidSelect.value) {
-          ssidInput.value = ssidSelect.value;
+        const manualSelected = ssidSelect.value === "__manual__";
+        ssidInput.classList.toggle("visible", manualSelected);
+        if (!manualSelected) {
+          ssidInput.value = "";
         }
       });
 
