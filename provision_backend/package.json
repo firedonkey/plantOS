@@ -1,0 +1,17 @@
+{
+  "name": "plantlab-provision-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express onboarding APIs for PlantLab SoftAP provisioning",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "node --watch src/app.js",
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.14.1",
+    "zod": "^3.24.2"
+  }
+}

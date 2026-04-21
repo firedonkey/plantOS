@@ -74,3 +74,15 @@ platform:
   send_interval_seconds: 10
   command_poll_interval_seconds: 2
   status_interval_seconds: 10
+
+provisioning:
+  backend_url: https://marspotatolab.com
+  state_file: data/provisioning/device_config.json
+  network_dry_run: true
+  hardware_version: raspberry_pi_3
+  software_version: 0.1.0
+  capabilities:
+    camera: true
+    pump: true
+    moisture_sensor: true
+    light_control: true

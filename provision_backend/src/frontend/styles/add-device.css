@@ -1,0 +1,216 @@
+.add-device-page {
+  width: min(1080px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 56px 0;
+  color: #17201a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.add-device-hero {
+  max-width: 720px;
+  margin-bottom: 34px;
+}
+
+.add-device-eyebrow {
+  margin: 0 0 8px;
+  color: #2f7d4b;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.add-device-hero h1,
+.claim-card h2,
+.instructions-card h2 {
+  margin: 0 0 12px;
+  letter-spacing: 0;
+}
+
+.add-device-hero h1 {
+  font-size: 3rem;
+  line-height: 1.05;
+}
+
+.add-device-hero p,
+.claim-copy,
+.state-message,
+.token-panel p,
+.onboarding-steps p {
+  color: #566259;
+  line-height: 1.6;
+}
+
+.add-device-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.claim-card,
+.instructions-card {
+  border: 1px solid #d9e1d8;
+  border-radius: 8px;
+  padding: 24px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(23, 32, 26, 0.07);
+}
+
+.claim-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.status-pill {
+  border: 1px solid #b8d8c0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #eff9f1;
+  color: #2f7d4b;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.status-pill.error {
+  border-color: #e0b0aa;
+  background: #fff2f1;
+  color: #9b332b;
+}
+
+.primary-action,
+.token-panel button {
+  min-height: 42px;
+  border: 1px solid #2f7d4b;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #2f7d4b;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.token-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  border: 1px solid #d9e1d8;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f7faf6;
+}
+
+.token-label {
+  color: #566259;
+  font-size: 0.8rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.token-panel code,
+.setup-note code {
+  display: block;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  padding: 12px;
+  background: #17201a;
+  color: #ffffff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 1rem;
+}
+
+.token-panel button {
+  justify-self: start;
+  background: #ffffff;
+  color: #2f7d4b;
+}
+
+.state-message {
+  margin: 16px 0 0;
+  font-weight: 700;
+}
+
+.state-message.error {
+  color: #9b332b;
+}
+
+.onboarding-steps {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-steps li {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.onboarding-steps span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #e7f2e9;
+  color: #2f7d4b;
+  font-weight: 900;
+}
+
+.onboarding-steps p {
+  margin: 4px 0 0;
+}
+
+.setup-note {
+  border-top: 1px solid #d9e1d8;
+  padding-top: 18px;
+}
+
+.setup-note strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 760px) {
+  .add-device-page {
+    width: min(100% - 24px, 1080px);
+    padding: 34px 0;
+  }
+
+  .add-device-hero h1 {
+    font-size: 2.35rem;
+  }
+
+  .add-device-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .add-device-hero h1 {
+    font-size: 2rem;
+  }
+
+  .claim-card,
+  .instructions-card {
+    padding: 18px;
+  }
+
+  .primary-action,
+  .token-panel button {
+    justify-content: center;
+    width: 100%;
+  }
+}
