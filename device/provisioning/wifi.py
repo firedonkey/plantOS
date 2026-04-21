@@ -367,7 +367,15 @@ class WiFiConnectionLayer:
                 message="Dry-run NetworkManager Wi-Fi connect succeeded.",
             )
 
-        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
+        # Remove stale profiles first. Failed setup attempts can leave a
+        # NetworkManager connection with incomplete security settings, and
+        # nmcli may try to reuse it instead of creating a clean one.
+        self._run(["sudo", "nmcli", "connection", "delete", ssid], timeout=20)
+        self._run(["sudo", "nmcli", "radio", "wifi", "on"], timeout=20)
+        self._run(["sudo", "nmcli", "device", "set", "wlan0", "managed", "yes"], timeout=20)
+        self._run(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", "wlan0"], timeout=30)
+
+        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid, "ifname", "wlan0"]
         if password:
             command.extend(["password", password])
 

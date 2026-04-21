@@ -92,6 +92,7 @@ class ProvisioningService:
             self._set_state(ProvisioningState.WIFI_CONNECTING)
             wifi_status = self.network.connect_wifi(payload.ssid, payload.password)
             if not wifi_status.ok:
+                logger.error("Wi-Fi connection failed: %s details=%s", wifi_status.message, wifi_status.details)
                 raise RuntimeError(wifi_status.message)
 
             self._set_state(ProvisioningState.BACKEND_REGISTERING)
