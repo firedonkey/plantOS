@@ -24,6 +24,7 @@ class ProvisioningService:
         hardware_version: str = "raspberry_pi_3",
         software_version: str = "0.1.0",
         capabilities: dict[str, Any] | None = None,
+        hotspot_password: str = "plantlabsetup",
     ):
         self.backend_url = backend_url.rstrip("/")
         self.host = host
@@ -37,7 +38,7 @@ class ProvisioningService:
             "light_control": True,
         }
         self.store = ProvisioningStore(state_file)
-        self.network = NetworkManager(dry_run=dry_run)
+        self.network = NetworkManager(dry_run=dry_run, hotspot_password=hotspot_password)
         self.backend = BackendRegistrationClient(self.backend_url)
 
     def run(self) -> None:

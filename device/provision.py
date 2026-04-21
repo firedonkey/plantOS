@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0", help="Local setup web server host.")
     parser.add_argument("--port", type=int, default=8080, help="Local setup web server port.")
     parser.add_argument("--real-network", action="store_true", help="Run real network commands instead of dry-run stubs.")
+    parser.add_argument("--open-hotspot", action="store_true", help="Create the setup hotspot without a Wi-Fi password.")
     parser.add_argument("--reset", action="store_true", help="Delete local provisioning state before starting.")
     args = parser.parse_args()
 
@@ -43,6 +44,7 @@ def main() -> None:
         hardware_version=str(provisioning_config.get("hardware_version") or "raspberry_pi_3"),
         software_version=str(provisioning_config.get("software_version") or "0.1.0"),
         capabilities=provisioning_config.get("capabilities") or {},
+        hotspot_password="" if args.open_hotspot else str(provisioning_config.get("hotspot_password") or "plantlabsetup"),
     )
 
     if args.reset:

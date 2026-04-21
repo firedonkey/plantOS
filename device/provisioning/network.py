@@ -53,26 +53,34 @@ class NetworkManager:
             ],
             dry_run_message="NetworkManager hotspot profile create skipped",
         )
-        self._run(
-            [
-                "sudo",
-                "nmcli",
-                "connection",
-                "modify",
-                ssid,
-                "802-11-wireless.mode",
-                "ap",
-                "802-11-wireless.band",
-                "bg",
-                "ipv4.method",
-                "shared",
-                "wifi-sec.key-mgmt",
-                "wpa-psk",
-                "wifi-sec.psk",
-                self.hotspot_password,
-            ],
-            dry_run_message="NetworkManager hotspot profile configure skipped",
-        )
+        configure_command = [
+            "sudo",
+            "nmcli",
+            "connection",
+            "modify",
+            ssid,
+            "802-11-wireless.mode",
+            "ap",
+            "802-11-wireless.band",
+            "bg",
+            "ipv4.method",
+            "shared",
+            "ipv6.method",
+            "disabled",
+        ]
+        if self.hotspot_password:
+            configure_command.extend(
+                [
+                    "802-11-wireless-security.key-mgmt",
+                    "wpa-psk",
+                    "802-11-wireless-security.psk",
+                    self.hotspot_password,
+                ]
+            )
+        else:
+            configure_command.extend(["802-11-wireless-security.key-mgmt", "none"])
+
+        self._run(configure_command, dry_run_message="NetworkManager hotspot profile configure skipped")
         self._run(
             ["sudo", "nmcli", "connection", "up", ssid],
             dry_run_message="NetworkManager hotspot start skipped",
