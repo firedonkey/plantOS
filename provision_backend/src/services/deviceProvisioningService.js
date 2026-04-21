@@ -89,19 +89,19 @@ export async function registerDeviceFromClaim(payload) {
       `
         SELECT
           d.id,
-          d.device_id,
-          d.owner_user_id,
-          d.device_name,
-          d.status
-        FROM devices d
-        WHERE d.device_id = $1
+          d.user_id,
+          d.name,
+          h.hardware_device_id
+        FROM device_hardware_ids h
+        JOIN devices d ON d.id = h.device_id
+        WHERE h.hardware_device_id = $1
         FOR UPDATE
       `,
       [payload.device_id]
     );
 
     const existingDevice = deviceResult.rows[0];
-    if (existingDevice && existingDevice.owner_user_id !== claim.user_id) {
+    if (existingDevice && existingDevice.user_id !== claim.user_id) {
       throw new ApiError(
         409,
         "device_owned_by_another_user",
@@ -109,38 +109,69 @@ export async function registerDeviceFromClaim(payload) {
       );
     }
 
+    const deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
+    const tokenHash = hashToken(deviceAccessToken);
     let deviceRow;
     if (existingDevice) {
       const { rows } = await client.query(
         `
           UPDATE devices
           SET
-            owner_user_id = $2,
-            hardware_version = $3,
-            software_version = $4,
-            capabilities = $5::jsonb,
-            status = 'online',
-            updated_at = NOW()
+            api_token = $2,
+            status_message = 'online',
+            status_updated_at = NOW()
           WHERE id = $1
-          RETURNING id, device_id, device_name, status
+          RETURNING id, name
+        `,
+        [existingDevice.id, deviceAccessToken]
+      );
+      deviceRow = rows[0];
+
+      await client.query(
+        `
+          UPDATE device_hardware_ids
+          SET
+            hardware_version = $2,
+            software_version = $3,
+            capabilities = $4::jsonb,
+            updated_at = NOW(),
+            last_seen_at = NOW()
+          WHERE hardware_device_id = $1
         `,
         [
-          existingDevice.id,
-          claim.user_id,
+          payload.device_id,
           payload.hardware_version,
           payload.software_version,
           JSON.stringify(payload.capabilities)
         ]
       );
-      deviceRow = rows[0];
     } else {
       const { rows } = await client.query(
         `
           INSERT INTO devices (
+            user_id,
+            name,
+            api_token,
+            status_message,
+            status_updated_at,
+            created_at
+          )
+          VALUES ($1, $2, $3, 'online', NOW(), NOW())
+          RETURNING id, name
+        `,
+        [
+          claim.user_id,
+          buildDefaultDeviceName(payload.device_id),
+          deviceAccessToken
+        ]
+      );
+      deviceRow = rows[0];
+
+      await client.query(
+        `
+          INSERT INTO device_hardware_ids (
+            hardware_device_id,
             device_id,
-            owner_user_id,
-            device_name,
-            status,
             hardware_version,
             software_version,
             capabilities,
@@ -148,23 +179,17 @@ export async function registerDeviceFromClaim(payload) {
             updated_at,
             last_seen_at
           )
-          VALUES ($1, $2, $3, 'online', $4, $5, $6::jsonb, NOW(), NOW(), NOW())
-          RETURNING id, device_id, device_name, status
+          VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW(), NOW())
         `,
         [
           payload.device_id,
-          claim.user_id,
-          buildDefaultDeviceName(payload.device_id),
+          deviceRow.id,
           payload.hardware_version,
           payload.software_version,
           JSON.stringify(payload.capabilities)
         ]
       );
-      deviceRow = rows[0];
     }
-
-    const deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
-    const tokenHash = hashToken(deviceAccessToken);
 
     await client.query(
       `
@@ -185,14 +210,15 @@ export async function registerDeviceFromClaim(payload) {
         SET used_at = NOW(), used_by_device_id = $2
         WHERE claim_token = $1
       `,
-      [payload.claim_token, deviceRow.device_id]
+      [payload.claim_token, deviceRow.id]
     );
 
     return {
       ok: true,
-      device_id: deviceRow.device_id,
-      device_name: deviceRow.device_name,
-      status: deviceRow.status,
+      device_id: payload.device_id,
+      platform_device_id: deviceRow.id,
+      device_name: deviceRow.name,
+      status: "online",
       device_access_token: deviceAccessToken
     };
   });

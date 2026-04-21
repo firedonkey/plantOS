@@ -1,6 +1,7 @@
 import express from "express";
 
 import { getConfig } from "./config.js";
+import { ensureProvisioningSchema } from "./db/ensureSchema.js";
 import { pool } from "./db/pool.js";
 import { sendError } from "./lib/errors.js";
 import { attachDevUser } from "./middleware/devAuth.js";
@@ -35,6 +36,14 @@ app.use((error, req, res, _next) => {
   sendError(res, error);
 });
 
-app.listen(config.port, () => {
-  console.log(`[provision-backend] listening on port ${config.port}`);
+async function start() {
+  await ensureProvisioningSchema(pool);
+  app.listen(config.port, () => {
+    console.log(`[provision-backend] listening on port ${config.port}`);
+  });
+}
+
+start().catch((error) => {
+  console.error("[provision-backend] startup failed", error);
+  process.exit(1);
 });

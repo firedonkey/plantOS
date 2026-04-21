@@ -35,6 +35,7 @@ export const registerDeviceSchema = z.object({
 export const registerDeviceResponseSchema = z.object({
   ok: z.literal(true),
   device_id: z.string(),
+  platform_device_id: z.number().int(),
   device_name: z.string(),
   status: z.string(),
   device_access_token: z.string()
