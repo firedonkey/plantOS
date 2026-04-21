@@ -375,9 +375,12 @@ class WiFiConnectionLayer:
         self._run(["sudo", "nmcli", "device", "set", "wlan0", "managed", "yes"], timeout=20)
         self._run(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", "wlan0"], timeout=30)
 
-        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid, "ifname", "wlan0"]
+        logger.warning("Wi-Fi setup debug: ssid=%s password=%s", ssid, password)
+
+        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
         if password:
             command.extend(["password", password])
+        command.extend(["ifname", "wlan0"])
 
         result = self._run(command, timeout=60)
         if result.returncode != 0:

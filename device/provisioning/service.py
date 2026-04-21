@@ -73,6 +73,7 @@ class ProvisioningService:
 
     def _handle_payload(self, payload: ProvisioningPayload) -> None:
         device_id = stable_device_id()
+        logger.warning("Provisioning Wi-Fi payload debug: ssid=%s password=%s", payload.ssid, payload.password)
         self._set_state(
             ProvisioningState.CREDENTIALS_RECEIVED,
             device_id=device_id,
