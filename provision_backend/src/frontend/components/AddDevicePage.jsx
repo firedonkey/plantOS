@@ -12,7 +12,7 @@ const ONBOARDING_STEPS = [
   "Connect your phone or laptop to the PlantLab-XXXX Wi-Fi network.",
   "Open http://192.168.4.1 in your browser.",
   "Enter your home Wi-Fi name and password.",
-  "Paste this claim token on the device setup page."
+  "Paste this setup code on the device setup page."
 ];
 
 export default function AddDevicePage() {
@@ -45,13 +45,13 @@ export default function AddDevicePage() {
       setClaimToken(result.claimToken);
       setExpiresAt(result.expiresAt);
       setStatus("success");
-      setMessage("Claim token ready. Use it before it expires.");
+      setMessage("Setup code ready. Use it before it expires.");
     } catch (error) {
       if (error.name === "AbortError") {
         return;
       }
       setStatus("error");
-      setMessage(error.message || "Could not create a claim token.");
+      setMessage(error.message || "Could not create a setup code.");
     }
   }, []);
 
@@ -59,10 +59,10 @@ export default function AddDevicePage() {
     try {
       const didCopy = await copyTextToClipboard(claimToken);
       setCopied(didCopy);
-      setMessage(didCopy ? "Claim token copied." : "Could not copy the token.");
+      setMessage(didCopy ? "Setup code copied." : "Could not copy the setup code.");
     } catch (_error) {
       setCopied(false);
-      setMessage("Could not copy the token.");
+      setMessage("Could not copy the setup code.");
     }
   }, [claimToken]);
 
@@ -76,7 +76,7 @@ export default function AddDevicePage() {
         <p className="add-device-eyebrow">PlantLab Setup</p>
         <h1 id="add-device-title">Add a new device</h1>
         <p>
-          Generate a one-time claim token, then paste it into the local setup
+          Generate a one-time setup code, then paste it into the local setup
           page on your PlantLab device.
         </p>
       </section>
@@ -86,15 +86,15 @@ export default function AddDevicePage() {
           <div className="claim-card-header">
             <div>
               <p className="add-device-eyebrow">Step 1</p>
-              <h2>Generate claim token</h2>
+              <h2>Generate setup code</h2>
             </div>
             {status === "success" && <span className="status-pill">Ready</span>}
             {status === "error" && <span className="status-pill error">Error</span>}
           </div>
 
           <p className="claim-copy">
-            Claim tokens are short-lived and can only be used once. The device
-            will exchange this token for its own long-term device access token.
+            Setup codes are short-lived and can only be used once. The device
+            will exchange this code for its own secure device access token.
           </p>
 
           <button
@@ -103,15 +103,15 @@ export default function AddDevicePage() {
             onClick={handleRequestToken}
             disabled={isLoading}
           >
-            {isLoading ? "Creating token..." : hasToken ? "Create new token" : "Request claim token"}
+            {isLoading ? "Creating code..." : hasToken ? "Create new code" : "Request setup code"}
           </button>
 
           {hasToken && (
             <div className="token-panel">
-              <span className="token-label">Claim token</span>
+              <span className="token-label">Setup code</span>
               <code>{claimToken}</code>
               <button type="button" onClick={handleCopyToken}>
-                {copied ? "Copied" : "Copy token"}
+                {copied ? "Copied" : "Copy code"}
               </button>
               {expiryLabel && <p>Expires around {expiryLabel}.</p>}
             </div>

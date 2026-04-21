@@ -209,8 +209,8 @@ SETUP_TEMPLATE = """
       <div class="card">
         <p class="eyebrow">PlantLab Local Setup</p>
         <h1>PlantLab Setup</h1>
-        <p>Connect this device to your home Wi-Fi and claim it to your PlantLab account.</p>
-        <p>Get a claim token from the PlantLab website by opening Add Device, then paste it below.</p>
+        <p>Connect this device to your home Wi-Fi and add it to your PlantLab account.</p>
+        <p>Get a setup code from the PlantLab website by opening Add Device, then paste it below.</p>
 
         <form id="provision-form" novalidate>
           <label>
@@ -230,14 +230,11 @@ SETUP_TEMPLATE = """
           </label>
 
           <label>
-            Claim token
-            <input id="claim-token" name="claim_token" required autocomplete="off" placeholder="PL-ABC123XYZ">
+            Setup code
+            <input id="claim-token" name="claim_token" required autocomplete="one-time-code" placeholder="PL-ABC123XYZ">
           </label>
 
-          <label>
-            Backend URL
-            <input id="backend-url" name="backend_url" required autocomplete="off" value="{{ backend_url }}">
-          </label>
+          <input id="backend-url" name="backend_url" type="hidden" value="{{ backend_url }}">
 
           <button class="submit-button" id="submit-button" type="submit">Save and connect</button>
         </form>
@@ -277,15 +274,15 @@ SETUP_TEMPLATE = """
           return "Enter your home Wi-Fi name.";
         }
         if (!claimToken) {
-          return "Paste the claim token from the PlantLab website.";
+          return "Paste the setup code from the PlantLab website.";
         }
         if (!backendUrl) {
-          return "Backend URL is required.";
+          return "Setup service is not configured. Restart setup and try again.";
         }
         try {
           new URL(backendUrl);
         } catch (_error) {
-          return "Backend URL must look like https://marspotatolab.com.";
+          return "Setup service is not configured correctly.";
         }
         return "";
       }
