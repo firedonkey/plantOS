@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  copyTextToClipboard,
   formatExpiry,
   requestDeviceClaimToken
 } from "../lib/deviceClaimApi.js";
@@ -12,7 +11,7 @@ const ONBOARDING_STEPS = [
   "Connect your phone or laptop to the PlantLab-Setup Wi-Fi network.",
   "Tap Continue setup to open the local device page.",
   "Enter your home Wi-Fi name and password.",
-  "The setup code is sent automatically."
+  "PlantLab sends the device authorization automatically."
 ];
 
 export default function AddDevicePage() {
@@ -22,7 +21,6 @@ export default function AddDevicePage() {
   const [expiresAt, setExpiresAt] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
-  const [copied, setCopied] = useState(false);
   const abortControllerRef = useRef(null);
 
   useEffect(() => {
@@ -38,7 +36,7 @@ export default function AddDevicePage() {
 
     setStatus("loading");
     setMessage("");
-    setCopied(false);
+    setClaimToken("");
     setSetupUrl("");
 
     const normalizedSerialNumber = serialNumber.trim();
@@ -57,26 +55,15 @@ export default function AddDevicePage() {
       setSetupUrl(result.setupUrl || "");
       setExpiresAt(result.expiresAt);
       setStatus("success");
-      setMessage("Setup code ready. Connect to PlantLab-Setup, then continue setup.");
+      setMessage("SN verified. Connect to PlantLab-Setup, then continue setup.");
     } catch (error) {
       if (error.name === "AbortError") {
         return;
       }
       setStatus("error");
-      setMessage(error.message || "Could not create a setup code.");
+      setMessage(error.message || "Could not verify this SN.");
     }
   }, [serialNumber]);
-
-  const handleCopyToken = useCallback(async () => {
-    try {
-      const didCopy = await copyTextToClipboard(claimToken);
-      setCopied(didCopy);
-      setMessage(didCopy ? "Setup code copied." : "Could not copy the setup code.");
-    } catch (_error) {
-      setCopied(false);
-      setMessage("Could not copy the setup code.");
-    }
-  }, [claimToken]);
 
   const isLoading = status === "loading";
   const hasToken = Boolean(claimToken);
@@ -88,8 +75,8 @@ export default function AddDevicePage() {
         <p className="add-device-eyebrow">PlantLab Setup</p>
         <h1 id="add-device-title">Add a new device</h1>
         <p>
-          Generate a one-time setup code, connect to the device Wi-Fi, then
-          continue to the local setup page.
+          Enter the device SN, connect to the device Wi-Fi, then continue to
+          the local setup page.
         </p>
       </section>
 
@@ -98,19 +85,19 @@ export default function AddDevicePage() {
           <div className="claim-card-header">
             <div>
               <p className="add-device-eyebrow">Step 1</p>
-              <h2>Generate setup code</h2>
+              <h2>Verify device SN</h2>
             </div>
             {status === "success" && <span className="status-pill">Ready</span>}
             {status === "error" && <span className="status-pill error">Error</span>}
           </div>
 
           <p className="claim-copy">
-            Enter the serial number from the device label or QR code. For this
-            test build, use serial number 123.
+            Enter the SN from the device label or QR code. For this test build,
+            use SN 123.
           </p>
 
           <label className="serial-number-field">
-            Serial number
+            SN
             <input
               value={serialNumber}
               onChange={(event) => setSerialNumber(event.target.value)}
@@ -120,8 +107,8 @@ export default function AddDevicePage() {
           </label>
 
           <p className="claim-copy">
-            Setup codes are short-lived and can only be used once. The device
-            will exchange this code for its own secure device access token.
+            PlantLab will verify this SN and prepare the device authorization
+            behind the scenes.
           </p>
 
           <button
@@ -130,21 +117,17 @@ export default function AddDevicePage() {
             onClick={handleRequestToken}
             disabled={isLoading}
           >
-            {isLoading ? "Creating code..." : hasToken ? "Create new code" : "Request setup code"}
+            {isLoading ? "Verifying SN..." : hasToken ? "Verify another SN" : "Verify SN"}
           </button>
 
           {hasToken && (
             <div className="token-panel">
-              <span className="token-label">Setup code</span>
-              <code>{claimToken}</code>
+              <span className="token-label">SN verified</span>
               {setupUrl && (
                 <a className="continue-setup-link" href={setupUrl}>
                   Continue setup
                 </a>
               )}
-              <button type="button" onClick={handleCopyToken}>
-                {copied ? "Copied" : "Copy code"}
-              </button>
               {expiryLabel && <p>Expires around {expiryLabel}.</p>}
             </div>
           )}

@@ -30,7 +30,7 @@ export async function requestDeviceClaimToken({ serialNumber, signal } = {}) {
     const message =
       payload?.message ||
       payload?.error ||
-      "Could not create a claim token. Please try again.";
+      "Could not verify this SN. Please try again.";
     throw new ClaimTokenError(message, response.status, payload);
   }
 
