@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ device.name }} - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=cloud-run-static-20260419">
+    <link rel="stylesheet" href="/static/style.css?v=live-empty-state-20260420">
   </head>
   <body class="device-page">
     <header class="site-header">
@@ -40,36 +40,32 @@
               <h2>Sensor Readings</h2>
             </div>
           </div>
-          {% if latest_reading %}
           <div class="metric-grid" aria-label="Latest reading">
             <article class="metric-card">
               <span>Moisture</span>
-              <strong data-field="moisture">{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}%</strong>
+              <strong data-field="moisture">{% if latest_reading %}{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.moisture is not none %}%{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Temperature</span>
-              <strong data-field="temperature">{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }} C</strong>
+              <strong data-field="temperature">{% if latest_reading %}{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.temperature is not none %} C{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Humidity</span>
-              <strong data-field="humidity">{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}%</strong>
+              <strong data-field="humidity">{% if latest_reading %}{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.humidity is not none %}%{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Last Reading</span>
-              <strong data-field="last_reading">{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}</strong>
+              <strong data-field="last_reading">{% if latest_reading %}{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}{% else %}Waiting{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Light</span>
-              <strong data-field="light">{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}</strong>
+              <strong data-field="light">{% if latest_reading %}{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card">
               <span>Pump</span>
-              <strong data-field="pump">{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}</strong>
+              <strong data-field="pump">{% if latest_reading %}{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
             </article>
           </div>
-          {% else %}
-          <p class="notice">No sensor readings yet. Post data to <code>/api/data</code> for this device.</p>
-          {% endif %}
 
           <div class="embedded-section">
             <div class="section-heading">
@@ -132,27 +128,19 @@
               <p class="eyebrow">Camera</p>
               <h2>Latest Capture</h2>
             </div>
-            {% if latest_image %}
-            <span data-field="latest_image_timestamp">{{ latest_image.timestamp.strftime("%b %-d, %-I:%M %p") }}</span>
-            {% endif %}
+            <span data-field="latest_image_timestamp">{% if latest_image %}{{ latest_image.timestamp.strftime("%b %-d, %-I:%M %p") }}{% endif %}</span>
           </div>
-          {% if latest_image %}
-          <img data-latest-image src="{{ image_src(latest_image.id) }}" alt="Latest plant capture for {{ device.name }}">
-          {% else %}
-          <p class="notice">No image uploaded yet.</p>
-          {% endif %}
+          <img data-latest-image {% if latest_image %}src="{{ image_src(latest_image.id) }}"{% else %}hidden{% endif %} alt="Latest plant capture for {{ device.name }}">
+          <p class="notice" data-latest-image-notice {% if latest_image %}hidden{% endif %}>No image uploaded yet.</p>
 
           <div class="embedded-section">
             <h3>Recent Images</h3>
-            {% if recent_images %}
             <div class="image-grid image-thumbs" data-image-grid>
               {% for image in recent_images %}
               <img src="{{ image_src(image.id) }}" alt="Plant capture for {{ device.name }}">
               {% endfor %}
             </div>
-            {% else %}
-            <p class="notice">No images uploaded yet.</p>
-            {% endif %}
+            <p class="notice" data-image-grid-notice {% if recent_images %}hidden{% endif %}>No images uploaded yet.</p>
           </div>
         </article>
       </section>
@@ -304,6 +292,8 @@
       const connectionCard = document.querySelector("[data-connection-card]");
       const imageGrid = document.querySelector("[data-image-grid]");
       const latestImage = document.querySelector("[data-latest-image]");
+      const latestImageNotice = document.querySelector("[data-latest-image-notice]");
+      const imageGridNotice = document.querySelector("[data-image-grid-notice]");
       const activityList = document.querySelector("[data-activity-list]");
       let activeCommandKeys = new Set({{ active_command_keys | tojson }});
       let summaryRefreshTimer = null;
@@ -360,12 +350,25 @@
             latestImage.src = nextSrc;
           }
           latestImage.alt = payload.latest_image.alt || "Latest plant capture";
+          latestImage.hidden = false;
+          if (latestImageNotice) {
+            latestImageNotice.hidden = true;
+          }
           setField("latest_image_timestamp", payload.latest_image.timestamp);
         }
 
         const images = payload.recent_images || [];
-        if (!imageGrid || !images.length) {
+        if (!imageGrid) {
           return;
+        }
+        if (!images.length) {
+          if (imageGridNotice) {
+            imageGridNotice.hidden = false;
+          }
+          return;
+        }
+        if (imageGridNotice) {
+          imageGridNotice.hidden = true;
         }
         const signature = images.map((image) => image.src).join("|");
         if (imageGrid.dataset.signature === signature) {
