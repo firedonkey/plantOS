@@ -375,7 +375,7 @@ class WiFiConnectionLayer:
         self._run(["sudo", "nmcli", "device", "set", "wlan0", "managed", "yes"], timeout=20)
         self._run(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", "wlan0"], timeout=30)
 
-        logger.warning("Wi-Fi setup debug: ssid=%s password=%s", ssid, password)
+        logger.info("connecting with NetworkManager profile for ssid=%s", ssid)
 
         add_result = self._run(
             [
