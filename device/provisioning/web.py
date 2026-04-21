@@ -293,12 +293,14 @@ SETUP_TEMPLATE = """
 
       function setSsidOptions(networks) {
         ssidSelect.innerHTML = "";
+        const setupSsids = new Set(["PlantLab-Setup", "Hotspot"]);
+        const homeNetworks = networks.filter((network) => !setupSsids.has(network.ssid));
         const placeholder = document.createElement("option");
         placeholder.value = "";
-        placeholder.textContent = networks.length ? "Select nearby Wi-Fi" : "No networks found";
+        placeholder.textContent = homeNetworks.length ? "Select nearby Wi-Fi" : "Type your home Wi-Fi below";
         ssidSelect.appendChild(placeholder);
 
-        networks.forEach((network) => {
+        homeNetworks.forEach((network) => {
           const option = document.createElement("option");
           option.value = network.ssid;
           const signal = Number.isInteger(network.signal) ? ` (${network.signal}%)` : "";
@@ -311,8 +313,8 @@ SETUP_TEMPLATE = """
         manualOption.textContent = "My Wi-Fi is not listed";
         ssidSelect.appendChild(manualOption);
 
-        ssidInput.classList.toggle("visible", networks.length === 0);
-        if (networks.length === 0) {
+        ssidInput.classList.toggle("visible", homeNetworks.length === 0);
+        if (homeNetworks.length === 0) {
           ssidSelect.value = "__manual__";
         }
       }
