@@ -120,6 +120,7 @@ class ProvisioningService:
 
             self._set_state(
                 ProvisioningState.ONLINE,
+                platform_device_id=registration.get("platform_device_id"),
                 device_access_token=registration["device_access_token"],
                 device_name=registration.get("device_name"),
                 claim_token=None,

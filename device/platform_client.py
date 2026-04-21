@@ -63,6 +63,11 @@ def main() -> None:
     status_interval = int(args.status_interval or platform_config.get("status_interval_seconds") or 10)
 
     if not device_id or not device_token:
+        if provisioning_config.get("device_access_token") and not provisioning_config.get("platform_device_id"):
+            raise SystemExit(
+                "Provisioning config has a device token but no platform_device_id. "
+                "Run provisioning again with the latest code, or pass --device-id manually once."
+            )
         raise SystemExit(
             "Set --device-id and --device-token, add them under platform: in config.yaml, "
             "or pass the provisioning JSON with --config."
