@@ -573,6 +573,61 @@ input {
   font-size: 0.9rem;
 }
 
+.device-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.device-card-actions form {
+  margin: 0;
+}
+
+.danger-link {
+  min-height: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #9b332b;
+  font: inherit;
+  font-weight: 800;
+}
+
+.setup-result,
+.setup-error {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.setup-result {
+  border-color: #b8d8c0;
+  background: #eff9f1;
+}
+
+.setup-result-title {
+  margin-bottom: 6px;
+  color: var(--green);
+  font-weight: 900;
+}
+
+.setup-expiry {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.setup-error {
+  border-color: #e0b0aa;
+  background: #fff2f1;
+  color: #9b332b;
+  font-weight: 800;
+}
+
 .device-overview {
   width: min(1120px, calc(100% - 32px));
 }

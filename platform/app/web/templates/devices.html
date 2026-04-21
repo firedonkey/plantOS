@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Devices - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=cloud-run-static-20260419">
+    <link rel="stylesheet" href="/static/style.css?v=provision-sn-20260420">
   </head>
   <body>
     <header class="site-header">
@@ -49,7 +49,12 @@
             </div>
             <div class="device-card-footer">
               <span>{{ card.connection.last_seen }}</span>
-              <a href="/devices/{{ device.id }}">View dashboard</a>
+              <div class="device-card-actions">
+                <a href="/devices/{{ device.id }}">View dashboard</a>
+                <form action="/devices/{{ device.id }}/delete" method="post" onsubmit="return confirm('Remove this device from your account? The device will need to be added again before it can sync.');">
+                  <button class="danger-link" type="submit">Remove</button>
+                </form>
+              </div>
             </div>
           </div>
         </article>
@@ -62,23 +67,89 @@
       <section class="detail-section">
         <p class="eyebrow">Setup</p>
         <h2>Add Device</h2>
-        <p>Add each Raspberry Pi plant monitor before sending readings to the platform.</p>
-        <form class="device-form" action="/devices" method="post">
+        <p>Enter the device SN from the label or QR code. For this test build, use SN 123.</p>
+        <form class="device-form" id="sn-device-form">
           <label>
-            Device name
-            <input name="name" required maxlength="120" value="{{ suggested_device_name }}">
+            SN
+            <input id="device-sn" name="serial_number" required maxlength="80" value="123" autocomplete="off">
           </label>
-          <label>
-            Plant type
-            <input name="plant_type" maxlength="120" value="{{ suggested_plant_type }}">
-          </label>
-          <label>
-            Location
-            <input name="location" maxlength="120" value="{{ suggested_location }}">
-          </label>
-          <button type="submit">Add device</button>
+          <button id="verify-sn-button" type="submit">Verify SN</button>
         </form>
+        <div class="setup-result" id="setup-result" hidden>
+          <p class="setup-result-title">SN verified</p>
+          <p>Connect your phone or laptop to <strong>PlantLab-Setup</strong>, then continue setup.</p>
+          <a class="primary-button" id="continue-setup-link" href="#">Continue setup</a>
+          <p class="setup-expiry" id="setup-expiry"></p>
+        </div>
+        <p class="setup-error" id="setup-error" hidden></p>
       </section>
     </main>
+    <script>
+      const snForm = document.querySelector("#sn-device-form");
+      const snInput = document.querySelector("#device-sn");
+      const verifyButton = document.querySelector("#verify-sn-button");
+      const setupResult = document.querySelector("#setup-result");
+      const setupError = document.querySelector("#setup-error");
+      const continueSetupLink = document.querySelector("#continue-setup-link");
+      const setupExpiry = document.querySelector("#setup-expiry");
+
+      function formatExpiry(expiresAt) {
+        if (!expiresAt) {
+          return "";
+        }
+        const date = new Date(expiresAt);
+        if (Number.isNaN(date.getTime())) {
+          return "";
+        }
+        return new Intl.DateTimeFormat(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit"
+        }).format(date);
+      }
+
+      snForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setupError.hidden = true;
+        setupResult.hidden = true;
+
+        const serialNumber = snInput.value.trim();
+        if (!serialNumber) {
+          setupError.textContent = "Enter the device SN.";
+          setupError.hidden = false;
+          return;
+        }
+
+        verifyButton.disabled = true;
+        verifyButton.textContent = "Verifying SN...";
+
+        try {
+          const response = await fetch("/devices/setup-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json"
+            },
+            body: JSON.stringify({ serial_number: serialNumber })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.detail || data.message || data.error || "Could not verify this SN.");
+          }
+
+          continueSetupLink.href = data.setup_url;
+          const expiry = formatExpiry(data.expires_at);
+          setupExpiry.textContent = expiry ? `Authorization expires around ${expiry}.` : "";
+          setupResult.hidden = false;
+        } catch (error) {
+          setupError.textContent = error.message || "Could not verify this SN.";
+          setupError.hidden = false;
+        } finally {
+          verifyButton.disabled = false;
+          verifyButton.textContent = "Verify SN";
+        }
+      });
+    </script>
   </body>
 </html>

@@ -29,6 +29,7 @@ class Settings:
     session_secret: str = "dev-only-change-me"
     google_client_id: str | None = None
     google_client_secret: str | None = None
+    provisioning_api_url: str = "https://plantlab-provision-api-418533861080.us-central1.run.app"
 
     @property
     def google_auth_configured(self) -> bool:
@@ -64,6 +65,7 @@ def get_settings() -> Settings:
         session_secret=_required_or_default_secret("APP_SECRET_KEY", legacy_name="PLANTLAB_SESSION_SECRET"),
         google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),
+        provisioning_api_url=os.getenv("PLANTLAB_PROVISIONING_API_URL", Settings.provisioning_api_url).rstrip("/"),
     )
     settings.validate()
     return settings

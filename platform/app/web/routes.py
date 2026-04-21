@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
+import httpx
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -14,6 +15,7 @@ from app.schemas.devices import DeviceCreate
 from app.services.commands import create_command, list_commands_for_device
 from app.services.devices import (
     create_device_for_user,
+    delete_device_for_user,
     get_device_for_user,
     list_devices_for_user,
 )
@@ -220,6 +222,60 @@ async def create_device_page(
         return RedirectResponse(url="/login", status_code=303)
     create_device_for_user(session, current_user, device_data)
 
+    return RedirectResponse(url="/devices", status_code=303)
+
+
+@router.post("/devices/setup-code")
+async def create_device_setup_code_page(request: Request):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    data = await request.json()
+    serial_number = str(data.get("serial_number", "")).strip()
+    if not serial_number:
+        raise HTTPException(status_code=422, detail="SN is required.")
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{settings.provisioning_api_url}/api/devices/setup-code",
+                json={"serial_number": serial_number},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Provisioning service unavailable: {exc}") from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Provisioning service returned an invalid response.") from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=payload.get("message") or payload.get("error") or "Could not verify this SN.",
+        )
+
+    return JSONResponse(payload, status_code=response.status_code)
+
+
+@router.post("/devices/{device_id}/delete")
+async def delete_device_page(
+    request: Request,
+    device_id: int,
+    session: Session = Depends(get_session),
+):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
+    delete_device_for_user(session, current_user, device_id)
     return RedirectResponse(url="/devices", status_code=303)
 
 

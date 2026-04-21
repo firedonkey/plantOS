@@ -1,9 +1,10 @@
 import secrets
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models import Device, User
+from app.models import Command, Device, Event, Image, SensorReading, User
 from app.schemas.devices import DeviceCreate
 
 
@@ -62,3 +63,42 @@ def get_device_for_user(session: Session, user: User, device_id: int) -> Device 
 
 def get_device_by_api_token(session: Session, api_token: str) -> Device | None:
     return session.scalar(select(Device).where(Device.api_token == api_token))
+
+
+def delete_device_for_user(session: Session, user: User, device_id: int) -> bool:
+    device = get_device_for_user(session, user, device_id)
+    if device is None:
+        return False
+
+    _clear_provisioning_references(session, device.id)
+    session.execute(delete(Command).where(Command.device_id == device.id))
+    session.execute(delete(Event).where(Event.device_id == device.id))
+    session.execute(delete(Image).where(Image.device_id == device.id))
+    session.execute(delete(SensorReading).where(SensorReading.device_id == device.id))
+    session.delete(device)
+    session.commit()
+    return True
+
+
+def _clear_provisioning_references(session: Session, device_id: int) -> None:
+    """Best-effort cleanup for provisioning tables managed by the Node service."""
+    statements = [
+        text(
+            """
+            UPDATE device_serial_numbers
+            SET
+              status = 'available',
+              claimed_by_user_id = NULL,
+              claimed_by_device_id = NULL,
+              claimed_at = NULL,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE claimed_by_device_id = :device_id
+            """
+        ),
+        text("UPDATE device_claim_tokens SET used_by_device_id = NULL WHERE used_by_device_id = :device_id"),
+    ]
+    for statement in statements:
+        try:
+            session.execute(statement, {"device_id": device_id})
+        except SQLAlchemyError:
+            session.rollback()
