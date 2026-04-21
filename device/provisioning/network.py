@@ -32,28 +32,73 @@ class NetworkManager:
 
     def start_softap(self, ssid: str = "PlantLab-Setup") -> None:
         logger.info("starting SoftAP ssid=%s dry_run=%s", ssid, self.dry_run)
+        self._run(["sudo", "nmcli", "radio", "wifi", "on"], dry_run_message="Wi-Fi radio enable skipped")
+        self._cleanup_hotspot_profiles(ssid)
         self._run(
             [
                 "sudo",
                 "nmcli",
-                "dev",
+                "connection",
+                "add",
+                "type",
                 "wifi",
-                "hotspot",
                 "ifname",
                 "wlan0",
+                "con-name",
+                ssid,
+                "autoconnect",
+                "no",
                 "ssid",
                 ssid,
-                "password",
+            ],
+            dry_run_message="NetworkManager hotspot profile create skipped",
+        )
+        self._run(
+            [
+                "sudo",
+                "nmcli",
+                "connection",
+                "modify",
+                ssid,
+                "802-11-wireless.mode",
+                "ap",
+                "802-11-wireless.band",
+                "bg",
+                "ipv4.method",
+                "shared",
+                "wifi-sec.key-mgmt",
+                "wpa-psk",
+                "wifi-sec.psk",
                 self.hotspot_password,
             ],
+            dry_run_message="NetworkManager hotspot profile configure skipped",
+        )
+        self._run(
+            ["sudo", "nmcli", "connection", "up", ssid],
             dry_run_message="NetworkManager hotspot start skipped",
         )
 
     def stop_softap(self) -> None:
         logger.info("stopping SoftAP dry_run=%s", self.dry_run)
+        self._cleanup_hotspot_profiles("PlantLab-Setup")
+
+    def _cleanup_hotspot_profiles(self, ssid: str) -> None:
+        """Remove stale hotspot profiles before changing Wi-Fi mode."""
+        for name in (ssid, "Hotspot"):
+            self._run(
+                ["sudo", "nmcli", "connection", "down", name],
+                dry_run_message=f"NetworkManager hotspot down skipped for {name}",
+                check=False,
+            )
+            self._run(
+                ["sudo", "nmcli", "connection", "delete", name],
+                dry_run_message=f"NetworkManager hotspot delete skipped for {name}",
+                check=False,
+            )
         self._run(
-            ["sudo", "nmcli", "connection", "down", "Hotspot"],
-            dry_run_message="NetworkManager hotspot stop skipped",
+            ["sudo", "nmcli", "device", "disconnect", "wlan0"],
+            dry_run_message="NetworkManager wlan0 disconnect skipped",
+            check=False,
         )
 
     def connect_wifi(self, ssid: str, password: str) -> WiFiStatus:
@@ -64,10 +109,10 @@ class NetworkManager:
         logger.info("scanning Wi-Fi networks dry_run=%s", self.dry_run)
         return self.wifi.scan_networks()
 
-    def _run(self, command: list[str], dry_run_message: str | None = None) -> None:
+    def _run(self, command: list[str], dry_run_message: str | None = None, check: bool = True) -> None:
         if self.dry_run:
             logger.info("[dry-run] %s", dry_run_message or " ".join(command))
             return
 
         logger.info("running command: %s", " ".join(command))
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=check)
