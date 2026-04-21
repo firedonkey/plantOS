@@ -77,8 +77,6 @@ class NetworkManager:
                     self.hotspot_password,
                 ]
             )
-        else:
-            configure_command.extend(["802-11-wireless-security.key-mgmt", "none"])
 
         self._run(configure_command, dry_run_message="NetworkManager hotspot profile configure skipped")
         self._run(
