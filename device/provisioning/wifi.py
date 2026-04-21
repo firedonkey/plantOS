@@ -377,12 +377,64 @@ class WiFiConnectionLayer:
 
         logger.warning("Wi-Fi setup debug: ssid=%s password=%s", ssid, password)
 
-        command = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
-        if password:
-            command.extend(["password", password])
-        command.extend(["ifname", "wlan0"])
+        add_result = self._run(
+            [
+                "sudo",
+                "nmcli",
+                "connection",
+                "add",
+                "type",
+                "wifi",
+                "ifname",
+                "wlan0",
+                "con-name",
+                ssid,
+                "ssid",
+                ssid,
+            ],
+            timeout=20,
+        )
+        if add_result.returncode != 0:
+            return WiFiStatus(
+                ok=False,
+                stage="networkmanager_connect",
+                message="NetworkManager could not create a Wi-Fi profile.",
+                details={"stderr": add_result.stderr, "stdout": add_result.stdout},
+            )
 
-        result = self._run(command, timeout=60)
+        modify_command = [
+            "sudo",
+            "nmcli",
+            "connection",
+            "modify",
+            ssid,
+            "802-11-wireless.mode",
+            "infrastructure",
+            "ipv4.method",
+            "auto",
+            "ipv6.method",
+            "auto",
+        ]
+        if password:
+            modify_command.extend(
+                [
+                    "802-11-wireless-security.key-mgmt",
+                    "wpa-psk",
+                    "802-11-wireless-security.psk",
+                    password,
+                ]
+            )
+
+        modify_result = self._run(modify_command, timeout=20)
+        if modify_result.returncode != 0:
+            return WiFiStatus(
+                ok=False,
+                stage="networkmanager_connect",
+                message="NetworkManager could not configure the Wi-Fi profile.",
+                details={"stderr": modify_result.stderr, "stdout": modify_result.stdout},
+            )
+
+        result = self._run(["sudo", "nmcli", "connection", "up", ssid], timeout=60)
         if result.returncode != 0:
             return WiFiStatus(
                 ok=False,
