@@ -35,7 +35,9 @@ export async function requestDeviceClaimToken({ signal } = {}) {
   }
 
   return {
+    setupCode: payload.setup_code || payload.claim_token,
     claimToken: payload.claim_token,
+    setupUrl: payload.setup_url,
     expiresAt: payload.expires_at
   };
 }

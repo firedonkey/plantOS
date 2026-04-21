@@ -81,7 +81,8 @@
 }
 
 .primary-action,
-.token-panel button {
+.token-panel button,
+.continue-setup-link {
   min-height: 42px;
   border: 1px solid #2f7d4b;
   border-radius: 8px;
@@ -91,6 +92,14 @@
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+
+.continue-setup-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  text-decoration: none;
 }
 
 .primary-action:disabled {
@@ -209,7 +218,8 @@
   }
 
   .primary-action,
-  .token-panel button {
+  .token-panel button,
+  .continue-setup-link {
     justify-content: center;
     width: 100%;
   }

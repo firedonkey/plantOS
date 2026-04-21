@@ -3,6 +3,8 @@ import { z } from "zod";
 export const claimTokenResponseSchema = z.object({
   ok: z.literal(true),
   claim_token: z.string(),
+  setup_code: z.string(),
+  setup_url: z.string().url(),
   expires_at: z.string().datetime()
 });
 

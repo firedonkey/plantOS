@@ -27,6 +27,7 @@ export function getConfig() {
     port: Number.parseInt(process.env.PORT || "3000", 10),
     database,
     claimTokenTtlMinutes: Number.parseInt(process.env.CLAIM_TOKEN_TTL_MINUTES || "15", 10),
-    deviceTokenBytes: Number.parseInt(process.env.DEVICE_ACCESS_TOKEN_BYTES || "32", 10)
+    deviceTokenBytes: Number.parseInt(process.env.DEVICE_ACCESS_TOKEN_BYTES || "32", 10),
+    localSetupUrl: process.env.PLANTLAB_LOCAL_SETUP_URL || "http://10.42.0.1:8080"
   };
 }

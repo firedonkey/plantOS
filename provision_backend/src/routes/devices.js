@@ -1,5 +1,6 @@
 import express from "express";
 
+import { getConfig } from "../config.js";
 import {
   claimTokenPayloadSchema,
   registerDeviceResponseSchema,
@@ -13,6 +14,13 @@ import {
 } from "../services/deviceProvisioningService.js";
 
 export const devicesRouter = express.Router();
+const config = getConfig();
+
+function buildSetupUrl(setupCode) {
+  const url = new URL(config.localSetupUrl);
+  url.searchParams.set("setup_code", setupCode);
+  return url.toString();
+}
 
 devicesRouter.post(
   "/claim-token",
@@ -25,6 +33,8 @@ devicesRouter.post(
       return res.status(201).json({
         ok: true,
         claim_token: claimToken.claim_token,
+        setup_code: claimToken.claim_token,
+        setup_url: buildSetupUrl(claimToken.claim_token),
         expires_at: new Date(claimToken.expires_at).toISOString()
       });
     } catch (error) {

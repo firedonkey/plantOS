@@ -9,14 +9,15 @@ import "../styles/add-device.css";
 
 const ONBOARDING_STEPS = [
   "Power on the PlantLab device.",
-  "Connect your phone or laptop to the PlantLab-XXXX Wi-Fi network.",
-  "Open http://192.168.4.1 in your browser.",
+  "Connect your phone or laptop to the PlantLab-Setup Wi-Fi network.",
+  "Tap Continue setup to open the local device page.",
   "Enter your home Wi-Fi name and password.",
-  "Paste this setup code on the device setup page."
+  "The setup code is sent automatically."
 ];
 
 export default function AddDevicePage() {
   const [claimToken, setClaimToken] = useState("");
+  const [setupUrl, setSetupUrl] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -37,15 +38,17 @@ export default function AddDevicePage() {
     setStatus("loading");
     setMessage("");
     setCopied(false);
+    setSetupUrl("");
 
     try {
       const result = await requestDeviceClaimToken({
         signal: abortController.signal
       });
-      setClaimToken(result.claimToken);
+      setClaimToken(result.setupCode);
+      setSetupUrl(result.setupUrl || "");
       setExpiresAt(result.expiresAt);
       setStatus("success");
-      setMessage("Setup code ready. Use it before it expires.");
+      setMessage("Setup code ready. Connect to PlantLab-Setup, then continue setup.");
     } catch (error) {
       if (error.name === "AbortError") {
         return;
@@ -76,8 +79,8 @@ export default function AddDevicePage() {
         <p className="add-device-eyebrow">PlantLab Setup</p>
         <h1 id="add-device-title">Add a new device</h1>
         <p>
-          Generate a one-time setup code, then paste it into the local setup
-          page on your PlantLab device.
+          Generate a one-time setup code, connect to the device Wi-Fi, then
+          continue to the local setup page.
         </p>
       </section>
 
@@ -110,6 +113,11 @@ export default function AddDevicePage() {
             <div className="token-panel">
               <span className="token-label">Setup code</span>
               <code>{claimToken}</code>
+              {setupUrl && (
+                <a className="continue-setup-link" href={setupUrl}>
+                  Continue setup
+                </a>
+              )}
               <button type="button" onClick={handleCopyToken}>
                 {copied ? "Copied" : "Copy code"}
               </button>
@@ -137,7 +145,7 @@ export default function AddDevicePage() {
           </ol>
           <div className="setup-note">
             <strong>Local setup address</strong>
-            <code>http://192.168.4.1</code>
+            <code>http://10.42.0.1:8080</code>
           </div>
         </div>
       </section>

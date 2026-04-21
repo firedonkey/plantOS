@@ -124,6 +124,10 @@ SETUP_TEMPLATE = """
         display: block;
       }
 
+      .hidden {
+        display: none;
+      }
+
       .secondary-button {
         min-height: 42px;
         border: 1px solid #cfd8cf;
@@ -229,7 +233,7 @@ SETUP_TEMPLATE = """
             </div>
           </label>
 
-          <label>
+          <label id="setup-code-field">
             Setup code
             <input id="claim-token" name="claim_token" required autocomplete="one-time-code" placeholder="PL-ABC123XYZ">
           </label>
@@ -251,6 +255,7 @@ SETUP_TEMPLATE = """
       const passwordInput = document.querySelector("#password");
       const claimTokenInput = document.querySelector("#claim-token");
       const backendUrlInput = document.querySelector("#backend-url");
+      const setupCodeField = document.querySelector("#setup-code-field");
       const togglePasswordButton = document.querySelector("#toggle-password");
       const submitButton = document.querySelector("#submit-button");
       const statusBox = document.querySelector("#status");
@@ -289,6 +294,21 @@ SETUP_TEMPLATE = """
 
       function selectedSsid() {
         return ssidSelect.value === "__manual__" ? ssidInput.value.trim() : ssidSelect.value.trim();
+      }
+
+      function applySetupCodeFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const setupCode = params.get("setup_code");
+        if (!setupCode) {
+          return;
+        }
+
+        claimTokenInput.value = setupCode.trim();
+        setupCodeField.classList.add("hidden");
+        setStatus("Setup code received. Enter your home Wi-Fi details.", "success");
+
+        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+        window.history.replaceState({}, document.title, cleanUrl);
       }
 
       function setSsidOptions(networks) {
@@ -394,6 +414,7 @@ SETUP_TEMPLATE = """
         }
       });
 
+      applySetupCodeFromUrl();
       loadNetworks();
     </script>
   </body>
