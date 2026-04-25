@@ -37,7 +37,7 @@ sensors:
     mock_raw_variation: 1200
 
 actuators:
-  relay_active_high: false
+  relay_active_high: true
   pump:
     enabled: true
     gpio_pin: 17
