@@ -107,13 +107,19 @@ def main() -> None:
             if should_send:
                 cycle += 1
                 record = automation.run_once()
-                send_reading(platform_url, int(device_id), str(device_token), record)
+                try:
+                    send_reading(platform_url, int(device_id), str(device_token), record)
+                except requests.RequestException as exc:
+                    print(f"[platform] reading upload failed: {exc}")
 
                 should_upload_image = args.image_every > 0 and cycle % args.image_every == 0
                 if should_upload_image:
                     image_path = captured_image_path(record, image_cycle if args.mock_image_fallback else None)
                     if image_path is not None:
-                        send_image(platform_url, int(device_id), str(device_token), image_path)
+                        try:
+                            send_image(platform_url, int(device_id), str(device_token), image_path)
+                        except requests.RequestException as exc:
+                            print(f"[platform] image upload failed: {exc}")
                     else:
                         print("[platform] no camera image available to upload")
                 next_send_at = time.monotonic() + send_interval
