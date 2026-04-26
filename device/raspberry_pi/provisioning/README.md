@@ -6,26 +6,27 @@ This service implements the Raspberry Pi side of the SoftAP provisioning flow de
 
 ```text
 device/
-  provision.py
-  provisioning/
-    __init__.py
-    backend.py
-    device_identity.py
-    network.py
-    service.py
-    state.py
-    storage.py
-    web.py
-    wifi.py
+  raspberry_pi/
+    provision.py
+    provisioning/
+      __init__.py
+      backend.py
+      device_identity.py
+      network.py
+      service.py
+      state.py
+      storage.py
+      web.py
+      wifi.py
 ```
 
 ## Run On Raspberry Pi
 
-From the device folder:
+From the Raspberry Pi device folder:
 
 ```bash
-cd ~/projects/plantOS/device
-source ../.venv/bin/activate
+cd ~/projects/plantOS/device/raspberry_pi
+source ../../.venv/bin/activate
 python provision.py --backend-url https://marspotatolab.com
 ```
 

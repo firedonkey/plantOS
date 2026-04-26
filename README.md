@@ -79,19 +79,24 @@ plantOS/
   docs/
     api_contract.md
   device/
-    requirements.txt
-    requirements-pi.txt
-    config.yaml
-    app.py
-    main.py
-    sensors/
-    actuators/
-    camera/
-    services/
-    dashboard/
-    data/
-      logs/
-      images/
+    README.md
+    raspberry_pi/
+      requirements.txt
+      requirements-pi.txt
+      config.yaml
+      app.py
+      main.py
+      sensors/
+      actuators/
+      camera/
+      services/
+      dashboard/
+      provisioning/
+      data/
+        logs/
+        images/
+    esp32/
+      README.md
   platform/
     requirements.txt
     app/
@@ -106,7 +111,7 @@ plantOS/
     tests/
 ```
 
-The `device/` app runs on the Raspberry Pi and owns hardware-level debugging. The `platform/` app runs the FastAPI web platform. The two apps communicate over HTTP and should not import each other.
+The `device/` folder is now a hardware container. The active Python device app runs under `device/raspberry_pi/` and owns Raspberry Pi hardware-level debugging. `device/esp32/` is reserved for future ESP32 work. The `platform/` app runs the FastAPI web platform. The two sides communicate over HTTP and should not import each other.
 
 ## MVP behavior
 
@@ -179,13 +184,13 @@ source .venv/bin/activate
 ### 5. Install Python dependencies
 For device laptop/mock-mode development:
 ```bash
-cd device
+cd device/raspberry_pi
 pip install -r requirements.txt
 ```
 
 For Raspberry Pi hardware access:
 ```bash
-cd device
+cd device/raspberry_pi
 pip install -r requirements-pi.txt
 ```
 
@@ -210,9 +215,9 @@ sudo apt install libgpiod2
 ## Test flow
 
 ### Laptop mock test
-Keep `hardware.mock_mode: true` in `device/config.yaml`, then run:
+Keep `hardware.mock_mode: true` in `device/raspberry_pi/config.yaml`, then run:
 ```bash
-cd device
+cd device/raspberry_pi
 python main.py --once
 python -m flask --app app run --host 127.0.0.1 --port 5000
 ```
@@ -236,7 +241,7 @@ camera:
 Then run one cycle and refresh the local device dashboard:
 
 ```bash
-cd device
+cd device/raspberry_pi
 python main.py --once
 python -m flask --app app run --host 0.0.0.0 --port 5000
 ```
@@ -244,7 +249,7 @@ python -m flask --app app run --host 0.0.0.0 --port 5000
 For a webcam stress test, run the automation loop with a short loop interval and capture interval:
 
 ```bash
-cd device
+cd device/raspberry_pi
 python main.py --loop-interval 2 --capture-interval 2
 ```
 
@@ -270,6 +275,7 @@ sensors:
 Then install Pi requirements and run one cycle:
 
 ```bash
+cd device/raspberry_pi
 pip install -r requirements-pi.txt
 python main.py --once
 ```
@@ -291,8 +297,8 @@ Sign in, add a device, then open that device dashboard and copy:
 On the Raspberry Pi, send real device readings and real captured camera images:
 
 ```bash
-cd device
-source ../.venv/bin/activate
+cd device/raspberry_pi
+source ../../.venv/bin/activate
 python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --send-interval 600 --command-interval 2 --status-interval 10 --image-every 1
 ```
 
@@ -300,7 +306,7 @@ The platform client sends readings, polls commands, and reports actuator status 
 
 When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
 
-You can also save the values under `platform:` in `device/config.yaml` and run:
+You can also save the values under `platform:` in `device/raspberry_pi/config.yaml` and run:
 
 ```bash
 python platform_client.py
@@ -310,8 +316,8 @@ python platform_client.py
 Use the mock sender when you want to exercise the platform without waiting on real hardware:
 
 ```bash
-cd device
-source ../.venv/bin/activate
+cd device/raspberry_pi
+source ../../.venv/bin/activate
 python mock_platform_sender.py --device-id 1 --device-token paste-token-here --once
 ```
 
@@ -321,7 +327,7 @@ To send mock readings every 5 seconds and upload one bundled mock rose image eve
 python mock_platform_sender.py --device-id 1 --device-token paste-token-here --send-interval 5 --command-interval 2 --image-every 3
 ```
 
-You can also save the values under `platform:` in `device/config.yaml` and run:
+You can also save the values under `platform:` in `device/raspberry_pi/config.yaml` and run:
 
 ```bash
 python mock_platform_sender.py
@@ -332,7 +338,7 @@ The mock sender forces mock mode for DHT22, moisture, and camera. It still polls
 ### Raspberry Pi mock test
 Copy the repo to the Pi, keep `hardware.mock_mode: true`, then run:
 ```bash
-cd device
+cd device/raspberry_pi
 python main.py --once
 python -m flask --app app run --host 0.0.0.0 --port 5000
 ```
@@ -359,35 +365,35 @@ sudo apt install i2c-tools -y
 i2cdetect -y 1
 ```
 
-You should see `48` in the scan output. Calibrate `sensors.moisture.dry_value` and `sensors.moisture.wet_value` in `device/config.yaml` after checking raw readings from your actual sensor and soil.
+You should see `48` in the scan output. Calibrate `sensors.moisture.dry_value` and `sensors.moisture.wet_value` in `device/raspberry_pi/config.yaml` after checking raw readings from your actual sensor and soil.
 
-For a relay-controlled LED or grow light, the default device config uses GPIO23, which is physical pin 16:
+For a relay-controlled LED or grow light, the current Raspberry Pi config uses GPIO27, which is physical pin 13:
 
 ```yaml
 actuators:
-  relay_active_high: false
+  relay_active_high: true
   light:
-    gpio_pin: 23
+    gpio_pin: 27
 ```
 
-Wire the relay module input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO23. Use the relay `COM` and `NO` screw terminals for the LED power circuit so the LED is normally off and turns on only when the relay is active. Keep testing on low-voltage DC before switching anything higher power.
+Wire the relay module input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO27. Use the relay `COM` and `NO` screw terminals for the LED power circuit so the LED is normally off and turns on only when the relay is active. Keep testing on low-voltage DC before switching anything higher power.
 
 Start with a short pump run time while testing:
 ```yaml
 actuators:
-  relay_active_high: false
+  relay_active_high: true
   pump:
-    gpio_pin: 24
+    gpio_pin: 17
     run_seconds: 2
     cooldown_seconds: 3600
 ```
 
-The default pump relay is active-low and uses GPIO24, which is physical pin 18. Wire the relay input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO24. Use `COM` and `NO` for the pump power circuit so the pump is normally off.
+The current pump relay wiring uses GPIO17, which is physical pin 11. Wire the relay input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO17. Use `COM` and `NO` for the pump power circuit so the pump is normally off.
 
 Run a short manual pump relay test before connecting water tubing to the plant:
 ```bash
-cd device
-source ../.venv/bin/activate
+cd device/raspberry_pi
+source ../../.venv/bin/activate
 python test_pump.py --seconds 2
 ```
 
@@ -397,15 +403,15 @@ The Flask dashboard is also a lightweight progressive web app.
 
 Run it locally:
 ```bash
-cd device
-source .venv/bin/activate
+cd device/raspberry_pi
+source ../../.venv/bin/activate
 python -m flask --app app run --host 127.0.0.1 --port 5000
 ```
 
 Run it on the Pi for other devices on the network:
 ```bash
-cd device
-source .venv/bin/activate
+cd device/raspberry_pi
+source ../../.venv/bin/activate
 python -m flask --app app run --host 0.0.0.0 --port 5000
 ```
 

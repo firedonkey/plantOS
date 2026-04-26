@@ -1,7 +1,7 @@
 #!/bin/bash
 
-cd ~/projects/plantOS/device
-source ../.venv/bin/activate
+cd ~/projects/plantOS/device/raspberry_pi
+source ../../.venv/bin/activate
 
 python platform_client.py \
   --platform-url https://plantlab-api-418533861080.us-central1.run.app \
