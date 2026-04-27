@@ -3,11 +3,14 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 
+#include "camera/xiao_camera.h"
 #include "config.h"
 #include "espnow_test_protocol.h"
 
 namespace {
 uint32_t g_capture_counter = 0;
+XiaoCamera g_camera;
+bool g_camera_ready = false;
 }
 
 String mac_to_string(const uint8_t* mac) {
@@ -58,7 +61,9 @@ void send_ack(
     const uint8_t* target_mac,
     EspNowCommandType command,
     uint32_t request_id,
-    EspNowAckStatus status) {
+    EspNowAckStatus status,
+    uint32_t value_u32_1 = 0,
+    uint32_t value_u32_2 = 0) {
   if (!ensure_peer(target_mac)) {
     return;
   }
@@ -71,6 +76,8 @@ void send_ack(
   packet.ack_status = static_cast<uint8_t>(status);
   packet.request_id = request_id;
   packet.timestamp_ms = millis();
+  packet.value_u32_1 = value_u32_1;
+  packet.value_u32_2 = value_u32_2;
 
   const esp_err_t err = esp_now_send(
       target_mac,
@@ -79,9 +86,9 @@ void send_ack(
 
   if (err == ESP_OK) {
     Serial.printf(
-        "[espnow-camera] ACK request=%u command=%s status=%u -> %s\n",
-        static_cast<unsigned int>(request_id),
-        command_to_string(command),
+      "[espnow-camera] ACK request=%u command=%s status=%u -> %s\n",
+      static_cast<unsigned int>(request_id),
+      command_to_string(command),
         static_cast<unsigned int>(status),
         mac_to_string(target_mac).c_str());
   } else {
@@ -154,10 +161,36 @@ void on_data_received(const uint8_t* mac_addr, const uint8_t* data, int len) {
 
   switch (command) {
     case EspNowCommandType::kCaptureImage:
-      // Placeholder for real camera capture.
-      ++g_capture_counter;
-      Serial.printf("[espnow-camera] capture simulated count=%u\n", static_cast<unsigned int>(g_capture_counter));
-      send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+      if (!g_camera_ready) {
+        Serial.println("[espnow-camera] capture failed: camera not ready");
+        send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kFailed);
+        break;
+      }
+
+      {
+        const CameraFrameInfo frame = g_camera.capture_once();
+        if (!frame.valid) {
+          Serial.println("[espnow-camera] capture failed: frame invalid");
+          send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kFailed);
+          break;
+        }
+
+        ++g_capture_counter;
+        Serial.printf(
+            "[espnow-camera] captured image count=%u %ux%u %u bytes\n",
+            static_cast<unsigned int>(g_capture_counter),
+            static_cast<unsigned int>(frame.width),
+            static_cast<unsigned int>(frame.height),
+            static_cast<unsigned int>(frame.length_bytes));
+
+        send_ack(
+            mac_addr,
+            command,
+            packet.request_id,
+            EspNowAckStatus::kOk,
+            static_cast<uint32_t>(frame.length_bytes),
+            g_capture_counter);
+      }
       break;
     case EspNowCommandType::kProvisionStart:
       // Placeholder for provisioning flow wiring later.
@@ -202,6 +235,13 @@ void setup() {
   Serial.println("=== PlantLab ESP-NOW Camera Command Test ===");
   Serial.printf("[espnow-camera] local MAC: %s\n", WiFi.macAddress().c_str());
   Serial.printf("[espnow-camera] channel: %u\n", static_cast<unsigned int>(ESPNOW_TEST_WIFI_CHANNEL));
+
+  g_camera_ready = g_camera.begin();
+  if (g_camera_ready) {
+    Serial.println("[espnow-camera] camera initialized");
+  } else {
+    Serial.println("[espnow-camera] camera init failed");
+  }
 
   if (!init_espnow()) {
     Serial.println("[espnow-camera] init failed");

@@ -77,12 +77,23 @@ void on_data_received(const uint8_t* mac_addr, const uint8_t* data, int len) {
   if (kind == EspNowMessageKind::kAck) {
     const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
     const EspNowAckStatus status = static_cast<EspNowAckStatus>(packet.ack_status);
-    Serial.printf(
-        "[espnow-master] ACK request=%u command=%s status=%s from %s\n",
-        static_cast<unsigned int>(packet.request_id),
-        command_to_string(command),
-        ack_to_string(status),
-        mac_to_string(mac_addr).c_str());
+    if (command == EspNowCommandType::kCaptureImage) {
+      Serial.printf(
+          "[espnow-master] ACK request=%u command=%s status=%s bytes=%u capture_count=%u from %s\n",
+          static_cast<unsigned int>(packet.request_id),
+          command_to_string(command),
+          ack_to_string(status),
+          static_cast<unsigned int>(packet.value_u32_1),
+          static_cast<unsigned int>(packet.value_u32_2),
+          mac_to_string(mac_addr).c_str());
+    } else {
+      Serial.printf(
+          "[espnow-master] ACK request=%u command=%s status=%s from %s\n",
+          static_cast<unsigned int>(packet.request_id),
+          command_to_string(command),
+          ack_to_string(status),
+          mac_to_string(mac_addr).c_str());
+    }
     return;
   }
 
