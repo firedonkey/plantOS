@@ -58,6 +58,36 @@ Common options:
 # Flash dedicated light/pump actuator debug firmware
 ./scripts/flash_esp32.sh --test-actuators --monitor
 
+# Flash dedicated camera-node capture debug firmware
+./scripts/flash_esp32.sh --test-camera --port /dev/cu.usbmodem12201 --monitor
+
 # Explicit serial port
 ./scripts/flash_esp32.sh --port /dev/cu.usbmodem1301 --monitor
+```
+
+## Camera SD commands (camera-test firmware)
+
+In serial monitor:
+
+- `c` then Enter: capture and save a JPEG to SD card
+- `l` then Enter: list files on SD card
+- `d /capture_0.jpg` then Enter: dump file bytes over serial
+
+## Export image from SD without removing card
+
+From your laptop:
+
+```bash
+cd /Users/gary/plantOS/device/esp32
+python scripts/export_sd_image.py \
+  --port /dev/cu.usbmodem12201 \
+  --path /capture_0.jpg \
+  --out /Users/gary/Desktop/capture_0.jpg
+```
+
+If needed, install dependency once:
+
+```bash
+source /Users/gary/plantOS/.venv/bin/activate
+python -m pip install pyserial
 ```
