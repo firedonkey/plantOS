@@ -30,8 +30,9 @@
 #define ACTUATOR_OFF_LEVEL LOW
 
 // Power button + status LED
-// Power button default: BOOT button (GPIO0), active low with internal pull-up.
-#define PIN_POWER_BUTTON 0
+// Power button input (active low with internal pull-up).
+// Do not use GPIO0 for power-button behavior in this project.
+#define PIN_POWER_BUTTON 14
 #define POWER_BUTTON_ACTIVE_LEVEL LOW
 
 // Status LED default: external LED pin. Change to your wired LED GPIO.
@@ -45,6 +46,7 @@
 
 // Capacitive touch button (ESP32-S3 touch-capable GPIO)
 #define ENABLE_TOUCH_BUTTON 1
+// Shared physical user button: same GPIO as power button.
 #define PIN_TOUCH_BUTTON 14
 
 // Touch tuning values.

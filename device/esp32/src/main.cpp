@@ -11,6 +11,12 @@
 #include "system/touch_button_manager.h"
 
 namespace {
+#if ENABLE_TOUCH_BUTTON && (PIN_TOUCH_BUTTON == PIN_POWER_BUTTON)
+constexpr bool kSharedUserButton = true;
+#else
+constexpr bool kSharedUserButton = false;
+#endif
+
 Dht22Sensor g_dht22(PIN_DHT22_DATA);
 MoistureSensor g_moisture(
     PIN_SOIL_MOISTURE_ADC, MOISTURE_SAMPLE_COUNT, MOISTURE_SAMPLE_DELAY_MS);
@@ -72,13 +78,18 @@ void setup() {
   Serial.printf("Status LED pin: GPIO%d\n", PIN_STATUS_LED);
 #if ENABLE_TOUCH_BUTTON
   Serial.printf("Touch button pin: GPIO%d\n", PIN_TOUCH_BUTTON);
+  if (kSharedUserButton) {
+    Serial.println("[input] shared user button: power + touch use same GPIO");
+  }
 #endif
   Serial.println("[power] short press: deep sleep");
   Serial.println("[power] long press: provisioning mode (placeholder)");
 
   g_status_led.begin();
   g_status_led.set_mode(StatusLedMode::kBooting);
-  g_power_button.begin();
+  if (!kSharedUserButton) {
+    g_power_button.begin();
+  }
   g_dht22.begin();
   g_moisture.begin();
   g_light.begin();
@@ -132,16 +143,18 @@ void loop() {
   }
 #endif
 
-  const PowerButtonEvent button_event = g_power_button.update(now);
-  if (button_event == PowerButtonEvent::kShortPress) {
-    enter_deep_sleep();
-    return;
-  }
-  if (button_event == PowerButtonEvent::kLongPress) {
-    g_provisioning_mode = true;
-    g_status_led.set_mode(StatusLedMode::kProvisioning);
-    Serial.println("[power] provisioning mode requested");
-    Serial.println("[provisioning] placeholder mode only in Phase 1");
+  if (!kSharedUserButton) {
+    const PowerButtonEvent button_event = g_power_button.update(now);
+    if (button_event == PowerButtonEvent::kShortPress) {
+      enter_deep_sleep();
+      return;
+    }
+    if (button_event == PowerButtonEvent::kLongPress) {
+      g_provisioning_mode = true;
+      g_status_led.set_mode(StatusLedMode::kProvisioning);
+      Serial.println("[power] provisioning mode requested");
+      Serial.println("[provisioning] placeholder mode only in Phase 1");
+    }
   }
 
   if (g_provisioning_mode) {

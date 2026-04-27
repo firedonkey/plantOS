@@ -89,6 +89,23 @@ ESP-NOW master serial keys:
 - `p` -> send `provision_start` command (placeholder)
 - `h` -> send `health_check` command
 
+## Phase 1 stress gate
+
+Use the automated stress harness:
+
+```bash
+cd /Users/gary/plantOS/device/esp32
+source /Users/gary/plantOS/.venv/bin/activate
+python scripts/phase1_stress_test.py \
+  --master-port /dev/cu.usbmodem1301 \
+  --camera-port /dev/cu.usbmodem12201 \
+  --duration 1800
+```
+
+Detailed checklist:
+
+- `/Users/gary/plantOS/device/esp32/PHASE1_STRESS_TEST.md`
+
 ## Camera SD commands (camera-test firmware)
 
 In serial monitor:
