@@ -64,7 +64,7 @@ User
 Recommended master board:
 
 ```text
-ESP32-S3-DevKitC-1-N8R8
+ESP32-S3-DevKitC-1-N32R16V
 ```
 
 Reason:
@@ -72,24 +72,11 @@ Reason:
 - Official Espressif development board
 - Good stability
 - Enough GPIO for sensors, pump, light, button, and optional display
-- 8MB flash + 8MB PSRAM
+- High flash/PSRAM headroom for future expansion
 - Good balance of cost and capability
 
-Optional upgrade:
-
-```text
-ESP32-S3-DevKitC-1U-N8R8
-```
-
-Use the `1U` version if an external antenna is desired for better range.
-
-Avoid:
-
-```text
-ESP32-S3-DevKitC-1-N8
-```
-
-Reason: no PSRAM. The cost saving is small, but it reduces future flexibility.
+Soil moisture for Phase 1 uses the ESP32-S3 internal ADC directly (no external ADC required).
+This keeps bring-up simpler and reduces parts count.
 
 ---
 
@@ -423,12 +410,14 @@ Master node connects to:
 
 ```text
 I2C bus:
-- SHT31 temperature/humidity sensor
+- Optional SHT31 temperature/humidity sensor
 - Optional OLED display
-- Optional ADC if needed
 
 ADC input:
-- Soil moisture sensor
+- Soil moisture sensor direct to ESP32-S3 ADC1 GPIO (default GPIO1)
+
+GPIO sensor input:
+- DHT22 temperature/humidity sensor data pin
 
 GPIO outputs:
 - Pump MOSFET gate
@@ -442,6 +431,13 @@ Power:
 - 5V main input
 - 3.3V logic from board regulator
 ```
+
+ADC safety and quality notes:
+
+- ADC input must not exceed 3.3V.
+- Use proper sensor/output scaling so the ADC pin always stays in valid range.
+- ESP32 ADC readings can be noisy, so firmware should average multiple samples.
+- Keep the firmware modular so an external ADC can be added later if accuracy becomes a problem.
 
 ### 10.2 Camera Node Connections
 
@@ -491,17 +487,24 @@ The master should not power the pump directly from a GPIO. GPIO only controls th
 
 | Function | Recommended Part | Quantity |
 |---|---|---:|
-| Master node | ESP32-S3-DevKitC-1-N8R8 | 1 |
+| Master node | ESP32-S3-DevKitC-1-N32R16V | 1 |
 | Camera node | Seeed Studio XIAO ESP32-S3 Sense | 1 to 3 |
 
 ### Sensors and UI
 
 | Function | Recommended Part | Quantity |
 |---|---|---:|
-| Temperature/humidity | SHT31 I2C sensor | 1 |
+| Temperature/humidity (default) | DHT22 | 1 |
+| Temperature/humidity (optional upgrade) | SHT31 I2C sensor | 1 |
 | Soil moisture | Capacitive soil moisture sensor | 1 |
 | Display | 0.96 inch I2C OLED, optional | 1 |
 | Provisioning input | Momentary push button | 1 |
+
+Note:
+
+- No ADS1115 is required for Phase 1.
+- Keep I2C bus available for optional digital I2C sensors (for example SHT31) and optional OLED only.
+- External ADC can be added in a later revision if internal ADC accuracy is insufficient.
 
 ### Power and Actuator Control
 
@@ -550,33 +553,27 @@ Compared with Raspberry Pi 3 + 3 USB cameras, the ESP32 architecture should be:
 
 Master firmware should support:
 
-- SoftAP provisioning for user Wi-Fi setup
-- Cloud registration
-- ESP-NOW camera discovery
-- ESP-NOW camera provisioning
-- Sensor reading
+- Sensor reading (including soil moisture through internal ADC on GPIO1)
+- Temperature/humidity reading (default DHT22; optional SHT31)
 - Pump and LED control
 - Optional display UI
 - Button handling
-- Telemetry upload
-- Command polling or MQTT subscription
-- Health reporting
+- Local debug output and diagnostics
+
+Master firmware should be implemented in phased scope:
+
+- Phase 1: local hardware only (no Wi-Fi, no cloud, no provisioning, no ESP-NOW)
+- Phase 2: cloud communication
+- Phase 3: provisioning and onboarding flows
 
 ### 14.2 Camera Node Firmware
 
 Camera firmware should support:
 
-- Unprovisioned boot mode
-- ESP-NOW hello broadcast
-- Receive provisioning package from master
-- Store Wi-Fi credentials and pairing token
-- Connect to home Wi-Fi
-- Register as child device in cloud
 - Capture JPEG image
-- Upload image to cloud
-- Report heartbeat
-- Retry failed uploads
-- Factory reset / reprovisioning mode
+- Local camera bring-up and debug capture in Phase 1
+
+Cloud upload and provisioning behavior is added in later phases.
 
 ---
 
@@ -618,36 +615,82 @@ Recommended failure behavior:
 
 ## 16. Development Plan
 
-### Phase 1: Master Only
+### Phase 1: Hardware Bring-Up (Local Only)
 
-- ESP32-S3 DevKitC reads sensors
-- Controls pump and light
-- Supports button
-- Sends telemetry to cloud
+Goal: prove local hardware behavior without network dependencies.
 
-### Phase 2: One Camera Node
+Must support:
 
-- One XIAO ESP32-S3 Sense camera node
-- ESP-NOW discovery
-- Master sends Wi-Fi credentials
-- Camera connects to Wi-Fi
-- Camera registers as child device
-- Camera uploads image to cloud
+- Read soil moisture sensor via ESP32-S3 internal ADC (default GPIO1)
+- Read temperature/humidity sensor (DHT22 for current prototype)
+- Capture image
+- Control grow light MOSFET
+- Control water pump MOSFET
+- Keep pin definitions centralized in `config.h`
 
-### Phase 3: Three Camera Nodes
+Do not include:
 
-- Add cam1, cam2, cam3
-- Assign camera positions
-- Add capture scheduling
-- Add cloud grouping by PlantLab unit
+- Wi-Fi
+- Cloud communication
+- Provisioning
+- ESP-NOW
+- User account / device registration
 
-### Phase 4: Product Refinement
+Phase 1 `config.h` pin map plan:
 
-- Improve PCB
-- Improve enclosure
-- Add display UI
-- Improve onboarding flow
-- Add better camera option if image quality is not enough
+```c
+#define PIN_SOIL_MOISTURE_ADC 1
+
+// Keep these only when optional SHT31 or OLED is present:
+#define PIN_I2C_SDA 8
+#define PIN_I2C_SCL 9
+```
+
+Remove from Phase 1 `config.h`:
+
+```c
+#define ADS1115_I2C_ADDR
+#define ADS1115_CHANNEL
+```
+
+`sensor_manager` behavior for Phase 1:
+
+- Read moisture with `analogRead(PIN_SOIL_MOISTURE_ADC)`
+- Average at least 10 samples before reporting
+- Print raw ADC value for bring-up diagnostics
+- Optionally convert to percentage using dry/wet calibration constants in `config.h`
+- Ensure ADC input never exceeds 3.3V
+
+### Phase 2: Cloud Communication
+
+Goal: connect working hardware to cloud with temporary test credentials.
+
+Must support:
+
+- Connect to Wi-Fi
+- Send sensor data to cloud
+- Upload captured image to cloud
+- Receive cloud commands
+- Control pump/light from command
+- Report device health
+
+Do not include yet:
+
+- SoftAP provisioning
+- User Wi-Fi setup flow
+- ESP-NOW camera-node provisioning
+
+### Phase 3: Provisioning and Product Onboarding
+
+Goal: user-friendly setup for production behavior.
+
+Must support:
+
+- SoftAP provisioning
+- User enters Wi-Fi credentials
+- Save credentials in flash/NVS
+- Device registers itself to cloud
+- Later add ESP-NOW camera-node provisioning for hidden camera nodes
 
 ---
 
@@ -671,7 +714,7 @@ For the next prototype build, use:
 
 ```text
 Master:
-- ESP32-S3-DevKitC-1-N8R8
+- ESP32-S3-DevKitC-1-N32R16V
 
 Camera nodes:
 - Seeed Studio XIAO ESP32-S3 Sense x 1 first

@@ -24,3 +24,8 @@ platform/data/uploads/*
 !platform/data/uploads/.gitkeep
 platform/gcp_debug.txt
 platform/gcp_setup_dump.sh
+
+# ESP32 local toolchain/build artifacts
+.pio-core/
+device/esp32/.pio/
+tools/
