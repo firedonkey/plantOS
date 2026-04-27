@@ -29,5 +29,42 @@
 #define ACTUATOR_ON_LEVEL HIGH
 #define ACTUATOR_OFF_LEVEL LOW
 
+// Power button + status LED
+// Power button default: BOOT button (GPIO0), active low with internal pull-up.
+#define PIN_POWER_BUTTON 0
+#define POWER_BUTTON_ACTIVE_LEVEL LOW
+
+// Status LED default: external LED pin. Change to your wired LED GPIO.
+#define PIN_STATUS_LED 2
+#define STATUS_LED_ON_LEVEL HIGH
+#define STATUS_LED_OFF_LEVEL LOW
+
+// Button behavior
+#define POWER_BUTTON_DEBOUNCE_MS 30
+#define POWER_BUTTON_LONG_PRESS_MS 5000
+
+// Capacitive touch button (ESP32-S3 touch-capable GPIO)
+#define ENABLE_TOUCH_BUTTON 1
+#define PIN_TOUCH_BUTTON 14
+
+// Touch tuning values.
+// Calibrate these with your real enclosure and wiring.
+#define TOUCH_SAMPLE_COUNT 10
+#define TOUCH_CHECK_INTERVAL_MS 30
+#define TOUCH_DEBOUNCE_MS 80
+#define TOUCH_SHORT_TAP_MAX_MS 500
+#define TOUCH_LONG_PRESS_MS 5000
+#define TOUCH_FACTORY_RESET_MS 10000
+#define TOUCH_MULTI_TAP_WINDOW_MS 500
+
+// Touch threshold model:
+// touch is considered active when raw <= (untouched_baseline - TOUCH_TRIGGER_DELTA)
+#define TOUCH_TRIGGER_DELTA 25
+#define TOUCH_RAW_LOG_INTERVAL_MS 1000
+
+// ESP-NOW link test (master <-> camera node)
+#define ESPNOW_TEST_WIFI_CHANNEL 1
+#define ESPNOW_TEST_SEND_INTERVAL_MS 2000
+
 // Timing
 #define DHT22_READ_INTERVAL_MS 2000

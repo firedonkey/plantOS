@@ -6,7 +6,8 @@ Current status:
 
 - Phase 1 started
 - DHT22 local reading implemented
-- No Wi-Fi/cloud/provisioning/ESP-NOW yet
+- Power button + status LED state handling implemented in main firmware
+- No Wi-Fi/cloud/provisioning yet
 
 ## Board
 
@@ -16,6 +17,14 @@ Current status:
 
 - Local hardware bring-up only
 - Sensor and actuator validation over serial logs
+- Power button behavior:
+  - Short press: enter deep sleep
+  - Long press: enter provisioning placeholder mode
+- Capacitive touch button behavior on GPIO14:
+  - Short tap: toggle light
+  - Double tap: camera capture request log
+  - Long press 5s: provisioning trigger requested log
+  - Long press 10s: factory reset requested log
 
 ## Current Test
 
@@ -61,9 +70,24 @@ Common options:
 # Flash dedicated camera-node capture debug firmware
 ./scripts/flash_esp32.sh --test-camera --port /dev/cu.usbmodem12201 --monitor
 
+# Flash dedicated touch-button debug firmware (clean event-only output)
+./scripts/flash_esp32.sh --test-touch --monitor
+
+# Flash ESP-NOW link test (master board)
+./scripts/flash_esp32.sh --test-espnow-master --port /dev/cu.usbmodem1301 --monitor
+
+# Flash ESP-NOW link test (camera board)
+./scripts/flash_esp32.sh --test-espnow-camera --port /dev/cu.usbmodem12201 --monitor
+
 # Explicit serial port
 ./scripts/flash_esp32.sh --port /dev/cu.usbmodem1301 --monitor
 ```
+
+ESP-NOW master serial keys:
+
+- `c` -> send `capture_image` command
+- `p` -> send `provision_start` command (placeholder)
+- `h` -> send `health_check` command
 
 ## Camera SD commands (camera-test firmware)
 
