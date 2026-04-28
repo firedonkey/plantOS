@@ -56,11 +56,26 @@ class ButtonHandler:
 
     def start(self) -> None:
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        # If a stale edge detector exists from a previous run/process, clear it first.
+        try:
+            GPIO.remove_event_detect(self.pin)
+        except RuntimeError:
+            pass
+
         # We detect both edges and run our own debounce logic in the callback.
-        GPIO.add_event_detect(self.pin, GPIO.BOTH, callback=self._handle_edge, bouncetime=1)
+        try:
+            GPIO.add_event_detect(self.pin, GPIO.BOTH, callback=self._handle_edge, bouncetime=1)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"Failed to add edge detection on GPIO{self.pin}. "
+                "Another process may still be using this pin."
+            ) from exc
 
     def stop(self) -> None:
-        GPIO.remove_event_detect(self.pin)
+        try:
+            GPIO.remove_event_detect(self.pin)
+        except RuntimeError:
+            pass
 
     def _handle_edge(self, channel: int) -> None:
         now = time.monotonic()
