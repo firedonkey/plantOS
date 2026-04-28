@@ -29,9 +29,11 @@ class ButtonHandler:
 
     How duration is measured:
     - On FALLING edge (active-low button press), record press_start timestamp.
+    - While the button is still held, a lightweight monitor can trigger the
+      long-press event as soon as the hold crosses the configured threshold.
     - On RISING edge (button release), compute duration = now - press_start.
     - Classify event:
-      - duration >= long_press_seconds -> long press
+      - held >= long_press_seconds -> long press immediately
       - duration < short_press_max_seconds -> short press
     """
 
@@ -53,6 +55,8 @@ class ButtonHandler:
         self._lock = threading.Lock()
         self._press_started_at: Optional[float] = None
         self._last_edge_at: float = 0.0
+        self._last_polled_level: Optional[int] = None
+        self._long_press_fired = False
         self._event_detect_enabled = False
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -77,7 +81,7 @@ class ButtonHandler:
                 f"[button] edge-detect unavailable on GPIO{self.pin} ({exc}). "
                 "Falling back to polling mode."
             )
-            self._start_polling()
+        self._start_polling()
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -103,6 +107,7 @@ class ButtonHandler:
             if level == GPIO.LOW:
                 # Press started (active low).
                 self._press_started_at = now
+                self._long_press_fired = False
                 return
 
             # level == GPIO.HIGH => release.
@@ -111,8 +116,13 @@ class ButtonHandler:
 
             duration = now - self._press_started_at
             self._press_started_at = None
+            long_press_fired = self._long_press_fired
+            self._long_press_fired = False
 
-        event = self._classify_event(duration)
+        if long_press_fired:
+            return
+
+        event = self._classify_release_event(duration)
         if event is not None and self.on_event is not None:
             self.on_event(event)
 
@@ -121,19 +131,46 @@ class ButtonHandler:
         self._poll_thread.start()
 
     def _poll_loop(self) -> None:
-        """Fallback mode when edge detection is unavailable on this platform."""
-        last_level = GPIO.input(self.pin)
+        """Fallback mode plus long-press monitor while the button is held."""
+        self._last_polled_level = GPIO.input(self.pin)
         while not self._stop_event.is_set():
-            level = GPIO.input(self.pin)
-            if level != last_level:
-                # Reuse the same debounce + duration logic path.
-                self._handle_edge(self.pin)
-                last_level = level
+            self._check_button_state()
             self._stop_event.wait(0.01)
 
-    def _classify_event(self, duration_seconds: float) -> Optional[ButtonEvent]:
-        if duration_seconds >= self.long_press_seconds:
-            return ButtonEvent(kind="long", duration_seconds=duration_seconds)
+    def _check_button_state(self) -> None:
+        now = time.monotonic()
+        level = GPIO.input(self.pin)
+        callback_event: Optional[ButtonEvent] = None
+        should_handle_edge = False
+
+        with self._lock:
+            if self._last_polled_level is None:
+                self._last_polled_level = level
+
+            if not self._event_detect_enabled and level != self._last_polled_level:
+                self._last_polled_level = level
+                should_handle_edge = True
+            else:
+                self._last_polled_level = level
+
+                if (
+                    level == GPIO.LOW
+                    and self._press_started_at is not None
+                    and not self._long_press_fired
+                ):
+                    duration = now - self._press_started_at
+                    if duration >= self.long_press_seconds:
+                        self._long_press_fired = True
+                        callback_event = ButtonEvent(kind="long", duration_seconds=duration)
+
+        if should_handle_edge:
+            self._handle_edge(self.pin)
+            return
+
+        if callback_event is not None and self.on_event is not None:
+            self.on_event(callback_event)
+
+    def _classify_release_event(self, duration_seconds: float) -> Optional[ButtonEvent]:
         if duration_seconds < self.short_press_max_seconds:
             return ButtonEvent(kind="short", duration_seconds=duration_seconds)
         # 2s-5s range intentionally ignored for now.
