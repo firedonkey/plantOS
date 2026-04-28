@@ -1,0 +1,12 @@
+PlantLab test serial number label
+
+Serial number: SN-20260428-016521
+Generated on: 2026-04-28
+
+Files:
+- SN-20260428-016521.png
+- SN-20260428-016521.pdf
+
+Notes:
+- The QR code payload is the serial number itself: SN-20260428-016521
+- This is a fake test label for provisioning and onboarding workflow validation.
