@@ -53,9 +53,13 @@ class ButtonHandler:
         self._lock = threading.Lock()
         self._press_started_at: Optional[float] = None
         self._last_edge_at: float = 0.0
+        self._event_detect_enabled = False
+        self._poll_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
 
     def start(self) -> None:
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        self._stop_event.clear()
         # If a stale edge detector exists from a previous run/process, clear it first.
         try:
             GPIO.remove_event_detect(self.pin)
@@ -65,17 +69,27 @@ class ButtonHandler:
         # We detect both edges and run our own debounce logic in the callback.
         try:
             GPIO.add_event_detect(self.pin, GPIO.BOTH, callback=self._handle_edge, bouncetime=1)
+            self._event_detect_enabled = True
+            print(f"[button] using edge-detect mode on GPIO{self.pin}")
         except RuntimeError as exc:
-            raise RuntimeError(
-                f"Failed to add edge detection on GPIO{self.pin}. "
-                "Another process may still be using this pin."
-            ) from exc
+            self._event_detect_enabled = False
+            print(
+                f"[button] edge-detect unavailable on GPIO{self.pin} ({exc}). "
+                "Falling back to polling mode."
+            )
+            self._start_polling()
 
     def stop(self) -> None:
+        self._stop_event.set()
+        if self._poll_thread is not None:
+            self._poll_thread.join(timeout=1.0)
+            self._poll_thread = None
         try:
-            GPIO.remove_event_detect(self.pin)
+            if self._event_detect_enabled:
+                GPIO.remove_event_detect(self.pin)
         except RuntimeError:
             pass
+        self._event_detect_enabled = False
 
     def _handle_edge(self, channel: int) -> None:
         now = time.monotonic()
@@ -101,6 +115,21 @@ class ButtonHandler:
         event = self._classify_event(duration)
         if event is not None and self.on_event is not None:
             self.on_event(event)
+
+    def _start_polling(self) -> None:
+        self._poll_thread = threading.Thread(target=self._poll_loop, name="button-poll", daemon=True)
+        self._poll_thread.start()
+
+    def _poll_loop(self) -> None:
+        """Fallback mode when edge detection is unavailable on this platform."""
+        last_level = GPIO.input(self.pin)
+        while not self._stop_event.is_set():
+            level = GPIO.input(self.pin)
+            if level != last_level:
+                # Reuse the same debounce + duration logic path.
+                self._handle_edge(self.pin)
+                last_level = level
+            self._stop_event.wait(0.01)
 
     def _classify_event(self, duration_seconds: float) -> Optional[ButtonEvent]:
         if duration_seconds >= self.long_press_seconds:
