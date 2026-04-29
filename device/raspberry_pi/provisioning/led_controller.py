@@ -1,4 +1,4 @@
-"""Non-blocking status LED controller for PlantLab onboarding.
+"""Non-blocking status LED controller for PlantLab provisioning.
 
 LED wiring:
 - GPIO24 (Pin 18)
@@ -36,7 +36,7 @@ class LedPattern:
 class LedController:
     """Threaded LED controller for state-based, non-blocking patterns.
 
-    State model used by onboarding logic:
+    State model used by provisioning logic:
     - IDLE: OFF
     - PROVISIONING: slow blink (1s ON / 1s OFF)
     - CONNECTED: solid ON

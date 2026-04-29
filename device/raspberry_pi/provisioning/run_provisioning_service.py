@@ -1,4 +1,4 @@
-"""Button-driven onboarding controller for PlantLab Raspberry Pi.
+"""Button-driven provisioning controller for PlantLab Raspberry Pi.
 
 Behavior:
 - Short press: log only
@@ -22,15 +22,15 @@ from pathlib import Path
 import RPi.GPIO as GPIO
 
 from config import load_config
-from onboarding.button_handler import ButtonEvent, ButtonHandler
-from onboarding.led_controller import LedController
+from provisioning.button_handler import ButtonEvent, ButtonHandler
+from provisioning.led_controller import LedController
 from provisioning.service import ProvisioningService
 
 
 logger = logging.getLogger(__name__)
 
 
-class OnboardingController:
+class ProvisioningController:
     def __init__(self, config_path: str = "config.yaml") -> None:
         config = load_config(config_path)
         provisioning_config = config.get("provisioning", {})
@@ -78,12 +78,12 @@ class OnboardingController:
         self.button.start()
         self.set_state(self.initial_state)
 
-        logger.info("onboarding controller started; state=%s", self.state)
+        logger.info("provisioning controller started; state=%s", self.state)
         try:
             while True:
                 time.sleep(0.2)
         except KeyboardInterrupt:
-            logger.info("onboarding controller stopping")
+            logger.info("provisioning controller stopping")
         finally:
             self.button.stop()
             self.led.stop()
@@ -153,7 +153,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    OnboardingController().run()
+    ProvisioningController().run()
 
 
 if __name__ == "__main__":

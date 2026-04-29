@@ -1,4 +1,4 @@
-"""Interactive LED hardware test for PlantLab Raspberry Pi onboarding.
+"""Interactive LED hardware test for PlantLab Raspberry Pi provisioning.
 
 Hardware under test:
 - LED on GPIO24 (physical pin 18)
@@ -78,4 +78,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

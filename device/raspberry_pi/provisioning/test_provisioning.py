@@ -1,4 +1,4 @@
-"""PlantLab Raspberry Pi onboarding hardware test.
+"""PlantLab Raspberry Pi provisioning hardware test.
 
 Tests:
 - Button on GPIO23 (active LOW, pull-up)
@@ -22,7 +22,7 @@ from button_handler import ButtonEvent, ButtonHandler
 from led_controller import LedController
 
 
-class OnboardingTestApp:
+class ProvisioningTestApp:
     """Small firmware-style state machine for local GPIO validation."""
 
     def __init__(self) -> None:
@@ -64,7 +64,7 @@ class OnboardingTestApp:
         self.button.start()
         self.set_state("IDLE")
 
-        print("[main] onboarding test started")
+        print("[main] provisioning test started")
         print("[main] short press <2s, long press >=5s, factory reset >=10s, Ctrl+C to exit")
 
         try:
@@ -76,7 +76,7 @@ class OnboardingTestApp:
                         self.provision_started_at = None
                 time.sleep(0.05)
         except KeyboardInterrupt:
-            print("\n[main] stopping onboarding test")
+            print("\n[main] stopping provisioning test")
         finally:
             try:
                 self.button.stop()
@@ -87,4 +87,4 @@ class OnboardingTestApp:
 
 
 if __name__ == "__main__":
-    OnboardingTestApp().run()
+    ProvisioningTestApp().run()

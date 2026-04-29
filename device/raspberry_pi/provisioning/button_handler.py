@@ -1,4 +1,4 @@
-"""GPIO button handling for PlantLab onboarding state machine.
+"""GPIO button handling for PlantLab provisioning state machine.
 
 Button wiring:
 - GPIO23 (Pin 16)

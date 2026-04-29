@@ -1,4 +1,4 @@
-"""Interactive button hardware test for PlantLab Raspberry Pi onboarding.
+"""Interactive button hardware test for PlantLab Raspberry Pi provisioning.
 
 Hardware under test:
 - Button on GPIO23 (physical pin 16)
@@ -69,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
