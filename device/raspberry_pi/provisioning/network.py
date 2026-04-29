@@ -96,11 +96,12 @@ class NetworkManager:
                 dry_run_message=f"NetworkManager hotspot down skipped for {name}",
                 check=False,
             )
-            self._run(
-                ["sudo", "nmcli", "connection", "delete", name],
-                dry_run_message=f"NetworkManager hotspot delete skipped for {name}",
-                check=False,
-            )
+            for connection_id in self._connection_ids_for_name(name):
+                self._run(
+                    ["sudo", "nmcli", "connection", "delete", "uuid", connection_id],
+                    dry_run_message=f"NetworkManager hotspot delete skipped for {name} ({connection_id})",
+                    check=False,
+                )
         self._run(
             ["sudo", "nmcli", "device", "disconnect", "wlan0"],
             dry_run_message="NetworkManager wlan0 disconnect skipped",
@@ -126,3 +127,25 @@ class NetworkManager:
 
         logger.info("running command: %s", " ".join(command))
         subprocess.run(command, check=check)
+
+    def _connection_ids_for_name(self, name: str) -> list[str]:
+        if self.dry_run:
+            return []
+
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "UUID,NAME", "connection", "show"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        matches: list[str] = []
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                connection_id, connection_name = line.split(":", 1)
+            except ValueError:
+                continue
+            if connection_name == name:
+                matches.append(connection_id)
+        return matches

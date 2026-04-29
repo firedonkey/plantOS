@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -21,14 +22,21 @@ class ProvisioningStore:
 
     def save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
-
-        with temp_path.open("w", encoding="utf-8") as file:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self.path.parent,
+            prefix=f"{self.path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as file:
             json.dump(data, file, indent=2, sort_keys=True)
             file.write("\n")
+            temp_path = Path(file.name)
 
         os.chmod(temp_path, 0o600)
-        temp_path.replace(self.path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(temp_path, self.path)
 
     def update(self, **changes) -> dict[str, Any]:
         data = self.load()
