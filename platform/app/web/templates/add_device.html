@@ -216,8 +216,8 @@
         margin: 0;
       }
 
-      .primary-button.disabled-link,
-      .primary-button[aria-disabled="true"] {
+      .disabled-link,
+      [aria-disabled="true"] {
         pointer-events: none;
         opacity: 0.45;
       }
@@ -391,7 +391,7 @@
               </label>
             </div>
             <div class="continue-actions">
-              <a class="primary-button disabled-link" id="continue-setup-link" href="#" aria-disabled="true">Open device Wi-Fi setup</a>
+              <a class="secondary-button disabled-link" id="continue-setup-link" href="#" aria-disabled="true">Open device Wi-Fi setup</a>
               <button class="secondary-button" id="use-different-sn-button" type="button">Use a different SN</button>
             </div>
           </div>
