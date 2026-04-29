@@ -646,6 +646,7 @@ input {
   font: inherit;
   font-weight: 800;
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .setup-result,
