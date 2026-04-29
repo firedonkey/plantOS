@@ -77,6 +77,8 @@ provisioning:
   state_file: data/provisioning/device_config.json
   network_dry_run: false
   open_hotspot: true
+  backend_retry_attempts: 18
+  backend_retry_delay_seconds: 5
   hardware_version: raspberry_pi_3
   software_version: 0.1.0
   capabilities:

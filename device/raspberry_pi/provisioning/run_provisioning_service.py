@@ -71,6 +71,8 @@ class ProvisioningController:
             software_version=str(provisioning_config.get("software_version") or "0.1.0"),
             capabilities=provisioning_config.get("capabilities") or {},
             hotspot_password=hotspot_password,
+            backend_retry_attempts=int(provisioning_config.get("backend_retry_attempts") or 12),
+            backend_retry_delay_seconds=float(provisioning_config.get("backend_retry_delay_seconds") or 5),
         )
 
         self.state_file = Path(str(state_file))

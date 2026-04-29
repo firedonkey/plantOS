@@ -1,5 +1,8 @@
 import logging
+import time
 from typing import Any
+
+import requests
 
 from .backend import BackendRegistrationClient
 from .device_identity import stable_device_id
@@ -26,6 +29,8 @@ class ProvisioningService:
         software_version: str = "0.1.0",
         capabilities: dict[str, Any] | None = None,
         hotspot_password: str = "plantlabsetup",
+        backend_retry_attempts: int = 12,
+        backend_retry_delay_seconds: float = 5.0,
     ):
         self.backend_url = backend_url.rstrip("/")
         self.platform_url = platform_url.rstrip("/") if platform_url else None
@@ -42,6 +47,8 @@ class ProvisioningService:
         self.store = ProvisioningStore(state_file)
         self.network = NetworkManager(dry_run=dry_run, hotspot_password=hotspot_password)
         self.backend = BackendRegistrationClient(self.backend_url)
+        self.backend_retry_attempts = max(1, int(backend_retry_attempts))
+        self.backend_retry_delay_seconds = max(0.0, float(backend_retry_delay_seconds))
 
     def run(self) -> None:
         if self.store.is_provisioned():
@@ -133,14 +140,18 @@ class ProvisioningService:
                     "creating setup code after Wi-Fi reconnect for serial_number=%s",
                     payload.serial_number,
                 )
-                setup = backend.create_setup_code(
+                setup = self._with_backend_retries(
+                    "setup code creation",
+                    backend.create_setup_code,
                     serial_number=payload.serial_number,
                     device_name=payload.device_name or None,
                     location=payload.location or None,
                 )
                 claim_token = str(setup["setup_code"])
 
-            registration = backend.register_device(
+            registration = self._with_backend_retries(
+                "device registration",
+                backend.register_device,
                 device_id=device_id,
                 claim_token=claim_token,
                 hardware_version=self.hardware_version,
@@ -166,3 +177,42 @@ class ProvisioningService:
     def _set_state(self, state: ProvisioningState, **changes) -> None:
         logger.info("provisioning state -> %s", state.value)
         self.store.update(provisioning_state=state.value, **changes)
+
+    def _with_backend_retries(self, action_label: str, operation, **kwargs):
+        last_error: Exception | None = None
+        for attempt in range(1, self.backend_retry_attempts + 1):
+            try:
+                if attempt > 1:
+                    logger.info(
+                        "retrying %s attempt %s/%s",
+                        action_label,
+                        attempt,
+                        self.backend_retry_attempts,
+                    )
+                return operation(**kwargs)
+            except Exception as exc:
+                last_error = exc
+                if not self._is_retryable_backend_error(exc):
+                    raise
+                if attempt >= self.backend_retry_attempts:
+                    break
+                logger.warning(
+                    "%s failed on attempt %s/%s: %s; retrying in %.1fs",
+                    action_label,
+                    attempt,
+                    self.backend_retry_attempts,
+                    exc,
+                    self.backend_retry_delay_seconds,
+                )
+                time.sleep(self.backend_retry_delay_seconds)
+
+        assert last_error is not None
+        raise last_error
+
+    @staticmethod
+    def _is_retryable_backend_error(error: Exception) -> bool:
+        if isinstance(error, (requests.ConnectionError, requests.Timeout)):
+            return True
+        if isinstance(error, requests.HTTPError) and error.response is not None:
+            return error.response.status_code >= 500 or error.response.status_code == 429
+        return False
