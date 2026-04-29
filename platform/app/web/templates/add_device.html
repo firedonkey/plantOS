@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Add Device - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=provision-add-20260428">
+    <link rel="stylesheet" href="/static/style.css?v=provision-add-20260428b">
     <style>
       .setup-flow {
         display: grid;
@@ -134,6 +134,13 @@
         background: #f7faf6;
       }
 
+      .ready-panel {
+        display: grid;
+        gap: 16px;
+        border-color: #b8d8c0;
+        background: #f3faf4;
+      }
+
       .scanner-panel[hidden],
       .manual-panel[hidden],
       .ready-panel[hidden],
@@ -166,6 +173,53 @@
         background: #fff;
         color: #2f7d4b;
         font-weight: 900;
+      }
+
+      .ready-panel-header {
+        display: grid;
+        gap: 6px;
+      }
+
+      .ready-panel-title {
+        color: #2f7d4b;
+        font-size: 1.05rem;
+        font-weight: 900;
+      }
+
+      .ready-panel-copy {
+        color: #566259;
+      }
+
+      .wifi-handoff {
+        display: grid;
+        gap: 12px;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        padding: 16px;
+        background: #ffffff;
+      }
+
+      .wifi-handoff strong {
+        color: #17201a;
+      }
+
+      .wifi-confirm {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+      }
+
+      .wifi-confirm input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+      }
+
+      .primary-button.disabled-link,
+      .primary-button[aria-disabled="true"] {
+        pointer-events: none;
+        opacity: 0.45;
       }
 
       .setup-status {
@@ -244,7 +298,7 @@
     <main>
       <p class="eyebrow">Setup</p>
       <h1>Add Device</h1>
-      <p>Start provisioning on the device, verify the device SN, then continue into the local PlantLab Wi-Fi setup page.</p>
+      <p>Name the device, confirm its serial number, then connect to the PlantLab device Wi-Fi to finish setup.</p>
 
       <section class="setup-flow">
         <section class="setup-card" aria-labelledby="step-1-title">
@@ -324,10 +378,20 @@
           </div>
 
           <div class="ready-panel" id="ready-panel" hidden>
-            <p>SN verified and ready for local setup.</p>
+            <div class="ready-panel-header">
+              <div class="ready-panel-title">Device verified</div>
+              <p class="ready-panel-copy">This serial number is ready. Next, connect your phone or laptop to the device Wi-Fi network to finish setup.</p>
+            </div>
             <div class="sn-chip" id="verified-sn-chip"></div>
+            <div class="wifi-handoff">
+              <p>Connect to <strong>PlantLab-Setup</strong> in your Wi-Fi settings.</p>
+              <label class="wifi-confirm">
+                <input id="wifi-connected-checkbox" type="checkbox">
+                <span>I’m connected to PlantLab-Setup</span>
+              </label>
+            </div>
             <div class="continue-actions">
-              <a class="primary-button" id="continue-setup-link" href="#">Continue to local setup</a>
+              <a class="primary-button disabled-link" id="continue-setup-link" href="#" aria-disabled="true">Open device Wi-Fi setup</a>
               <button class="secondary-button" id="use-different-sn-button" type="button">Use a different SN</button>
             </div>
           </div>
@@ -339,11 +403,11 @@
           <div class="setup-step">
             <div class="step-title">
               <span class="step-number">4</span>
-              <h2 id="step-4-title">Finish local setup</h2>
+              <h2 id="step-4-title">Connect the device to your home Wi-Fi</h2>
             </div>
           </div>
 
-          <p>After SN verification, continue to the local PlantLab setup page and enter your home Wi-Fi details.</p>
+          <p>After you switch to the PlantLab device Wi-Fi, open the device setup page and enter your home Wi-Fi details.</p>
 
           <div class="setup-list">
             <div class="setup-item">
@@ -352,7 +416,7 @@
             </div>
             <div class="setup-item">
               <span class="step-number">2</span>
-              <p>Open the local setup page from the button above. PlantLab will carry the verified device authorization automatically.</p>
+              <p>Open the device setup page from the button above. PlantLab will carry the verified device authorization automatically.</p>
             </div>
             <div class="setup-item">
               <span class="step-number">3</span>
@@ -380,6 +444,7 @@
       const continueSetupLink = document.querySelector("#continue-setup-link");
       const verifiedSnChip = document.querySelector("#verified-sn-chip");
       const useDifferentSnButton = document.querySelector("#use-different-sn-button");
+      const wifiConnectedCheckbox = document.querySelector("#wifi-connected-checkbox");
       const step1Status = document.querySelector("#step-1-status");
       const step2Status = document.querySelector("#step-2-status");
       const step3Status = document.querySelector("#step-3-status");
@@ -393,6 +458,11 @@
       let deviceLocation = "";
       let verifiedSerialNumber = "";
       let verifiedSetupCode = "";
+
+      function setContinueSetupEnabled(enabled) {
+        continueSetupLink.classList.toggle("disabled-link", !enabled);
+        continueSetupLink.setAttribute("aria-disabled", enabled ? "false" : "true");
+      }
 
       function setStatus(element, message, tone = "info") {
         element.textContent = message;
@@ -465,10 +535,12 @@
           verifiedSetupCode = payload.setup_code || payload.claim_token;
           verifiedSnChip.textContent = verifiedSerialNumber;
           continueSetupLink.href = buildContinueSetupUrl(verifiedSetupCode, verifiedSerialNumber);
+          wifiConnectedCheckbox.checked = false;
+          setContinueSetupEnabled(false);
           readyPanel.hidden = false;
           scannerPanel.hidden = true;
           manualPanel.hidden = true;
-          setStatus(step3Status, "SN verified. Continue to the local setup page.", "success");
+          setStatus(step3Status, "Device verified. Connect to PlantLab-Setup, then open device Wi-Fi setup.", "success");
           setPill(step3Pill, "Ready", "ready");
         } catch (error) {
           setStatus(step3Status, error.message || "Could not verify this SN.", "error");
@@ -578,11 +650,32 @@
         verifiedSetupCode = "";
         serialNumberInput.value = "";
         readyPanel.hidden = true;
+        wifiConnectedCheckbox.checked = false;
+        setContinueSetupEnabled(false);
         manualPanel.hidden = false;
         clearStatus(step3Status);
         setPill(step3Pill, "Pending");
         serialNumberInput.focus();
       });
+
+      wifiConnectedCheckbox.addEventListener("change", () => {
+        const isConnected = wifiConnectedCheckbox.checked;
+        setContinueSetupEnabled(isConnected);
+        if (isConnected) {
+          setStatus(step3Status, "You’re ready. Open device Wi-Fi setup to finish connecting the device.", "success");
+        } else if (verifiedSetupCode) {
+          setStatus(step3Status, "Connect to PlantLab-Setup before opening device Wi-Fi setup.", "info");
+        }
+      });
+
+      continueSetupLink.addEventListener("click", (event) => {
+        if (continueSetupLink.getAttribute("aria-disabled") === "true") {
+          event.preventDefault();
+          setStatus(step3Status, "Connect to PlantLab-Setup first, then open device Wi-Fi setup.", "error");
+        }
+      });
+
+      setContinueSetupEnabled(false);
     </script>
   </body>
 </html>
