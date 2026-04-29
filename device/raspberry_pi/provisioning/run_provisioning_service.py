@@ -14,6 +14,7 @@ LED states:
 
 from __future__ import annotations
 
+import argparse
 import logging
 import threading
 import time
@@ -149,11 +150,21 @@ class ProvisioningController:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run the PlantLab Raspberry Pi button-driven provisioning controller."
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to device YAML config.",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    ProvisioningController().run()
+    ProvisioningController(config_path=args.config).run()
 
 
 if __name__ == "__main__":
