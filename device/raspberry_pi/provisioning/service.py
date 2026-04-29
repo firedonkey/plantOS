@@ -17,6 +17,7 @@ class ProvisioningService:
         self,
         *,
         backend_url: str,
+        platform_url: str | None,
         state_file: str,
         host: str = "0.0.0.0",
         port: int = 8080,
@@ -27,6 +28,7 @@ class ProvisioningService:
         hotspot_password: str = "plantlabsetup",
     ):
         self.backend_url = backend_url.rstrip("/")
+        self.platform_url = platform_url.rstrip("/") if platform_url else None
         self.host = host
         self.port = port
         self.hardware_version = hardware_version
@@ -67,9 +69,35 @@ class ProvisioningService:
         self._handle_payload(payload)
 
     def factory_reset(self) -> None:
-        logger.warning("factory reset requested; deleting provisioning state")
+        logger.warning("factory reset requested")
+        data = self.store.load()
+        platform_device_id = data.get("platform_device_id")
+        device_access_token = data.get("device_access_token")
+        platform_url = data.get("platform_url") or self.platform_url
+        wifi_ssid = data.get("wifi_ssid", "")
+
+        if platform_url and platform_device_id and device_access_token:
+            try:
+                self.backend.factory_reset_device(
+                    platform_url=platform_url,
+                    platform_device_id=int(platform_device_id),
+                    device_access_token=str(device_access_token),
+                )
+                logger.info("backend ownership released for platform_device_id=%s", platform_device_id)
+            except Exception as exc:
+                logger.warning("backend factory reset cleanup failed: %s", exc)
+        else:
+            logger.info("backend cleanup skipped; provisioning record is incomplete")
+
+        if wifi_ssid:
+            status = self.network.forget_wifi(str(wifi_ssid))
+            if status.ok:
+                logger.info("forgot Wi-Fi profile for ssid=%s", wifi_ssid)
+            else:
+                logger.warning("could not forget Wi-Fi profile: %s", status.message)
+
         self.store.delete()
-        self._set_state(ProvisioningState.FACTORY_RESET)
+        logger.info("local provisioning state deleted; device is ready as a new device")
 
     def _handle_payload(self, payload: ProvisioningPayload) -> None:
         device_id = stable_device_id()
@@ -123,6 +151,7 @@ class ProvisioningService:
                 platform_device_id=registration.get("platform_device_id"),
                 device_access_token=registration["device_access_token"],
                 device_name=registration.get("device_name"),
+                platform_url=self.platform_url,
                 claim_token=None,
                 last_error=None,
             )

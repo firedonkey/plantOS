@@ -70,6 +70,15 @@ def delete_device_for_user(session: Session, user: User, device_id: int) -> bool
     if device is None:
         return False
 
+    _delete_device_record(session, device)
+    return True
+
+
+def factory_reset_device(session: Session, device: Device) -> None:
+    _delete_device_record(session, device)
+
+
+def _delete_device_record(session: Session, device: Device) -> None:
     _clear_provisioning_references(session, device.id)
     session.execute(delete(Command).where(Command.device_id == device.id))
     session.execute(delete(Event).where(Event.device_id == device.id))
@@ -77,7 +86,6 @@ def delete_device_for_user(session: Session, user: User, device_id: int) -> bool
     session.execute(delete(SensorReading).where(SensorReading.device_id == device.id))
     session.delete(device)
     session.commit()
-    return True
 
 
 def _clear_provisioning_references(session: Session, device_id: int) -> None:

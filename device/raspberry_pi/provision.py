@@ -37,6 +37,7 @@ def main() -> None:
 
     service = ProvisioningService(
         backend_url=backend_url,
+        platform_url=provisioning_config.get("platform_url") or config.get("platform", {}).get("url"),
         state_file=state_file,
         host=args.host,
         port=args.port,

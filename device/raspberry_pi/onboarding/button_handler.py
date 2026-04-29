@@ -20,7 +20,7 @@ import RPi.GPIO as GPIO
 class ButtonEvent:
     """Button event derived from measured press duration."""
 
-    kind: str  # "short" or "long"
+    kind: str  # "short", "long", or "factory_reset"
     duration_seconds: float
 
 
@@ -34,6 +34,7 @@ class ButtonHandler:
     - On RISING edge (button release), compute duration = now - press_start.
     - Classify event:
       - held >= long_press_seconds -> long press immediately
+      - held >= factory_reset_seconds -> factory reset immediately
       - duration < short_press_max_seconds -> short press
     """
 
@@ -44,12 +45,14 @@ class ButtonHandler:
         debounce_seconds: float = 0.05,
         short_press_max_seconds: float = 2.0,
         long_press_seconds: float = 5.0,
+        factory_reset_seconds: float = 10.0,
         on_event: Optional[Callable[[ButtonEvent], None]] = None,
     ) -> None:
         self.pin = pin
         self.debounce_seconds = debounce_seconds
         self.short_press_max_seconds = short_press_max_seconds
         self.long_press_seconds = long_press_seconds
+        self.factory_reset_seconds = factory_reset_seconds
         self.on_event = on_event
 
         self._lock = threading.Lock()
@@ -57,6 +60,7 @@ class ButtonHandler:
         self._last_edge_at: float = 0.0
         self._last_polled_level: Optional[int] = None
         self._long_press_fired = False
+        self._factory_reset_fired = False
         self._event_detect_enabled = False
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -108,6 +112,7 @@ class ButtonHandler:
                 # Press started (active low).
                 self._press_started_at = now
                 self._long_press_fired = False
+                self._factory_reset_fired = False
                 return
 
             # level == GPIO.HIGH => release.
@@ -117,9 +122,11 @@ class ButtonHandler:
             duration = now - self._press_started_at
             self._press_started_at = None
             long_press_fired = self._long_press_fired
+            factory_reset_fired = self._factory_reset_fired
             self._long_press_fired = False
+            self._factory_reset_fired = False
 
-        if long_press_fired:
+        if long_press_fired or factory_reset_fired:
             return
 
         event = self._classify_release_event(duration)
@@ -156,10 +163,13 @@ class ButtonHandler:
                 if (
                     level == GPIO.LOW
                     and self._press_started_at is not None
-                    and not self._long_press_fired
                 ):
                     duration = now - self._press_started_at
-                    if duration >= self.long_press_seconds:
+                    if duration >= self.factory_reset_seconds and not self._factory_reset_fired:
+                        self._factory_reset_fired = True
+                        self._long_press_fired = True
+                        callback_event = ButtonEvent(kind="factory_reset", duration_seconds=duration)
+                    elif duration >= self.long_press_seconds and not self._long_press_fired:
                         self._long_press_fired = True
                         callback_event = ButtonEvent(kind="long", duration_seconds=duration)
 

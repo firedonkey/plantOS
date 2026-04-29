@@ -8,6 +8,7 @@ Behavior:
 - Default state: IDLE (LED off)
 - Short press (<2s): print "Button pressed (short)"
 - Long press (>=5s): enter PROVISIONING (slow blink)
+- Factory reset (>=10s): print "Factory reset requested" and return to IDLE
 - After 10s in PROVISIONING: switch to CONNECTED (solid ON)
 """
 
@@ -49,6 +50,12 @@ class OnboardingTestApp:
         if event.kind == "long":
             print("Entering provisioning mode")
             self.set_state("PROVISIONING")
+            return
+
+        if event.kind == "factory_reset":
+            print("Factory reset requested")
+            self.set_state("IDLE")
+            self.provision_started_at = None
 
     def run(self) -> None:
         GPIO.setmode(GPIO.BCM)
@@ -58,7 +65,7 @@ class OnboardingTestApp:
         self.set_state("IDLE")
 
         print("[main] onboarding test started")
-        print("[main] short press <2s, long press >=5s, Ctrl+C to exit")
+        print("[main] short press <2s, long press >=5s, factory reset >=10s, Ctrl+C to exit")
 
         try:
             while True:
@@ -81,4 +88,3 @@ class OnboardingTestApp:
 
 if __name__ == "__main__":
     OnboardingTestApp().run()
-

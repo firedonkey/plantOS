@@ -115,6 +115,10 @@ class NetworkManager:
         logger.info("scanning Wi-Fi networks dry_run=%s", self.dry_run)
         return self.wifi.scan_networks()
 
+    def forget_wifi(self, ssid: str) -> WiFiStatus:
+        logger.info("forgetting Wi-Fi ssid=%s dry_run=%s", ssid, self.dry_run)
+        return self.wifi.forget_network(ssid)
+
     def _run(self, command: list[str], dry_run_message: str | None = None, check: bool = True) -> None:
         if self.dry_run:
             logger.info("[dry-run] %s", dry_run_message or " ".join(command))

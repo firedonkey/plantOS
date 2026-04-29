@@ -64,3 +64,26 @@ class BackendRegistrationClient:
         if not data.get("ok") or not data.get("setup_code"):
             raise ValueError(f"setup code creation failed: {data}")
         return data
+
+    def factory_reset_device(
+        self,
+        *,
+        platform_url: str,
+        platform_device_id: int,
+        device_access_token: str,
+    ) -> dict[str, Any]:
+        logger.info(
+            "requesting backend factory reset for platform_device_id=%s via platform=%s",
+            platform_device_id,
+            platform_url,
+        )
+        response = requests.post(
+            f"{platform_url.rstrip('/')}/api/devices/{platform_device_id}/factory-reset",
+            headers={"X-Device-Token": device_access_token, "Accept": "application/json"},
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("ok"):
+            raise ValueError(f"backend factory reset failed: {data}")
+        return data

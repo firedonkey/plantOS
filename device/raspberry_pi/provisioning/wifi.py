@@ -449,6 +449,24 @@ class WiFiConnectionLayer:
             message="NetworkManager connected to Wi-Fi.",
         )
 
+    def forget_network(self, ssid: str) -> WiFiStatus:
+        """Remove saved credentials for a Wi-Fi network."""
+        if not ssid.strip():
+            return WiFiStatus(
+                ok=True,
+                stage="forget_network",
+                message="No Wi-Fi SSID was stored.",
+            )
+
+        if self.mode == "networkmanager":
+            return self._forget_network_with_networkmanager(ssid)
+
+        return WiFiStatus(
+            ok=False,
+            stage="forget_network",
+            message="Forget-network is not implemented for this Wi-Fi mode.",
+        )
+
 
     def _scan_with_iwlist(self) -> WiFiStatus:
         result = self._run(["sudo", "iwlist", "wlan0", "scan"], timeout=30)
@@ -496,6 +514,41 @@ class WiFiConnectionLayer:
             )
 
         return _network_status(networks, source="iwlist")
+
+    def _forget_network_with_networkmanager(self, ssid: str) -> WiFiStatus:
+        if self.dry_run:
+            logger.info("[dry-run] would forget NetworkManager Wi-Fi profile for ssid=%s", ssid)
+            return WiFiStatus(
+                ok=True,
+                stage="forget_network",
+                message="Dry-run NetworkManager forget-network succeeded.",
+            )
+
+        down_result = self._run(["sudo", "nmcli", "connection", "down", ssid], timeout=20)
+        delete_result = self._run(["sudo", "nmcli", "connection", "delete", ssid], timeout=20)
+
+        if delete_result.returncode == 0:
+            return WiFiStatus(
+                ok=True,
+                stage="forget_network",
+                message="NetworkManager Wi-Fi profile removed.",
+                details={"down_stdout": down_result.stdout, "delete_stdout": delete_result.stdout},
+            )
+
+        stderr = (delete_result.stderr or "").lower()
+        if "unknown connection" in stderr:
+            return WiFiStatus(
+                ok=True,
+                stage="forget_network",
+                message="NetworkManager Wi-Fi profile was already absent.",
+            )
+
+        return WiFiStatus(
+            ok=False,
+            stage="forget_network",
+            message="NetworkManager could not remove the Wi-Fi profile.",
+            details={"stderr": delete_result.stderr, "stdout": delete_result.stdout},
+        )
 
     @staticmethod
     def _default_runner(command: list[str], timeout: int) -> subprocess.CompletedProcess:
