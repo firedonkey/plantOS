@@ -95,6 +95,7 @@
         const location = pendingBanner.dataset.location || "";
         const statusUrl = new URL("/devices/provisioning-status.json", window.location.origin);
         const reloadKey = `plantlab-pending-reload:${deviceName}:${location}`;
+        let hardRefreshTimer = null;
         statusUrl.searchParams.set("device_name", deviceName);
         if (location) {
           statusUrl.searchParams.set("location", location);
@@ -105,11 +106,20 @@
 
         function scheduleReload() {
           const currentCount = Number(window.sessionStorage.getItem(reloadKey) || "0");
-          if (currentCount >= 2) {
+          if (currentCount >= 4) {
             return;
           }
           window.sessionStorage.setItem(reloadKey, String(currentCount + 1));
           window.setTimeout(() => window.location.reload(), 1200);
+        }
+
+        function startHardRefreshLoop() {
+          if (hardRefreshTimer !== null) {
+            return;
+          }
+          hardRefreshTimer = window.setInterval(() => {
+            window.location.reload();
+          }, 10000);
         }
 
         window.addEventListener("pageshow", (event) => {
@@ -129,6 +139,9 @@
             });
             const payload = await response.json();
             if (response.ok && payload.ready && payload.redirect_url) {
+              if (hardRefreshTimer !== null) {
+                window.clearInterval(hardRefreshTimer);
+              }
               window.sessionStorage.removeItem(reloadKey);
               window.location.href = payload.redirect_url;
               return;
@@ -139,6 +152,7 @@
 
           if (attemptCount >= maxAttempts) {
             pendingBanner.innerHTML = `Setup for <strong>${deviceName}</strong> is taking a little longer than usual. Checking again now.`;
+            startHardRefreshLoop();
             scheduleReload();
             return;
           }

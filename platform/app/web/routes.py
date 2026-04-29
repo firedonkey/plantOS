@@ -111,7 +111,7 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
         )
     pending_setup = bool(pending_device_name) and pending_match is None
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "devices.html",
         {
@@ -126,6 +126,10 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
             "pending_location": pending_location,
         },
     )
+    if pending_setup:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.get("/devices/add")
