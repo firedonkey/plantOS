@@ -141,6 +141,29 @@
         background: #f3faf4;
       }
 
+      .scanner-panel {
+        display: grid;
+        gap: 14px;
+      }
+
+      .scanner-preview {
+        overflow: hidden;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        background: #17201a;
+      }
+
+      .scanner-preview video {
+        display: block;
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+      }
+
+      .scanner-help {
+        color: #566259;
+      }
+
       .scanner-panel[hidden],
       .manual-panel[hidden],
       .ready-panel[hidden],
@@ -364,7 +387,15 @@
           </div>
 
           <div class="scanner-panel" id="scanner-panel" hidden>
-            <p>Choose a photo of the QR label, or use your phone camera if the browser offers it. PlantLab will read the SN automatically.</p>
+            <p>Hold the QR label in front of your camera. PlantLab will read the serial number automatically.</p>
+            <div class="scanner-preview">
+              <video id="qr-video" autoplay playsinline muted></video>
+            </div>
+            <p class="scanner-help">If camera access is blocked or the scan does not work well, upload a photo of the QR label instead.</p>
+            <div class="inline-actions">
+              <button class="secondary-button" id="upload-qr-photo-button" type="button">Upload QR photo</button>
+              <button class="secondary-button" id="stop-scan-button" type="button">Stop camera</button>
+            </div>
           </div>
 
           <div class="manual-panel" id="manual-panel" hidden>
@@ -439,6 +470,9 @@
       const serialNumberInput = document.querySelector("#serial-number");
       const snFileInput = document.querySelector("#sn-file-input");
       const scannerPanel = document.querySelector("#scanner-panel");
+      const qrVideo = document.querySelector("#qr-video");
+      const uploadQrPhotoButton = document.querySelector("#upload-qr-photo-button");
+      const stopScanButton = document.querySelector("#stop-scan-button");
       const manualPanel = document.querySelector("#manual-panel");
       const readyPanel = document.querySelector("#ready-panel");
       const continueSetupLink = document.querySelector("#continue-setup-link");
@@ -458,10 +492,66 @@
       let deviceLocation = "";
       let verifiedSerialNumber = "";
       let verifiedSetupCode = "";
+      let qrVideoStream = null;
+      let qrScanTimer = null;
+      let qrDetector = null;
 
       function setContinueSetupEnabled(enabled) {
         continueSetupLink.classList.toggle("disabled-link", !enabled);
         continueSetupLink.setAttribute("aria-disabled", enabled ? "false" : "true");
+      }
+
+      function stopQrScanner() {
+        if (qrScanTimer !== null) {
+          window.clearTimeout(qrScanTimer);
+          qrScanTimer = null;
+        }
+        if (qrVideoStream) {
+          qrVideoStream.getTracks().forEach((track) => track.stop());
+          qrVideoStream = null;
+        }
+        qrVideo.srcObject = null;
+      }
+
+      async function scanVideoFrame() {
+        if (!qrDetector || !qrVideoStream || qrVideo.readyState < 2) {
+          qrScanTimer = window.setTimeout(scanVideoFrame, 350);
+          return;
+        }
+
+        try {
+          const barcodes = await qrDetector.detect(qrVideo);
+          if (barcodes.length && barcodes[0].rawValue) {
+            const serialNumber = barcodes[0].rawValue.trim();
+            stopQrScanner();
+            serialNumberInput.value = serialNumber;
+            await verifySerialNumber(serialNumber);
+            return;
+          }
+        } catch (_error) {
+          // Keep scanning; camera permission and browser support are handled up front.
+        }
+
+        qrScanTimer = window.setTimeout(scanVideoFrame, 350);
+      }
+
+      async function startQrScanner() {
+        if (!("BarcodeDetector" in window)) {
+          throw new Error("Live QR scanning is not available in this browser. Upload a QR photo or enter the SN manually.");
+        }
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera access is not available in this browser. Upload a QR photo or enter the SN manually.");
+        }
+
+        qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+        stopQrScanner();
+        qrVideoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+        qrVideo.srcObject = qrVideoStream;
+        await qrVideo.play();
+        qrScanTimer = window.setTimeout(scanVideoFrame, 400);
       }
 
       function setStatus(element, message, tone = "info") {
@@ -538,6 +628,7 @@
           wifiConnectedCheckbox.checked = false;
           setContinueSetupEnabled(false);
           readyPanel.hidden = false;
+          stopQrScanner();
           scannerPanel.hidden = true;
           manualPanel.hidden = true;
           setStatus(step3Status, "Device verified. Connect to PlantLab-Setup, then open device Wi-Fi setup.", "success");
@@ -601,11 +692,20 @@
         scannerPanel.hidden = false;
         manualPanel.hidden = true;
         readyPanel.hidden = true;
-        snFileInput.value = "";
-        snFileInput.click();
+        setStatus(step3Status, "Starting camera...", "info");
+        setPill(step3Pill, "Scanning");
+        startQrScanner()
+          .then(() => {
+            setStatus(step3Status, "Camera is ready. Hold the QR label in view.", "info");
+          })
+          .catch((error) => {
+            setStatus(step3Status, error.message || "Could not start the camera.", "error");
+            setPill(step3Pill, "Error", "error");
+          });
       });
 
       manualSnButton.addEventListener("click", () => {
+        stopQrScanner();
         clearStatus(step3Status);
         scannerPanel.hidden = true;
         manualPanel.hidden = false;
@@ -645,7 +745,18 @@
         }
       });
 
+      uploadQrPhotoButton.addEventListener("click", () => {
+        snFileInput.value = "";
+        snFileInput.click();
+      });
+
+      stopScanButton.addEventListener("click", () => {
+        stopQrScanner();
+        setStatus(step3Status, "Camera stopped. Upload a QR photo or enter the SN manually.", "info");
+      });
+
       useDifferentSnButton.addEventListener("click", () => {
+        stopQrScanner();
         verifiedSerialNumber = "";
         verifiedSetupCode = "";
         serialNumberInput.value = "";
@@ -673,6 +784,10 @@
           event.preventDefault();
           setStatus(step3Status, "Connect to PlantLab-Setup first, then open device Wi-Fi setup.", "error");
         }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        stopQrScanner();
       });
 
       setContinueSetupEnabled(false);
