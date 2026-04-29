@@ -126,8 +126,10 @@ class PlantAutomation:
         interval = int(self.config["camera"].get("capture_interval_seconds", 3600))
         if self.last_capture_time and now - self.last_capture_time < timedelta(seconds=interval):
             return None
-        self.last_capture_time = now
-        return self.camera.capture()
+        image_path = self.camera.capture()
+        if image_path:
+            self.last_capture_time = now
+        return image_path
 
     def _light_manual_override_active(self, now: datetime) -> bool:
         if self.light_manual_override_until is None:

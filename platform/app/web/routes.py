@@ -99,7 +99,17 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
         legacy_pending = _pending_setup_from_raw_query(request.url.query)
         pending_device_name = legacy_pending["device_name"]
         pending_location = legacy_pending["location"]
-    pending_setup = bool(pending_device_name)
+    pending_match = None
+    if pending_device_name:
+        pending_match = next(
+            (
+                device
+                for device in devices
+                if device.name == pending_device_name and (device.location or "") == pending_location
+            ),
+            None,
+        )
+    pending_setup = bool(pending_device_name) and pending_match is None
 
     return templates.TemplateResponse(
         request,

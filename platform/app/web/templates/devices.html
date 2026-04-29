@@ -94,6 +94,7 @@
         const deviceName = pendingBanner.dataset.deviceName;
         const location = pendingBanner.dataset.location || "";
         const statusUrl = new URL("/devices/provisioning-status.json", window.location.origin);
+        const reloadKey = `plantlab-pending-reload:${deviceName}:${location}`;
         statusUrl.searchParams.set("device_name", deviceName);
         if (location) {
           statusUrl.searchParams.set("location", location);
@@ -101,6 +102,22 @@
 
         let attemptCount = 0;
         const maxAttempts = 30;
+
+        function scheduleReload() {
+          const currentCount = Number(window.sessionStorage.getItem(reloadKey) || "0");
+          if (currentCount >= 2) {
+            return;
+          }
+          window.sessionStorage.setItem(reloadKey, String(currentCount + 1));
+          window.setTimeout(() => window.location.reload(), 1200);
+        }
+
+        window.addEventListener("pageshow", (event) => {
+          const navigationEntry = window.performance.getEntriesByType("navigation")[0];
+          if (event.persisted || navigationEntry?.type === "back_forward") {
+            scheduleReload();
+          }
+        });
 
         async function pollProvisioningStatus() {
           attemptCount += 1;
@@ -112,6 +129,7 @@
             });
             const payload = await response.json();
             if (response.ok && payload.ready && payload.redirect_url) {
+              window.sessionStorage.removeItem(reloadKey);
               window.location.href = payload.redirect_url;
               return;
             }
@@ -120,7 +138,8 @@
           }
 
           if (attemptCount >= maxAttempts) {
-            pendingBanner.innerHTML = `Setup for <strong>${deviceName}</strong> is taking a little longer than usual. Refresh this page in a moment if the device does not appear automatically.`;
+            pendingBanner.innerHTML = `Setup for <strong>${deviceName}</strong> is taking a little longer than usual. Checking again now.`;
+            scheduleReload();
             return;
           }
 
