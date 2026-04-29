@@ -419,7 +419,12 @@
         if (deviceLocation) {
           url.searchParams.set("location", deviceLocation);
         }
-        url.searchParams.set("return_url", `${window.location.origin}/devices`);
+        const returnUrl = new URL(`${window.location.origin}/devices`);
+        returnUrl.searchParams.set("pending_device_name", deviceName);
+        if (deviceLocation) {
+          returnUrl.searchParams.set("pending_location", deviceLocation);
+        }
+        url.searchParams.set("return_url", returnUrl.toString());
         return url.toString();
       }
 

@@ -92,6 +92,9 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
     devices = list_devices_for_user(session, current_user)
     device_cards = [_device_overview_card(session, device) for device in devices]
     next_device_number = len(devices) + 1
+    pending_device_name = str(request.query_params.get("pending_device_name") or "").strip()
+    pending_location = str(request.query_params.get("pending_location") or "").strip()
+    pending_setup = bool(pending_device_name)
 
     return templates.TemplateResponse(
         request,
@@ -103,6 +106,9 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
             "suggested_device_name": f"Device {next_device_number}",
             "suggested_plant_type": f"Plant {next_device_number}",
             "suggested_location": f"Location {next_device_number}",
+            "pending_setup": pending_setup,
+            "pending_device_name": pending_device_name,
+            "pending_location": pending_location,
         },
     )
 
@@ -224,6 +230,47 @@ def device_summary_json(
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
             "active_command_keys": _active_command_keys(recent_commands),
+        }
+    )
+
+
+@router.get("/devices/provisioning-status.json")
+def device_provisioning_status(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    pending_device_name = str(request.query_params.get("device_name") or "").strip()
+    pending_location = str(request.query_params.get("location") or "").strip()
+    if not pending_device_name:
+        raise HTTPException(status_code=422, detail="device_name is required.")
+
+    devices = list_devices_for_user(session, current_user)
+    matching_device = next(
+        (
+            device
+            for device in devices
+            if device.name == pending_device_name and (device.location or "") == pending_location
+        ),
+        None,
+    )
+
+    if matching_device is None:
+        return JSONResponse({"ready": False})
+
+    return JSONResponse(
+        {
+            "ready": True,
+            "device_id": matching_device.id,
+            "redirect_url": f"/devices/{matching_device.id}?setup=complete",
         }
     )
 

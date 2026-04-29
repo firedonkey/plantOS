@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Devices - {{ app_name }}</title>
     <link rel="stylesheet" href="/static/style.css?v=provision-sn-20260420">
+    <style>
+      .setup-pending {
+        margin: 20px 0;
+        border: 1px solid #b8d8c0;
+        border-radius: 8px;
+        padding: 14px 16px;
+        background: #eff9f1;
+        color: #2f7d4b;
+      }
+    </style>
   </head>
   <body>
     <header class="site-header">
@@ -21,6 +31,12 @@
       <p class="eyebrow">Devices</p>
       <h1>Your Plant Devices</h1>
       <p>Monitor your Raspberry Pi plant labs and jump into the device that needs attention.</p>
+
+      {% if pending_setup %}
+      <div class="setup-pending" id="setup-pending-banner" data-device-name="{{ pending_device_name }}" data-location="{{ pending_location }}">
+        Finishing setup for <strong>{{ pending_device_name }}</strong>. This page will update automatically when the device is ready.
+      </div>
+      {% endif %}
 
       {% if device_cards %}
       <section class="device-grid" aria-label="Device list">
@@ -71,5 +87,47 @@
         <a class="button primary-button" href="/devices/add">Add device</a>
       </section>
     </main>
+    {% if pending_setup %}
+    <script>
+      const pendingBanner = document.querySelector("#setup-pending-banner");
+      if (pendingBanner) {
+        const deviceName = pendingBanner.dataset.deviceName;
+        const location = pendingBanner.dataset.location || "";
+        const statusUrl = new URL("/devices/provisioning-status.json", window.location.origin);
+        statusUrl.searchParams.set("device_name", deviceName);
+        if (location) {
+          statusUrl.searchParams.set("location", location);
+        }
+
+        let attemptCount = 0;
+        const maxAttempts = 30;
+
+        async function pollProvisioningStatus() {
+          attemptCount += 1;
+          try {
+            const response = await fetch(statusUrl.toString(), {
+              headers: { Accept: "application/json" },
+            });
+            const payload = await response.json();
+            if (response.ok && payload.ready && payload.redirect_url) {
+              window.location.href = payload.redirect_url;
+              return;
+            }
+          } catch (_error) {
+            // Keep polling. The banner message stays calm and visible.
+          }
+
+          if (attemptCount >= maxAttempts) {
+            pendingBanner.innerHTML = `Setup for <strong>${deviceName}</strong> is taking a little longer than usual. Refresh this page in a moment if the device does not appear automatically.`;
+            return;
+          }
+
+          window.setTimeout(pollProvisioningStatus, 3000);
+        }
+
+        window.setTimeout(pollProvisioningStatus, 1500);
+      }
+    </script>
+    {% endif %}
   </body>
 </html>
