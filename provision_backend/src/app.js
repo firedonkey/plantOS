@@ -5,6 +5,7 @@ import { ensureProvisioningSchema } from "./db/ensureSchema.js";
 import { pool } from "./db/pool.js";
 import { sendError } from "./lib/errors.js";
 import { attachDevUser } from "./middleware/devAuth.js";
+import { attachTrustedPlatformUser } from "./middleware/trustedPlatformAuth.js";
 import { devicesRouter } from "./routes/devices.js";
 
 const config = getConfig();
@@ -22,7 +23,9 @@ app.get("/health", async (_req, res, next) => {
   }
 });
 
-// Replace this with your real session or JWT auth middleware in production.
+// Trusted service-to-service auth for setup-code creation in production.
+app.use(attachTrustedPlatformUser);
+
 // For local testing only, set ENABLE_DEV_AUTH=true.
 app.use(attachDevUser);
 

@@ -375,8 +375,9 @@ async def create_device_setup_code_page(request: Request, session: Session = Dep
                     "location": location or None,
                 },
                 headers={
-                    "x-dev-user-id": str(current_user.id),
-                    "x-dev-user-email": current_user.email or "",
+                    "x-plantlab-service-secret": settings.provisioning_service_secret or "",
+                    "x-plantlab-user-id": str(current_user.id),
+                    "x-plantlab-user-email": current_user.email or "",
                 },
             )
     except httpx.HTTPError as exc:

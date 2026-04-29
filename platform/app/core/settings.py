@@ -30,6 +30,7 @@ class Settings:
     google_client_id: str | None = None
     google_client_secret: str | None = None
     provisioning_api_url: str = "https://plantlab-provision-api-418533861080.us-central1.run.app"
+    provisioning_service_secret: str | None = None
     local_setup_url: str = "http://10.42.0.1:8080/"
 
     @property
@@ -51,6 +52,8 @@ class Settings:
             raise ValueError("GCS_BUCKET_NAME is required when PLANTLAB_STORAGE_BACKEND=gcs.")
         if bool(self.google_client_id) != bool(self.google_client_secret):
             raise ValueError("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set together.")
+        if self.is_production and not self.provisioning_service_secret:
+            raise ValueError("PLANTLAB_PROVISIONING_SHARED_SECRET is required in production.")
         if self.is_production and self.session_secret == Settings.session_secret:
             raise ValueError("APP_SECRET_KEY must be set to a secure value in production.")
 
@@ -67,6 +70,7 @@ def get_settings() -> Settings:
         google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),
         provisioning_api_url=os.getenv("PLANTLAB_PROVISIONING_API_URL", Settings.provisioning_api_url).rstrip("/"),
+        provisioning_service_secret=_optional_env("PLANTLAB_PROVISIONING_SHARED_SECRET"),
         local_setup_url=os.getenv("PLANTLAB_LOCAL_SETUP_URL", Settings.local_setup_url).rstrip("/") + "/",
     )
     settings.validate()
