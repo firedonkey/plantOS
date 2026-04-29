@@ -3,7 +3,12 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.local
+.env.*
+!.env.example
+!.env.local.example
 .pytest_cache/
+.DS_Store
 
 device/data/logs/*.csv
 device/data/logs/*.json
