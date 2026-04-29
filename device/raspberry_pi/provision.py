@@ -2,13 +2,13 @@ import argparse
 import logging
 import os
 
-from config import load_config
+from config import DEFAULT_CONFIG_PATH, load_config
 from provisioning.service import ProvisioningService
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run PlantLab Raspberry Pi SoftAP provisioning.")
-    parser.add_argument("--config", default="config.gcp.yaml", help="Path to device YAML config.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to device YAML config.")
     parser.add_argument("--state-file", help="Provisioning JSON config path.")
     parser.add_argument("--backend-url", help="PlantLab backend URL.")
     parser.add_argument("--host", default="0.0.0.0", help="Local setup web server host.")

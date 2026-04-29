@@ -1,13 +1,13 @@
 import argparse
 
-from config import load_config
+from config import DEFAULT_CONFIG_PATH, load_config
 from services.automation import PlantAutomation
 from services.scheduler import run_forever
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the plantOS automation loop.")
-    parser.add_argument("--config", default="config.gcp.yaml", help="Path to config YAML.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to config YAML.")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit.")
     parser.add_argument("--loop-interval", type=int, help="Override app.loop_interval_seconds.")
     parser.add_argument("--capture-interval", type=int, help="Override camera.capture_interval_seconds.")

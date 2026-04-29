@@ -7,7 +7,7 @@ from pathlib import Path
 
 import requests
 
-from config import load_config
+from config import DEFAULT_CONFIG_PATH, load_config
 from services.automation import PlantAutomation
 
 
@@ -22,7 +22,7 @@ DEFAULT_MOCK_IMAGES = [
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send Raspberry Pi readings, images, and command acknowledgements to PlantLab platform.")
-    parser.add_argument("--config", default="config.gcp.yaml", help="Path to device config YAML.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to device config YAML.")
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")

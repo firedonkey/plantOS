@@ -28,7 +28,7 @@ PROJECT_ROOT = CURRENT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import load_config
+from config import DEFAULT_CONFIG_PATH, load_config
 from provisioning.button_handler import ButtonEvent, ButtonHandler
 from provisioning.led_controller import LedController
 from provisioning.service import ProvisioningService
@@ -190,7 +190,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--config",
-        default="config.gcp.yaml",
+        default=str(DEFAULT_CONFIG_PATH),
         help="Path to device YAML config.",
     )
     args = parser.parse_args()

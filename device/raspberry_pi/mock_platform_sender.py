@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from config import load_config
+from config import DEFAULT_CONFIG_PATH, load_config
 from platform_client import (
     DEFAULT_MOCK_IMAGES,
     handle_pending_commands,
@@ -19,7 +19,7 @@ from services.automation import PlantAutomation
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send mock readings and mock images to PlantLab platform.")
-    parser.add_argument("--config", default="config.gcp.yaml", help="Path to device config YAML.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to device config YAML.")
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")
