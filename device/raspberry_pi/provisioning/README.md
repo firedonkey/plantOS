@@ -1,5 +1,9 @@
 # PlantLab Raspberry Pi SoftAP Provisioning
 
+For the full Raspberry Pi run-command list, use:
+
+- [COMMANDS.md](/Users/gary/plantOS/device/raspberry_pi/COMMANDS.md)
+
 This service implements the Raspberry Pi side of the SoftAP provisioning flow described in `provision_readme.md`.
 
 ## File Structure
