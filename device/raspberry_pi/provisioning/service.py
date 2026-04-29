@@ -68,7 +68,7 @@ class ProvisioningService:
 
         self._handle_payload(payload)
 
-    def factory_reset(self) -> None:
+    def factory_reset(self, *, forget_wifi: bool = True) -> None:
         logger.warning("factory reset requested")
         data = self.store.load()
         platform_device_id = data.get("platform_device_id")
@@ -89,12 +89,14 @@ class ProvisioningService:
         else:
             logger.info("backend cleanup skipped; provisioning record is incomplete")
 
-        if wifi_ssid:
+        if forget_wifi and wifi_ssid:
             status = self.network.forget_wifi(str(wifi_ssid))
             if status.ok:
                 logger.info("forgot Wi-Fi profile for ssid=%s", wifi_ssid)
             else:
                 logger.warning("could not forget Wi-Fi profile: %s", status.message)
+        elif wifi_ssid:
+            logger.info("preserving Wi-Fi profile for ssid=%s during reprovision pre-reset", wifi_ssid)
 
         self.store.delete()
         logger.info("local provisioning state deleted; device is ready as a new device")

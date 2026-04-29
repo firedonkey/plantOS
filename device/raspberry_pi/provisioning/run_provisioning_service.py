@@ -153,7 +153,7 @@ class ProvisioningController:
             if self.service.store.is_provisioned():
                 logger.warning("device is already provisioned; resetting before provisioning again")
                 try:
-                    self.service.factory_reset()
+                    self.service.factory_reset(forget_wifi=False)
                 except Exception as exc:
                     logger.error("factory reset before reprovision failed: %s", exc)
                     self.set_state("ERROR")
