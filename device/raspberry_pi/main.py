@@ -7,7 +7,7 @@ from services.scheduler import run_forever
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the plantOS automation loop.")
-    parser.add_argument("--config", default="config.yaml", help="Path to config YAML.")
+    parser.add_argument("--config", default="config.gcp.yaml", help="Path to config YAML.")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit.")
     parser.add_argument("--loop-interval", type=int, help="Override app.loop_interval_seconds.")
     parser.add_argument("--capture-interval", type=int, help="Override camera.capture_interval_seconds.")

@@ -22,7 +22,7 @@ DEFAULT_MOCK_IMAGES = [
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send Raspberry Pi readings, images, and command acknowledgements to PlantLab platform.")
-    parser.add_argument("--config", default="config.yaml", help="Path to device config YAML.")
+    parser.add_argument("--config", default="config.gcp.yaml", help="Path to device config YAML.")
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")
@@ -46,7 +46,7 @@ def main() -> None:
     config_path = Path(args.config)
     provisioning_config = {}
     if config_path.suffix.lower() == ".json":
-        config = load_config("config.yaml")
+        config = load_config()
         provisioning_config = load_provisioning_config(config_path)
     else:
         config = load_config(config_path)
@@ -69,7 +69,7 @@ def main() -> None:
                 "Run provisioning again with the latest code, or pass --device-id manually once."
             )
         raise SystemExit(
-            "Set --device-id and --device-token, add them under platform: in config.yaml, "
+            "Set --device-id and --device-token, add them under platform: in the selected config YAML, "
             "or pass the provisioning JSON with --config."
         )
 

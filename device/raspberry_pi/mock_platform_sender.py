@@ -19,7 +19,7 @@ from services.automation import PlantAutomation
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send mock readings and mock images to PlantLab platform.")
-    parser.add_argument("--config", default="config.yaml", help="Path to device config YAML.")
+    parser.add_argument("--config", default="config.gcp.yaml", help="Path to device config YAML.")
     parser.add_argument("--platform-url", help="Platform base URL, for example http://127.0.0.1:8000.")
     parser.add_argument("--device-id", type=int, help="Platform device id.")
     parser.add_argument("--device-token", help="Platform device API token.")
@@ -51,7 +51,7 @@ def main() -> None:
     status_interval = int(args.status_interval or platform_config.get("status_interval_seconds") or 10)
 
     if not device_id or not device_token:
-        raise SystemExit("Set --device-id and --device-token, or add them under platform: in config.yaml.")
+        raise SystemExit("Set --device-id and --device-token, or add them under platform: in the selected config YAML.")
 
     automation = PlantAutomation(config)
     image_paths = [path for path in DEFAULT_MOCK_IMAGES if path.exists()]

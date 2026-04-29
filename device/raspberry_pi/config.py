@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 
-DEFAULT_CONFIG_PATH = Path("config.yaml")
+DEFAULT_CONFIG_FILENAME = "config.gcp.yaml"
+DEFAULT_CONFIG_PATH = Path(os.getenv("PLANTLAB_CONFIG_PATH", DEFAULT_CONFIG_FILENAME))
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
@@ -17,7 +19,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
 
 
 def _load_simple_yaml(text: str) -> dict:
-    """Tiny fallback for config.yaml before PyYAML is installed."""
+    """Tiny fallback YAML loader before PyYAML is installed."""
     root: dict = {}
     stack: list[tuple[int, dict]] = [(-1, root)]
 

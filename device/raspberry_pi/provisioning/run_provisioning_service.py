@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProvisioningController:
-    def __init__(self, config_path: str = "config.yaml") -> None:
+    def __init__(self, config_path: str = "config.gcp.yaml") -> None:
         config = load_config(config_path)
         provisioning_config = config.get("provisioning", {})
         platform_config = config.get("platform", {})
@@ -155,7 +155,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--config",
-        default="config.yaml",
+        default="config.gcp.yaml",
         help="Path to device YAML config.",
     )
     args = parser.parse_args()
