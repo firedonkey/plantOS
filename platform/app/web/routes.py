@@ -269,14 +269,18 @@ def device_provisioning_status(
     )
 
     if matching_device is None:
-        return JSONResponse({"ready": False})
+        return JSONResponse(
+            {"ready": False},
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
     return JSONResponse(
         {
             "ready": True,
             "device_id": matching_device.id,
             "redirect_url": f"/devices/{matching_device.id}?setup=complete",
-        }
+        },
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
 
 
