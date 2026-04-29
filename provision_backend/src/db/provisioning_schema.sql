@@ -40,3 +40,9 @@ CREATE TABLE IF NOT EXISTS device_access_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_device_access_tokens_device_id
   ON device_access_tokens(device_id);
+
+INSERT INTO device_serial_numbers (serial_number, hardware_model, status)
+VALUES
+  ('123', 'raspberry_pi_3_test', 'available'),
+  ('SN-20260428-016521', 'raspberry_pi_3_label_test', 'available')
+ON CONFLICT (serial_number) DO NOTHING;

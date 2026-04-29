@@ -130,6 +130,7 @@ def add_device_page(request: Request, session: Session = Depends(get_session)):
             "current_user": current_user,
             "suggested_device_name": f"Device {next_device_number}",
             "suggested_location": f"Location {next_device_number}",
+            "local_setup_url": settings.local_setup_url,
         },
     )
 
@@ -260,6 +261,8 @@ async def create_device_setup_code_page(request: Request):
 
     data = await request.json()
     serial_number = str(data.get("serial_number", "")).strip()
+    device_name = str(data.get("device_name", "")).strip()
+    location = str(data.get("location", "")).strip()
     if not serial_number:
         raise HTTPException(status_code=422, detail="SN is required.")
 
@@ -268,7 +271,11 @@ async def create_device_setup_code_page(request: Request):
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(
                 f"{settings.provisioning_api_url}/api/devices/setup-code",
-                json={"serial_number": serial_number},
+                json={
+                    "serial_number": serial_number,
+                    "device_name": device_name or None,
+                    "location": location or None,
+                },
             )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Provisioning service unavailable: {exc}") from exc

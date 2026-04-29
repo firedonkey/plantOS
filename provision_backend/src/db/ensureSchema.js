@@ -19,6 +19,12 @@ export async function ensureProvisioningSchema(pool) {
   `);
 
   await pool.query(`
+    INSERT INTO device_serial_numbers (serial_number, hardware_model, status)
+    VALUES ('SN-20260428-016521', 'raspberry_pi_3_label_test', 'available')
+    ON CONFLICT (serial_number) DO NOTHING
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS device_claim_tokens (
       claim_token TEXT PRIMARY KEY,
       serial_number TEXT REFERENCES device_serial_numbers(serial_number),
