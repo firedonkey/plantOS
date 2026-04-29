@@ -69,12 +69,6 @@ Local URLs:
 - Provisioning backend: `http://127.0.0.1:3000`
 - Backend health: `http://127.0.0.1:3000/health`
 
-## 2. Pull Latest Code On Raspberry Pi
-
-```bash
-cd ~/projects/plantOS
-git pull origin raspberry
-```
 
 ## 3. Raspberry Pi Config Files
 
