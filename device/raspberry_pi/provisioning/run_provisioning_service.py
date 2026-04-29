@@ -16,11 +16,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
 
 import RPi.GPIO as GPIO
+
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import load_config
 from provisioning.button_handler import ButtonEvent, ButtonHandler
