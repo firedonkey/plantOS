@@ -645,6 +645,7 @@ input {
   color: #9b332b;
   font: inherit;
   font-weight: 800;
+  text-decoration: underline;
 }
 
 .setup-result,
