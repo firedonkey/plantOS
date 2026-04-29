@@ -214,7 +214,7 @@ SETUP_TEMPLATE = """
         <p class="eyebrow">PlantLab Local Setup</p>
         <h1>PlantLab Setup</h1>
         <p>Connect this device to your home Wi-Fi and add it to your PlantLab account.</p>
-        <p>Enter your Wi-Fi details and the device SN from the label or QR code.</p>
+        <p>Enter your Wi-Fi details to finish setup.</p>
 
         <form id="provision-form" novalidate>
           <label>
@@ -233,7 +233,7 @@ SETUP_TEMPLATE = """
             </div>
           </label>
 
-          <label>
+          <label id="serial-number-field">
             SN
             <input id="serial-number" name="serial_number" required autocomplete="off" placeholder="123">
           </label>
@@ -262,6 +262,7 @@ SETUP_TEMPLATE = """
       const ssidSelect = document.querySelector("#ssid-select");
       const passwordInput = document.querySelector("#password");
       const serialNumberInput = document.querySelector("#serial-number");
+      const serialNumberField = document.querySelector("#serial-number-field");
       const claimTokenInput = document.querySelector("#claim-token");
       const backendUrlInput = document.querySelector("#backend-url");
       const setupCodeField = document.querySelector("#setup-code-field");
@@ -320,6 +321,7 @@ SETUP_TEMPLATE = """
         if (setupCode) {
           claimTokenInput.value = setupCode.trim();
           setupCodeField.classList.add("hidden");
+          serialNumberField.classList.add("hidden");
           serialNumberInput.required = false;
           setStatus("Device authorization received. Enter your home Wi-Fi details.", "success");
         }
