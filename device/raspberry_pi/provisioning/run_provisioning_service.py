@@ -32,6 +32,7 @@ from config import load_config
 from provisioning.button_handler import ButtonEvent, ButtonHandler
 from provisioning.led_controller import LedController
 from provisioning.service import ProvisioningService
+from services.platform_runtime import PlatformRuntime
 
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class ProvisioningController:
         self.initial_state = "CONNECTED" if self.service.store.is_provisioned() else "IDLE"
         self.state = "IDLE"
         self.busy_lock = threading.Lock()
+        self.runtime = PlatformRuntime(config, provisioning_state_file=self.state_file)
 
         self.led = LedController(pin=24)
         self.button = ButtonHandler(
@@ -91,6 +93,7 @@ class ProvisioningController:
         self.led.start()
         self.button.start()
         self.set_state(self.initial_state)
+        self._sync_runtime_with_state()
 
         logger.info("provisioning controller started; state=%s", self.state)
         try:
@@ -99,6 +102,7 @@ class ProvisioningController:
         except KeyboardInterrupt:
             logger.info("provisioning controller stopping")
         finally:
+            self.runtime.stop()
             self.button.stop()
             self.led.stop()
             GPIO.cleanup()
@@ -111,13 +115,10 @@ class ProvisioningController:
             return
 
         if event.kind == "long":
-            if self.service.store.is_provisioned():
-                logger.info("device is already provisioned; hold 10 seconds to factory reset")
-                return
             if self.busy_lock.locked():
                 logger.info("provisioning is already in progress")
                 return
-            threading.Thread(target=self._run_provisioning_flow, daemon=True).start()
+            threading.Thread(target=self._run_reprovision_flow, daemon=True).start()
             return
 
         if event.kind == "factory_reset":
@@ -132,10 +133,31 @@ class ProvisioningController:
         logger.info("state %s -> %s", self.state, next_state)
         self.state = next_state
         self.led.set_state(next_state)
+        self._sync_runtime_with_state()
 
-    def _run_provisioning_flow(self) -> None:
+    def _sync_runtime_with_state(self) -> None:
+        if self.state == "CONNECTED" and self.service.store.is_provisioned():
+            try:
+                self.runtime.start()
+            except Exception as exc:
+                logger.error("could not start platform runtime: %s", exc)
+                self.runtime.stop()
+                self.state = "ERROR"
+                self.led.set_state("ERROR")
+        else:
+            self.runtime.stop()
+
+    def _run_reprovision_flow(self) -> None:
         with self.busy_lock:
             self.set_state("PROVISIONING")
+            if self.service.store.is_provisioned():
+                logger.warning("device is already provisioned; resetting before provisioning again")
+                try:
+                    self.service.factory_reset()
+                except Exception as exc:
+                    logger.error("factory reset before reprovision failed: %s", exc)
+                    self.set_state("ERROR")
+                    return
             try:
                 self.service.run()
             except Exception as exc:

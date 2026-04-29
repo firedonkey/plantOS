@@ -70,7 +70,7 @@ Local URLs:
 - Backend health: `http://127.0.0.1:3000/health`
 
 
-## 3. Raspberry Pi Config Files
+## 2. Raspberry Pi Config Files
 
 Local stack config:
 
@@ -87,7 +87,7 @@ cd ~/projects/plantOS/device/raspberry_pi
 nano config.local.yaml
 ```
 
-## 4. Start Provisioning On Raspberry Pi
+## 3. Start Provisioning On Raspberry Pi
 
 ### Local Stack Mode
 
@@ -125,7 +125,7 @@ source ../../.venv/bin/activate
 python provision.py --config config.gcp.yaml --real-network --open-hotspot --reset
 ```
 
-## 5. Send Sensor Data And Images To PlantLab
+## 4. Send Sensor Data And Images To PlantLab
 
 These commands expect provisioning to already be complete and:
 
@@ -170,6 +170,54 @@ One-shot test:
 cd ~/projects/plantOS/device/raspberry_pi
 source ../../.venv/bin/activate
 python platform_client.py --config config.gcp.yaml --once --image-every 1
+```
+
+## 5. Production Boot Service
+
+Systemd unit file in repo:
+
+- [plantlab-device.service](/Users/gary/plantOS/device/raspberry_pi/systemd/plantlab-device.service)
+
+Copy it into systemd on Raspberry Pi:
+
+```bash
+sudo cp ~/projects/plantOS/device/raspberry_pi/systemd/plantlab-device.service /etc/systemd/system/plantlab-device.service
+```
+
+Reload systemd:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Enable on boot:
+
+```bash
+sudo systemctl enable plantlab-device
+```
+
+Start now:
+
+```bash
+sudo systemctl start plantlab-device
+```
+
+Restart after code updates:
+
+```bash
+sudo systemctl restart plantlab-device
+```
+
+Check status:
+
+```bash
+sudo systemctl status plantlab-device
+```
+
+Follow logs:
+
+```bash
+sudo journalctl -u plantlab-device -f
 ```
 
 ## 6. Full Local Provisioning Flow
@@ -223,7 +271,18 @@ source ../../.venv/bin/activate
 python provisioning/test_provisioning.py
 ```
 
-## 8. Sensor / Actuator Component Tests
+## 8. Button-Driven Production Flow
+
+Production behavior after the systemd service is installed:
+
+- On boot, the device service starts automatically.
+- If the device is already provisioned, it automatically starts sending readings and images.
+- If the user long-presses the button:
+  - unprovisioned device: enter provisioning mode
+  - already provisioned device: factory reset first, then enter provisioning mode
+- After successful provisioning, data sending starts automatically.
+
+## 9. Sensor / Actuator Component Tests
 
 ### Moisture ADC Test
 
@@ -259,7 +318,7 @@ source ../../.venv/bin/activate
 python test_pump.py --config config.local.yaml
 ```
 
-## 9. Automation Loop
+## 10. Automation Loop
 
 Run one automation cycle:
 
@@ -277,7 +336,7 @@ source ../../.venv/bin/activate
 python main.py --config config.gcp.yaml
 ```
 
-## 10. Mock Platform Sender
+## 11. Mock Platform Sender
 
 Local mock sender:
 
@@ -287,7 +346,7 @@ source ../../.venv/bin/activate
 python mock_platform_sender.py --config config.local.yaml --send-interval 10 --image-every 1
 ```
 
-## 11. Wi-Fi Recovery Helpers On Raspberry Pi
+## 12. Wi-Fi Recovery Helpers On Raspberry Pi
 
 Show saved connections:
 
@@ -307,7 +366,7 @@ Test DNS / internet:
 ping -c 3 github.com
 ```
 
-## 12. Notes
+## 13. Notes
 
 - Do not run `provision.py` and `provisioning/run_provisioning_service.py` at the same time.
 - Use `config.local.yaml` for laptop Docker testing.

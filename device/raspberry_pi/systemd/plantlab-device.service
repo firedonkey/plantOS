@@ -1,0 +1,16 @@
+[Unit]
+Description=PlantLab Raspberry Pi device runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gary
+WorkingDirectory=/home/gary/projects/plantOS/device/raspberry_pi
+Environment=PLANTLAB_CONFIG_PATH=config.gcp.yaml
+ExecStart=/home/gary/projects/plantOS/.venv/bin/python provisioning/run_provisioning_service.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
