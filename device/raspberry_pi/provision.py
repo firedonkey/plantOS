@@ -25,6 +25,13 @@ def main() -> None:
 
     config = load_config(args.config)
     provisioning_config = config.get("provisioning", {})
+    hotspot_open = args.open_hotspot or bool(provisioning_config.get("open_hotspot", False))
+    if hotspot_open:
+        hotspot_password = ""
+    elif "hotspot_password" in provisioning_config:
+        hotspot_password = str(provisioning_config.get("hotspot_password") or "")
+    else:
+        hotspot_password = "plantlabsetup"
     backend_url = (
         args.backend_url
         or os.getenv("PLANTLAB_BACKEND_URL")
@@ -45,7 +52,7 @@ def main() -> None:
         hardware_version=str(provisioning_config.get("hardware_version") or "raspberry_pi_3"),
         software_version=str(provisioning_config.get("software_version") or "0.1.0"),
         capabilities=provisioning_config.get("capabilities") or {},
-        hotspot_password="" if args.open_hotspot else str(provisioning_config.get("hotspot_password") or "plantlabsetup"),
+        hotspot_password=hotspot_password,
     )
 
     if args.reset:

@@ -76,6 +76,7 @@ provisioning:
   backend_url: http://192.168.0.42:3000
   state_file: data/provisioning/device_config.json
   network_dry_run: false
+  open_hotspot: true
   hardware_version: raspberry_pi_3
   software_version: 0.1.0
   capabilities:

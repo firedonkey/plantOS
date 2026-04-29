@@ -42,6 +42,13 @@ class ProvisioningController:
         config = load_config(config_path)
         provisioning_config = config.get("provisioning", {})
         platform_config = config.get("platform", {})
+        hotspot_open = bool(provisioning_config.get("open_hotspot", False))
+        if hotspot_open:
+            hotspot_password = ""
+        elif "hotspot_password" in provisioning_config:
+            hotspot_password = str(provisioning_config.get("hotspot_password") or "")
+        else:
+            hotspot_password = "plantlabsetup"
 
         backend_url = (
             provisioning_config.get("backend_url")
@@ -62,7 +69,7 @@ class ProvisioningController:
             hardware_version=str(provisioning_config.get("hardware_version") or "raspberry_pi_3"),
             software_version=str(provisioning_config.get("software_version") or "0.1.0"),
             capabilities=provisioning_config.get("capabilities") or {},
-            hotspot_password=str(provisioning_config.get("hotspot_password") or "plantlabsetup"),
+            hotspot_password=hotspot_password,
         )
 
         self.state_file = Path(str(state_file))
