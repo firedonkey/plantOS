@@ -83,7 +83,7 @@ def _optional_env(name: str, legacy_name: str | None = None) -> str | None:
         value = os.getenv(legacy_name)
     if value is None or value.strip() == "":
         return None
-    return value
+    return value.strip()
 
 
 def _required_or_default_secret(name: str, legacy_name: str | None = None) -> str:
