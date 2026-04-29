@@ -51,6 +51,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://plantlab_user:plantlab_dev_password@postgres:5432/plantlab
+      ENABLE_DEV_AUTH: "true"
+      DEV_AUTH_USER_ID: "1"
       PORT: 3000
       PLANTLAB_LOCAL_SETUP_URL: ${PLANTLAB_LOCAL_SETUP_URL:-http://10.42.0.1:8080}
     ports:

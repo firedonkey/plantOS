@@ -254,9 +254,14 @@ async def create_device_page(
 
 
 @router.post("/devices/setup-code")
-async def create_device_setup_code_page(request: Request):
+async def create_device_setup_code_page(request: Request, session: Session = Depends(get_session)):
     user_id = request.session.get("user_id")
     if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
         raise HTTPException(status_code=401, detail="Sign in required.")
 
     data = await request.json()
@@ -275,6 +280,10 @@ async def create_device_setup_code_page(request: Request):
                     "serial_number": serial_number,
                     "device_name": device_name or None,
                     "location": location or None,
+                },
+                headers={
+                    "x-dev-user-id": str(current_user.id),
+                    "x-dev-user-email": current_user.email or "",
                 },
             )
     except httpx.HTTPError as exc:
