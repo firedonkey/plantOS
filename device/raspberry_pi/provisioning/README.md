@@ -73,6 +73,24 @@ data/provisioning/device_config.json
 
 The file is written with `0600` permissions.
 
+## Local Full-Stack Test
+
+To bring up the full local test stack on your laptop with one command:
+
+```bash
+cd ~/plantOS
+cp .env.local.example .env.local
+docker compose --env-file .env.local -f docker-compose.local.yml up --build
+```
+
+This starts:
+
+- PostgreSQL on `localhost:5432`
+- PlantLab platform on `http://127.0.0.1:8000`
+- Provisioning backend on `http://127.0.0.1:3000`
+
+Both web services use the same PostgreSQL database, so a newly provisioned device will appear on the local platform webpage immediately.
+
 ## State Machine
 
 The service uses these states:
