@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -94,6 +95,10 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
     next_device_number = len(devices) + 1
     pending_device_name = str(request.query_params.get("pending_device_name") or "").strip()
     pending_location = str(request.query_params.get("pending_location") or "").strip()
+    if not pending_device_name:
+        legacy_pending = _pending_setup_from_raw_query(request.url.query)
+        pending_device_name = legacy_pending["device_name"]
+        pending_location = legacy_pending["location"]
     pending_setup = bool(pending_device_name)
 
     return templates.TemplateResponse(
@@ -273,6 +278,18 @@ def device_provisioning_status(
             "redirect_url": f"/devices/{matching_device.id}?setup=complete",
         }
     )
+
+
+def _pending_setup_from_raw_query(raw_query: str) -> dict[str, str]:
+    if not raw_query:
+        return {"device_name": "", "location": ""}
+
+    decoded_query = unquote(raw_query)
+    params = parse_qs(decoded_query, keep_blank_values=True)
+    return {
+        "device_name": str((params.get("pending_device_name") or [""])[0]).strip(),
+        "location": str((params.get("pending_location") or [""])[0]).strip(),
+    }
 
 
 @router.post("/devices")

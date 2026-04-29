@@ -1,5 +1,6 @@
 import logging
 import threading
+from urllib.parse import unquote
 from dataclasses import dataclass
 
 from flask import Flask, jsonify, render_template_string, request
@@ -524,7 +525,7 @@ class LocalSetupServer:
             serial_number = str(data.get("serial_number", "")).strip()
             claim_token = str(data.get("claim_token", "")).strip()
             backend_url = str(data.get("backend_url", "")).strip()
-            return_url = str(data.get("return_url", "")).strip()
+            return_url = unquote(str(data.get("return_url", "")).strip())
             device_name = str(data.get("device_name", "")).strip()
             location = str(data.get("location", "")).strip()
             if not ssid or not backend_url or (not claim_token and not serial_number):

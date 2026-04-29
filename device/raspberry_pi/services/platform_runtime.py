@@ -122,6 +122,7 @@ class PlatformRuntime:
 
         cycle = 0
         next_send_at = 0.0
+        pending_image_path: Path | None = None
         try:
             while not self._stop_event.is_set():
                 now = time.monotonic()
@@ -133,14 +134,18 @@ class PlatformRuntime:
                     except requests.RequestException as exc:
                         logger.warning("reading upload failed: %s", exc)
 
-                    should_upload_image = image_every > 0 and cycle % image_every == 0
+                    should_upload_image = pending_image_path is not None or (
+                        image_every > 0 and cycle % image_every == 0
+                    )
                     if should_upload_image:
-                        image_path = captured_image_path(record, None)
+                        image_path = pending_image_path or captured_image_path(record, None)
                         if image_path is not None:
                             try:
                                 send_image(platform_url, device_id, device_token, image_path)
+                                pending_image_path = None
                             except requests.RequestException as exc:
                                 logger.warning("image upload failed: %s", exc)
+                                pending_image_path = image_path
                         else:
                             logger.info("no camera image available to upload")
 
