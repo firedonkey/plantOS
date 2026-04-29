@@ -267,10 +267,21 @@ def device_provisioning_status(
         request.session.clear()
         raise HTTPException(status_code=401, detail="Sign in required.")
 
-    pending_device_name = str(request.query_params.get("device_name") or "").strip()
-    pending_location = str(request.query_params.get("location") or "").strip()
+    pending_device_name = str(
+        request.query_params.get("device_name")
+        or request.query_params.get("pending_device_name")
+        or ""
+    ).strip()
+    pending_location = str(
+        request.query_params.get("location")
+        or request.query_params.get("pending_location")
+        or ""
+    ).strip()
     if not pending_device_name:
-        raise HTTPException(status_code=422, detail="device_name is required.")
+        return JSONResponse(
+            {"ready": False},
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
     devices = list_devices_for_user(session, current_user)
     matching_device = next(
