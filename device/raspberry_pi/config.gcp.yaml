@@ -73,7 +73,7 @@ platform:
   status_interval_seconds: 10
 
 provisioning:
-  backend_url: https://plantlab-provision-api-418533861080.us-central1.run.app
+  backend_url: https://plantlab-provision-api-efvri7f4ma-uc.a.run.app
   state_file: data/provisioning/device_config.json
   network_dry_run: false
   open_hotspot: true
