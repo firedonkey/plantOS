@@ -716,11 +716,19 @@ class ProvisioningPayload:
 
 
 class LocalSetupServer:
-    def __init__(self, host: str, port: int, backend_url: str, network_manager: NetworkManager):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        backend_url: str,
+        network_manager: NetworkManager,
+        initial_networks: list[dict] | None = None,
+    ):
         self.host = host
         self.port = port
         self.backend_url = backend_url
         self.network_manager = network_manager
+        self.initial_networks = list(initial_networks or [])
         self.app = Flask(__name__)
         self.payload: ProvisioningPayload | None = None
         self.payload_received = threading.Event()
@@ -739,6 +747,15 @@ class LocalSetupServer:
 
         @self.app.get("/wifi/networks")
         def wifi_networks():
+            if self.initial_networks:
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": f"Loaded {len(self.initial_networks)} nearby Wi-Fi network(s) from the pre-setup scan.",
+                        "networks": self.initial_networks,
+                        "cached": True,
+                    }
+                )
             status = self.network_manager.scan_wifi_networks()
             if not status.ok:
                 return jsonify(
@@ -754,6 +771,7 @@ class LocalSetupServer:
                     "ok": True,
                     "message": status.message,
                     "networks": status.details.get("networks", []),
+                    "cached": False,
                 }
             )
 

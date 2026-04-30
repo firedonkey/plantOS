@@ -56,6 +56,13 @@ class ProvisioningService:
             return
 
         logger.info("device is not provisioned; entering SoftAP setup flow")
+        initial_networks: list[dict] = []
+        pre_ap_scan = self.network.scan_wifi_networks()
+        if pre_ap_scan.ok:
+            initial_networks = list(pre_ap_scan.details.get("networks", []))
+            logger.info("captured %s nearby Wi-Fi network(s) before enabling SoftAP", len(initial_networks))
+        else:
+            logger.warning("pre-SoftAP Wi-Fi scan failed: %s", pre_ap_scan.message)
         self._set_state(ProvisioningState.AP_MODE)
         self.network.start_softap(ssid="PlantLab-Setup")
 
@@ -64,6 +71,7 @@ class ProvisioningService:
             port=self.port,
             backend_url=self.backend_url,
             network_manager=self.network,
+            initial_networks=initial_networks,
         )
         try:
             server.start()
