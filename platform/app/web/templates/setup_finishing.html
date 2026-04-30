@@ -251,7 +251,7 @@
       if (finishingCard) {
         const deviceName = finishingCard.dataset.deviceName;
         const location = finishingCard.dataset.location || "";
-        const statusUrl = new URL("/devices/setup-status.json", window.location.origin);
+        const statusUrl = new URL("/setup/status.json", window.location.origin);
         statusUrl.searchParams.set("device_name", deviceName);
         if (location) {
           statusUrl.searchParams.set("location", location);
