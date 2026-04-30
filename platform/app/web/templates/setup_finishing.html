@@ -19,6 +19,95 @@
         background: #ffffff;
       }
 
+      .connection-hero {
+        display: grid;
+        gap: 18px;
+        margin: 24px 0 10px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #f9fbf8 0%, #f3f8f3 100%);
+      }
+
+      .connection-hero-topline {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .connection-spinner {
+        position: relative;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid rgba(47, 125, 79, 0.18);
+        border-top-color: var(--green);
+        animation: spin 0.95s linear infinite;
+      }
+
+      .connection-hero strong {
+        font-size: 1rem;
+      }
+
+      .connection-hero p {
+        margin: 0;
+      }
+
+      .signal-track {
+        position: relative;
+        display: grid;
+        grid-template-columns: 72px 1fr 72px;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .signal-node {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+      }
+
+      .signal-node-badge {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        border: 1px solid #cfe0d2;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--green);
+        font-size: 1.4rem;
+      }
+
+      .signal-node-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .signal-wave {
+        position: relative;
+        height: 12px;
+        border-radius: 999px;
+        background: #e3ebe3;
+        overflow: hidden;
+      }
+
+      .signal-wave::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 -32%;
+        width: 32%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(47, 125, 79, 0.08), rgba(47, 125, 79, 0.8), rgba(47, 125, 79, 0.08));
+        animation: wave 1.8s ease-in-out infinite;
+      }
+
+      .setup-check.ready {
+        border-color: #bfd9c6;
+        background: #f2faf3;
+      }
+
       .finishing-card p:last-child {
         margin-bottom: 0;
       }
@@ -65,6 +154,33 @@
       .finishing-note {
         color: var(--muted);
       }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes wave {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(430%);
+        }
+      }
+
+      @media (max-width: 560px) {
+        .signal-track {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .signal-wave {
+          order: 3;
+          height: 10px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -83,6 +199,24 @@
         <p class="eyebrow">Setup</p>
         <h1>Finishing setup for {{ pending_device_name }}</h1>
         <p>PlantLab is reconnecting, registering your device, and sending its first update. We’ll open the dashboard as soon as everything is ready.</p>
+
+        <div class="connection-hero" aria-hidden="true">
+          <div class="connection-hero-topline">
+            <span class="connection-spinner"></span>
+            <strong>Connecting your PlantLab</strong>
+          </div>
+          <div class="signal-track">
+            <div class="signal-node">
+              <div class="signal-node-badge">Pi</div>
+              <div class="signal-node-label">Device</div>
+            </div>
+            <div class="signal-wave"></div>
+            <div class="signal-node">
+              <div class="signal-node-badge">☁</div>
+              <div class="signal-node-label">PlantLab</div>
+            </div>
+          </div>
+        </div>
 
         <ul class="setup-checklist">
           <li class="setup-check" id="setup-check-device">
