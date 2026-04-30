@@ -14,6 +14,53 @@
         background: #eff9f1;
         color: #2f7d4b;
       }
+
+      .remove-dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgba(23, 32, 26, 0.42);
+      }
+
+      .remove-dialog {
+        width: min(100%, 460px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 24px;
+        background: #ffffff;
+        box-shadow: 0 24px 60px rgba(23, 32, 26, 0.2);
+      }
+
+      .remove-dialog h2 {
+        margin-bottom: 10px;
+        font-size: 1.4rem;
+      }
+
+      .remove-dialog p {
+        margin-bottom: 22px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .remove-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .remove-dialog-cancel {
+        border-color: #c6d2c7;
+        color: var(--text);
+      }
+
+      .remove-dialog-confirm {
+        border-color: #a13b34;
+        background: #a13b34;
+        color: #ffffff;
+      }
     </style>
   </head>
   <body>
@@ -67,7 +114,7 @@
               <span>{{ card.connection.last_seen }}</span>
               <div class="device-card-actions">
                 <a href="/devices/{{ device.id }}">View dashboard</a>
-                <form action="/devices/{{ device.id }}/delete" method="post" onsubmit="return confirm('Remove this device from your account? The device will need to be added again before it can sync.');">
+                <form action="/devices/{{ device.id }}/delete" method="post" data-remove-device-form data-device-name="{{ device.name }}">
                   <button class="danger-link" type="submit">Remove</button>
                 </form>
               </div>
@@ -87,6 +134,16 @@
         <a class="button primary-button" href="/devices/add">Add device</a>
       </section>
     </main>
+    <div class="remove-dialog-backdrop" id="remove-dialog-backdrop" hidden>
+      <div class="remove-dialog" role="dialog" aria-modal="true" aria-labelledby="remove-dialog-title">
+        <h2 id="remove-dialog-title">Remove this device?</h2>
+        <p id="remove-dialog-message">This PlantLab will stop syncing here until it is added again.</p>
+        <div class="remove-dialog-actions">
+          <button class="remove-dialog-cancel" id="remove-dialog-cancel" type="button">Keep device</button>
+          <button class="remove-dialog-confirm" id="remove-dialog-confirm" type="button">Remove device</button>
+        </div>
+      </div>
+    </div>
     {% if pending_setup %}
     <script>
       const pendingBanner = document.querySelector("#setup-pending-banner");
@@ -164,5 +221,47 @@
       }
     </script>
     {% endif %}
+    <script>
+      const removeDialogBackdrop = document.querySelector("#remove-dialog-backdrop");
+      const removeDialogMessage = document.querySelector("#remove-dialog-message");
+      const removeDialogCancel = document.querySelector("#remove-dialog-cancel");
+      const removeDialogConfirm = document.querySelector("#remove-dialog-confirm");
+      let pendingRemoveForm = null;
+
+      function closeRemoveDialog() {
+        removeDialogBackdrop.hidden = true;
+        pendingRemoveForm = null;
+      }
+
+      document.querySelectorAll("[data-remove-device-form]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          pendingRemoveForm = form;
+          const deviceName = form.dataset.deviceName || "this device";
+          removeDialogMessage.textContent = `${deviceName} will be removed from your account. You can add it again later if you want it to sync here.`;
+          removeDialogBackdrop.hidden = false;
+        });
+      });
+
+      removeDialogCancel?.addEventListener("click", closeRemoveDialog);
+
+      removeDialogBackdrop?.addEventListener("click", (event) => {
+        if (event.target === removeDialogBackdrop) {
+          closeRemoveDialog();
+        }
+      });
+
+      removeDialogConfirm?.addEventListener("click", () => {
+        if (pendingRemoveForm) {
+          pendingRemoveForm.submit();
+        }
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && removeDialogBackdrop && !removeDialogBackdrop.hidden) {
+          closeRemoveDialog();
+        }
+      });
+    </script>
   </body>
 </html>
