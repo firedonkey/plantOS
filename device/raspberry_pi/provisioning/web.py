@@ -442,18 +442,41 @@ SETUP_TEMPLATE = """
             throw new Error(data.message || "Could not save setup details.");
           }
 
-          setStatus("Setup saved. PlantLab is connecting to your Wi-Fi now.", "success");
+          setStatus("Setup saved. PlantLab is reconnecting to your Wi-Fi and will reopen the dashboard when it is ready.", "success");
           form.reset();
           if (data.redirect_url) {
-            setTimeout(() => {
-              window.location.href = data.redirect_url;
-            }, 2500);
+            await redirectWhenReachable(data.redirect_url);
           }
         } catch (error) {
           submitButton.disabled = false;
           setStatus(error.message || "Something went wrong. Please try again.", "error");
         }
       });
+
+      async function canReachReturnPage(url) {
+        try {
+          await fetch(url, {
+            method: "GET",
+            mode: "no-cors",
+            cache: "no-store",
+          });
+          return true;
+        } catch (_error) {
+          return false;
+        }
+      }
+
+      async function redirectWhenReachable(url) {
+        const maxAttempts = 12;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          if (await canReachReturnPage(url)) {
+            window.location.replace(url);
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        }
+        window.location.replace(url);
+      }
 
       applySetupCodeFromUrl();
       loadNetworks();

@@ -132,6 +132,58 @@ def devices_page(request: Request, session: Session = Depends(get_session)):
     return response
 
 
+@router.get("/devices/setup-finishing")
+def device_setup_finishing_page(request: Request, session: Session = Depends(get_session)):
+    settings = get_settings()
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    current_user = get_user_by_id(session, int(user_id))
+    if current_user is None:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=303)
+
+    pending_device_name = str(request.query_params.get("device_name") or "").strip()
+    pending_location = str(request.query_params.get("location") or "").strip()
+    if not pending_device_name:
+        legacy_pending = _pending_setup_from_raw_query(request.url.query)
+        pending_device_name = legacy_pending["device_name"]
+        pending_location = legacy_pending["location"]
+
+    if not pending_device_name:
+        return RedirectResponse(url="/devices", status_code=303)
+
+    devices = list_devices_for_user(session, current_user)
+    matching_device = next(
+        (
+            device
+            for device in devices
+            if device.name == pending_device_name and (device.location or "") == pending_location
+        ),
+        None,
+    )
+    if matching_device is not None:
+        latest_reading = get_latest_reading_for_device(session, matching_device.id)
+        latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
+        if latest_reading is not None and latest_images:
+            return RedirectResponse(url=f"/devices/{matching_device.id}?setup=complete", status_code=303)
+
+    response = templates.TemplateResponse(
+        request,
+        "setup_finishing.html",
+        {
+            "app_name": settings.app_name,
+            "current_user": current_user,
+            "pending_device_name": pending_device_name,
+            "pending_location": pending_location,
+        },
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @router.get("/devices/add")
 def add_device_page(request: Request, session: Session = Depends(get_session)):
     settings = get_settings()
@@ -295,15 +347,29 @@ def device_provisioning_status(
 
     if matching_device is None:
         return JSONResponse(
-            {"ready": False},
+            {
+                "ready": False,
+                "device_found": False,
+                "has_reading": False,
+                "has_image": False,
+            },
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
 
+    latest_reading = get_latest_reading_for_device(session, matching_device.id)
+    latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
+    has_reading = latest_reading is not None
+    has_image = bool(latest_images)
+    ready = has_reading and has_image
+
     return JSONResponse(
         {
-            "ready": True,
+            "ready": ready,
+            "device_found": True,
             "device_id": matching_device.id,
-            "redirect_url": f"/devices/{matching_device.id}?setup=complete",
+            "has_reading": has_reading,
+            "has_image": has_image,
+            "redirect_url": f"/devices/{matching_device.id}?setup=complete" if ready else "",
         },
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )

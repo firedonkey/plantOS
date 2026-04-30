@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Finishing Setup - {{ app_name }}</title>
+    <link rel="stylesheet" href="/static/style.css?v=setup-finishing-20260429">
+    <style>
+      .finishing-shell {
+        width: min(720px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 56px 0;
+      }
+
+      .finishing-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 28px;
+        background: #ffffff;
+      }
+
+      .finishing-card p:last-child {
+        margin-bottom: 0;
+      }
+
+      .setup-checklist {
+        display: grid;
+        gap: 12px;
+        margin: 24px 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .setup-check {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        background: #f9fbf8;
+      }
+
+      .setup-check-dot {
+        flex: 0 0 auto;
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #c8d2c8;
+      }
+
+      .setup-check.ready .setup-check-dot {
+        background: var(--green);
+      }
+
+      .setup-check strong {
+        display: block;
+      }
+
+      .setup-check span {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .finishing-note {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-logo" href="/">PlantLab</a>
+      <nav class="site-nav" aria-label="Account">
+        <span class="account-label">{{ current_user.name or current_user.email }}</span>
+        <form action="/auth/logout" method="post">
+          <button type="submit">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    <main class="finishing-shell">
+      <section class="finishing-card" id="setup-finishing-card" data-device-name="{{ pending_device_name }}" data-location="{{ pending_location }}">
+        <p class="eyebrow">Setup</p>
+        <h1>Finishing setup for {{ pending_device_name }}</h1>
+        <p>PlantLab is reconnecting, registering your device, and sending its first update. We’ll open the dashboard as soon as everything is ready.</p>
+
+        <ul class="setup-checklist">
+          <li class="setup-check" id="setup-check-device">
+            <span class="setup-check-dot" aria-hidden="true"></span>
+            <div>
+              <strong>Device connected</strong>
+              <span>Waiting for the new device to appear in your account.</span>
+            </div>
+          </li>
+          <li class="setup-check" id="setup-check-reading">
+            <span class="setup-check-dot" aria-hidden="true"></span>
+            <div>
+              <strong>First sensor update</strong>
+              <span>Waiting for the first reading from the device.</span>
+            </div>
+          </li>
+          <li class="setup-check" id="setup-check-image">
+            <span class="setup-check-dot" aria-hidden="true"></span>
+            <div>
+              <strong>First photo uploaded</strong>
+              <span>Waiting for the first camera image.</span>
+            </div>
+          </li>
+        </ul>
+
+        <p class="finishing-note" id="setup-finishing-note">This usually takes a few seconds after the device joins your Wi‑Fi.</p>
+      </section>
+    </main>
+
+    <script>
+      const finishingCard = document.querySelector("#setup-finishing-card");
+      if (finishingCard) {
+        const deviceName = finishingCard.dataset.deviceName;
+        const location = finishingCard.dataset.location || "";
+        const statusUrl = new URL("/devices/provisioning-status.json", window.location.origin);
+        statusUrl.searchParams.set("device_name", deviceName);
+        if (location) {
+          statusUrl.searchParams.set("location", location);
+        }
+
+        const note = document.querySelector("#setup-finishing-note");
+        const deviceCheck = document.querySelector("#setup-check-device");
+        const readingCheck = document.querySelector("#setup-check-reading");
+        const imageCheck = document.querySelector("#setup-check-image");
+        let attempts = 0;
+
+        function setCheckReady(element, ready) {
+          element.classList.toggle("ready", ready);
+        }
+
+        async function pollStatus() {
+          attempts += 1;
+          statusUrl.searchParams.set("_ts", String(Date.now()));
+
+          try {
+            const response = await fetch(statusUrl.toString(), {
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+            });
+            const payload = await response.json();
+
+            if (response.ok) {
+              setCheckReady(deviceCheck, Boolean(payload.device_found));
+              setCheckReady(readingCheck, Boolean(payload.has_reading));
+              setCheckReady(imageCheck, Boolean(payload.has_image));
+
+              if (payload.ready && payload.redirect_url) {
+                window.location.replace(payload.redirect_url);
+                return;
+              }
+
+              if (payload.device_found && payload.has_reading && !payload.has_image) {
+                note.textContent = "The device is online. Waiting for the first photo to finish uploading.";
+              } else if (payload.device_found && !payload.has_reading) {
+                note.textContent = "The device is in your account. Waiting for the first sensor update.";
+              }
+            }
+          } catch (_error) {
+            note.textContent = "Waiting for your network connection to settle. We’ll keep checking.";
+          }
+
+          if (attempts >= 40) {
+            note.textContent = "Setup is taking a little longer than usual. Keeping this page up to date while PlantLab finishes syncing.";
+          }
+          window.setTimeout(pollStatus, 2000);
+        }
+
+        window.setTimeout(pollStatus, 1200);
+      }
+    </script>
+  </body>
+</html>
