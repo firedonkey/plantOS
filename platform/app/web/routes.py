@@ -825,7 +825,8 @@ def _command_activity_item(command) -> dict:
 
 
 def _command_label(command) -> str:
-    target = _enum_value(command.target).title()
+    target_value = _enum_value(command.target)
+    target = "Growing light" if target_value == "light" else target_value.title()
     action = _enum_value(command.action)
     if action == "run" and command.value:
         return f"{target} run {command.value}s"

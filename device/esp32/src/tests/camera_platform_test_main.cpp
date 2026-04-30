@@ -39,6 +39,9 @@ void ensure_wifi_connected() {
   g_last_wifi_attempt_ms = millis();
   Serial.printf("[camera-platform] connecting to %s\n", PLANTLAB_WIFI_SSID);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.disconnect(true, true);
+  delay(200);
   WiFi.begin(PLANTLAB_WIFI_SSID, PLANTLAB_WIFI_PASSWORD);
 
   const unsigned long started_at = millis();
@@ -82,12 +85,6 @@ void setup() {
 
   Serial.println();
   Serial.println("=== PlantLab ESP32 Camera Platform Test ===");
-  if (!g_camera.begin()) {
-    Serial.println("[camera-platform] camera init failed");
-    return;
-  }
-  Serial.println("[camera-platform] camera initialized");
-
   if (platform_enabled()) {
     Serial.printf("[camera-platform] base_url: %s\n", g_platform_client.base_url().c_str());
     Serial.printf("[camera-platform] device_id: %d\n", g_platform_client.device_id());
@@ -95,6 +92,12 @@ void setup() {
   } else {
     Serial.println("[camera-platform] disabled (missing Wi-Fi or platform credentials)");
   }
+
+  if (!g_camera.begin()) {
+    Serial.println("[camera-platform] camera init failed");
+    return;
+  }
+  Serial.println("[camera-platform] camera initialized");
 }
 
 void loop() {

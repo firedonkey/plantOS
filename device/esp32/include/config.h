@@ -68,7 +68,7 @@
 // Touch threshold model:
 // touch is considered active when raw <= (untouched_baseline - TOUCH_TRIGGER_DELTA)
 #define TOUCH_TRIGGER_DELTA 25
-#define TOUCH_RAW_LOG_INTERVAL_MS 1000
+#define TOUCH_RAW_LOG_INTERVAL_MS 0
 
 // ESP-NOW link test (master <-> camera node)
 #define ESPNOW_TEST_WIFI_CHANNEL 1

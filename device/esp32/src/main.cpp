@@ -22,7 +22,7 @@ constexpr bool kSharedUserButton = false;
 Dht22Sensor g_dht22(PIN_DHT22_DATA);
 MoistureSensor g_moisture(
     PIN_SOIL_MOISTURE_ADC, MOISTURE_SAMPLE_COUNT, MOISTURE_SAMPLE_DELAY_MS);
-LightController g_light(
+LightController g_growing_light(
     PIN_LIGHT_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
 PumpController g_pump(PIN_PUMP_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
 PowerButton g_power_button(
@@ -122,8 +122,8 @@ PlatformReading read_platform_reading() {
   }
 
   Serial.printf(
-      "[actuators] light=%s pump=%s\n",
-      g_light.is_on() ? "on" : "off",
+      "[actuators] growing_light=%s pump=%s\n",
+      g_growing_light.is_on() ? "on" : "off",
       g_pump.is_on() ? "on" : "off");
 
   PlatformReading platform_reading{};
@@ -133,7 +133,7 @@ PlatformReading read_platform_reading() {
   platform_reading.temperature_valid = reading.valid;
   platform_reading.humidity_valid = reading.valid;
   platform_reading.moisture_valid = moisture.valid;
-  platform_reading.light_on = g_light.is_on();
+  platform_reading.light_on = g_growing_light.is_on();
   platform_reading.pump_on = g_pump.is_on();
   platform_reading.pump_status = g_pump.is_on() ? "running" : "idle";
   return platform_reading;
@@ -141,7 +141,7 @@ PlatformReading read_platform_reading() {
 
 PlatformStatus platform_status(const String& message) {
   PlatformStatus status{};
-  status.light_on = g_light.is_on();
+  status.light_on = g_growing_light.is_on();
   status.pump_on = g_pump.is_on();
   status.message = message;
   return status;
@@ -180,14 +180,14 @@ void execute_platform_command(const PlatformCommand& command) {
 
   if (command.target == "light") {
     if (command.action == "on") {
-      g_light.set_on(true);
-      message = "light turned on";
+      g_growing_light.set_on(true);
+      message = "growing light turned on";
     } else if (command.action == "off") {
-      g_light.set_on(false);
-      message = "light turned off";
+      g_growing_light.set_on(false);
+      message = "growing light turned off";
     } else {
       success = false;
-      message = "unsupported light command";
+      message = "unsupported growing light command";
     }
   } else if (command.target == "pump") {
     if (command.action == "run") {
@@ -214,7 +214,7 @@ void execute_platform_command(const PlatformCommand& command) {
           command.id,
           success ? "completed" : "failed",
           message.c_str(),
-          g_light.is_on(),
+          g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
     Serial.printf("[platform] command ack failed: %s\n", ack_error.c_str());
@@ -270,7 +270,7 @@ void setup() {
   Serial.printf("Board: %s\n", BOARD_NAME);
   Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
-  Serial.printf("Light gate pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
+  Serial.printf("Growing light gate pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
   Serial.printf("Pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
   Serial.printf("Power button pin: GPIO%d\n", PIN_POWER_BUTTON);
   Serial.printf("Status LED pin: GPIO%d\n", PIN_STATUS_LED);
@@ -290,18 +290,18 @@ void setup() {
   }
   g_dht22.begin();
   g_moisture.begin();
-  g_light.begin();
+  g_growing_light.begin();
   g_pump.begin();
 #if ENABLE_TOUCH_BUTTON
   g_touch_button.begin(millis());
-  Serial.println("[touch] short tap: toggle light");
-  Serial.println("[touch] double tap: trigger camera capture test");
-  Serial.println("[touch] long press 5s: status event only");
-  Serial.println("[touch] long press 10s: status event only");
+  Serial.println("[touch] short tap: blink status LED");
+  Serial.println("[touch] double tap: blink status LED");
+  Serial.println("[touch] long press 5s: status LED feedback only");
+  Serial.println("[touch] long press 10s: status LED feedback only");
 #endif
   Serial.println("[dht22] sensor initialized");
   Serial.println("[moisture] sensor initialized");
-  Serial.println("[light] initialized OFF");
+  Serial.println("[growing-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
   if (platform_enabled()) {
     Serial.printf("[platform] base_url: %s\n", g_platform_client.base_url().c_str());
@@ -333,17 +333,20 @@ void loop() {
   const TouchButtonEvent touch_event = g_touch_button.update(now);
   switch (touch_event) {
     case TouchButtonEvent::kShortTap:
-      g_light.toggle();
-      Serial.printf("[touch] short tap -> light %s\n", g_light.is_on() ? "on" : "off");
+      g_status_led.signal_user_feedback(now);
+      Serial.println("[touch] short tap -> status LED feedback");
       break;
     case TouchButtonEvent::kDoubleTap:
-      Serial.println("[touch] double tap -> camera capture requested");
+      g_status_led.signal_user_feedback(now);
+      Serial.println("[touch] double tap -> status LED feedback");
       break;
     case TouchButtonEvent::kLongPress:
-      Serial.println("[touch] long press detected (status-only test mode)");
+      g_status_led.signal_user_feedback(now);
+      Serial.println("[touch] long press detected -> status LED feedback");
       break;
     case TouchButtonEvent::kFactoryReset:
-      Serial.println("[touch] very long press detected (status-only test mode)");
+      g_status_led.signal_user_feedback(now);
+      Serial.println("[touch] very long press detected -> status LED feedback");
       break;
     case TouchButtonEvent::kNone:
     default:

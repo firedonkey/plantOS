@@ -95,6 +95,17 @@ Camera uploader firmware (`camera-platform-test`) now:
 - captures JPEG frames
 - uploads images to the same platform device using the same device token
 
+Dedicated Wi-Fi test firmware (`wifi-test`) now:
+
+- runs on the XIAO ESP32-S3
+- only tests Wi-Fi join and retry behavior
+- prints:
+  - target SSID
+  - current Wi-Fi status
+  - assigned IP
+  - gateway
+  - RSSI
+
 That gives us a local end-to-end split matching the current ESP32 hardware split:
 
 - master board -> readings + commands
@@ -149,6 +160,9 @@ Common options:
 
 # Flash camera-node platform uploader firmware
 ./scripts/flash_esp32.sh --test-camera-platform --port /dev/cu.usbmodem12201 --monitor
+
+# Flash dedicated XIAO Wi-Fi test firmware
+./scripts/flash_esp32.sh --test-wifi --port /dev/cu.usbmodem12201 --monitor
 
 # Flash dedicated touch-button debug firmware (clean event-only output)
 ./scripts/flash_esp32.sh --test-touch --monitor

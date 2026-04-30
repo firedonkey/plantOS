@@ -15,6 +15,7 @@ class StatusLed {
 
   void begin();
   void set_mode(StatusLedMode mode);
+  void signal_user_feedback(uint32_t now_ms);
   void update(uint32_t now_ms);
 
  private:
@@ -25,5 +26,5 @@ class StatusLed {
   int off_level_;
   StatusLedMode mode_;
   bool is_on_;
+  uint32_t feedback_until_ms_;
 };
-
