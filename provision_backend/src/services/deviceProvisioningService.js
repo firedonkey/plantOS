@@ -49,7 +49,14 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
           "Device serial number was not found."
         );
       }
-      if (serial.status !== "available" && serial.claimed_by_user_id !== userId) {
+      if (serial.status !== "available") {
+        if (serial.claimed_by_user_id === userId) {
+          throw new ApiError(
+            409,
+            "serial_number_already_in_account",
+            "This device is already in your account. Remove or factory reset the existing device before adding it again."
+          );
+        }
         throw new ApiError(
           409,
           "serial_number_not_available",
