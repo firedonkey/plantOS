@@ -53,7 +53,7 @@ camera:
   device_index: 0
   capture_interval_seconds: 3600
   startup_resolution: 640x480
-  startup_skip_frames: 10
+  startup_skip_frames: 30
   image_dir: data/images
   resolution: 1280x720
   skip_frames: 30
