@@ -103,6 +103,7 @@ class PlatformRuntime:
         command_interval = int(platform_config.get("command_poll_interval_seconds") or 2)
         status_interval = int(platform_config.get("status_interval_seconds") or 10)
         image_every = int(platform_config.get("image_every_n_cycles") or 1)
+        startup_send_interval = int(platform_config.get("startup_send_interval_seconds") or 2)
 
         automation = PlantAutomation(self.config)
         command_thread = threading.Thread(
@@ -123,6 +124,8 @@ class PlatformRuntime:
         cycle = 0
         next_send_at = 0.0
         pending_image_path: Path | None = None
+        has_uploaded_reading = False
+        has_uploaded_first_image = False
         try:
             while not self._stop_event.is_set():
                 now = time.monotonic()
@@ -131,11 +134,14 @@ class PlatformRuntime:
                     record = automation.run_once()
                     try:
                         send_reading(platform_url, device_id, device_token, record)
+                        has_uploaded_reading = True
                     except requests.RequestException as exc:
                         logger.warning("reading upload failed: %s", exc)
 
-                    should_upload_image = pending_image_path is not None or (
-                        image_every > 0 and cycle % image_every == 0
+                    should_upload_image = (
+                        pending_image_path is not None
+                        or not has_uploaded_first_image
+                        or (image_every > 0 and cycle % image_every == 0)
                     )
                     if should_upload_image:
                         image_path = pending_image_path or captured_image_path(record, None)
@@ -143,13 +149,19 @@ class PlatformRuntime:
                             try:
                                 send_image(platform_url, device_id, device_token, image_path)
                                 pending_image_path = None
+                                has_uploaded_first_image = True
                             except requests.RequestException as exc:
                                 logger.warning("image upload failed: %s", exc)
                                 pending_image_path = image_path
                         else:
                             logger.info("no camera image available to upload")
 
-                    next_send_at = time.monotonic() + send_interval
+                    current_send_interval = (
+                        startup_send_interval
+                        if not (has_uploaded_reading and has_uploaded_first_image)
+                        else send_interval
+                    )
+                    next_send_at = time.monotonic() + current_send_interval
 
                 self._stop_event.wait(next_sleep_seconds(next_send_at))
         finally:
