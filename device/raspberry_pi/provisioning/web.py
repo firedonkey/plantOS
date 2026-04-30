@@ -675,15 +675,23 @@ SETUP_TEMPLATE = """
       }
 
       async function redirectWhenReachable(url) {
-        const maxAttempts = 12;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        let consecutiveSuccesses = 0;
+
+        while (true) {
           if (await canReachReturnPage(url)) {
-            window.location.replace(url);
-            return;
+            consecutiveSuccesses += 1;
+            if (consecutiveSuccesses >= 2) {
+              connectingStatus.textContent = "PlantLab is back online. Opening your dashboard now.";
+              await new Promise((resolve) => window.setTimeout(resolve, 700));
+              window.location.replace(url);
+              return;
+            }
+          } else {
+            consecutiveSuccesses = 0;
           }
+
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
-        window.location.replace(url);
       }
 
       applySetupCodeFromUrl();
