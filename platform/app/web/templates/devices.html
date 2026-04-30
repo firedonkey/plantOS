@@ -93,7 +93,7 @@
       if (pendingBanner) {
         const deviceName = pendingBanner.dataset.deviceName;
         const location = pendingBanner.dataset.location || "";
-        const statusUrl = new URL("/devices/provisioning-status.json", window.location.origin);
+        const statusUrl = new URL("/devices/setup-status.json", window.location.origin);
         const reloadKey = `plantlab-pending-reload:${deviceName}:${location}`;
         let hardRefreshTimer = null;
         statusUrl.searchParams.set("device_name", deviceName);

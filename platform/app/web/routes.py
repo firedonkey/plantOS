@@ -305,7 +305,7 @@ def device_summary_json(
     )
 
 
-@router.get("/devices/provisioning-status.json")
+@router.get("/devices/setup-status.json")
 def device_provisioning_status(
     request: Request,
     session: Session = Depends(get_session),
