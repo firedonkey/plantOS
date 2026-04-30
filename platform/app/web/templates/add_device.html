@@ -391,6 +391,7 @@
             <div class="scanner-preview">
               <video id="qr-video" autoplay playsinline muted></video>
             </div>
+            <canvas id="qr-canvas" hidden></canvas>
             <p class="scanner-help">If camera access is blocked or the scan does not work well, upload a photo of the QR label instead.</p>
             <div class="inline-actions">
               <button class="secondary-button" id="upload-qr-photo-button" type="button">Upload QR photo</button>
@@ -471,6 +472,7 @@
       const snFileInput = document.querySelector("#sn-file-input");
       const scannerPanel = document.querySelector("#scanner-panel");
       const qrVideo = document.querySelector("#qr-video");
+      const qrCanvas = document.querySelector("#qr-canvas");
       const uploadQrPhotoButton = document.querySelector("#upload-qr-photo-button");
       const stopScanButton = document.querySelector("#stop-scan-button");
       const manualPanel = document.querySelector("#manual-panel");
@@ -495,6 +497,59 @@
       let qrVideoStream = null;
       let qrScanTimer = null;
       let qrDetector = null;
+      let qrFallbackLoader = null;
+
+      function supportsBarcodeDetector() {
+        return "BarcodeDetector" in window;
+      }
+
+      function loadJsQr() {
+        if (window.jsQR) {
+          return Promise.resolve(window.jsQR);
+        }
+        if (qrFallbackLoader) {
+          return qrFallbackLoader;
+        }
+
+        qrFallbackLoader = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+          script.async = true;
+          script.onload = () => {
+            if (window.jsQR) {
+              resolve(window.jsQR);
+            } else {
+              reject(new Error("QR scanning could not be loaded in this browser."));
+            }
+          };
+          script.onerror = () => reject(new Error("QR scanning could not be loaded in this browser."));
+          document.head.appendChild(script);
+        });
+
+        return qrFallbackLoader;
+      }
+
+      async function detectQrFromImageSource(source, width, height) {
+        if (supportsBarcodeDetector()) {
+          if (!qrDetector) {
+            qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+          }
+          const barcodes = await qrDetector.detect(source);
+          if (barcodes.length && barcodes[0].rawValue) {
+            return barcodes[0].rawValue.trim();
+          }
+          return "";
+        }
+
+        const jsQR = await loadJsQr();
+        const context = qrCanvas.getContext("2d", { willReadFrequently: true });
+        qrCanvas.width = width;
+        qrCanvas.height = height;
+        context.drawImage(source, 0, 0, width, height);
+        const imageData = context.getImageData(0, 0, width, height);
+        const result = jsQR(imageData.data, imageData.width, imageData.height);
+        return result?.data?.trim() || "";
+      }
 
       function setContinueSetupEnabled(enabled) {
         continueSetupLink.classList.toggle("disabled-link", !enabled);
@@ -514,15 +569,14 @@
       }
 
       async function scanVideoFrame() {
-        if (!qrDetector || !qrVideoStream || qrVideo.readyState < 2) {
+        if (!qrVideoStream || qrVideo.readyState < 2 || !qrVideo.videoWidth || !qrVideo.videoHeight) {
           qrScanTimer = window.setTimeout(scanVideoFrame, 350);
           return;
         }
 
         try {
-          const barcodes = await qrDetector.detect(qrVideo);
-          if (barcodes.length && barcodes[0].rawValue) {
-            const serialNumber = barcodes[0].rawValue.trim();
+          const serialNumber = await detectQrFromImageSource(qrVideo, qrVideo.videoWidth, qrVideo.videoHeight);
+          if (serialNumber) {
             stopQrScanner();
             serialNumberInput.value = serialNumber;
             await verifySerialNumber(serialNumber);
@@ -536,14 +590,15 @@
       }
 
       async function startQrScanner() {
-        if (!("BarcodeDetector" in window)) {
-          throw new Error("Live QR scanning is not available in this browser. Upload a QR photo or enter the SN manually.");
-        }
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Camera access is not available in this browser. Upload a QR photo or enter the SN manually.");
         }
 
-        qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+        if (supportsBarcodeDetector()) {
+          qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+        } else {
+          await loadJsQr();
+        }
         stopQrScanner();
         qrVideoStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
@@ -644,18 +699,18 @@
       }
 
       async function decodeQrFromFile(file) {
-        if (!("BarcodeDetector" in window)) {
-          throw new Error("QR scanning is not available in this browser. Enter the SN manually.");
-        }
-
-        const barcodeDetector = new BarcodeDetector({ formats: ["qr_code"] });
-        const imageBitmap = await createImageBitmap(file);
+        let imageBitmap = null;
         try {
-          const barcodes = await barcodeDetector.detect(imageBitmap);
-          if (!barcodes.length || !barcodes[0].rawValue) {
+          imageBitmap = await createImageBitmap(file);
+        } catch (_error) {
+          throw new Error("This photo could not be opened. Try another photo or enter the SN manually.");
+        }
+        try {
+          const serialNumber = await detectQrFromImageSource(imageBitmap, imageBitmap.width, imageBitmap.height);
+          if (!serialNumber) {
             throw new Error("No QR code was found. Try another photo or enter the SN manually.");
           }
-          return barcodes[0].rawValue.trim();
+          return serialNumber;
         } finally {
           imageBitmap.close();
         }
