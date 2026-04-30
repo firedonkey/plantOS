@@ -193,6 +193,146 @@ SETUP_TEMPLATE = """
         color: var(--error);
       }
 
+      .connecting-view {
+        display: none;
+        gap: 18px;
+      }
+
+      .connecting-view.visible {
+        display: grid;
+      }
+
+      .connecting-hero {
+        display: grid;
+        gap: 18px;
+        margin-top: 12px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #f9fbf8 0%, #f3f8f3 100%);
+      }
+
+      .connecting-hero-topline {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .connecting-spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid rgba(47, 125, 75, 0.18);
+        border-top-color: var(--green);
+        animation: spin 0.95s linear infinite;
+      }
+
+      .connecting-hero strong {
+        font-size: 1rem;
+      }
+
+      .connecting-hero p {
+        margin: 0;
+      }
+
+      .connecting-signal {
+        display: grid;
+        grid-template-columns: 72px 1fr 72px;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .connecting-node {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+      }
+
+      .connecting-node-badge {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        border: 1px solid #cfe0d2;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--green);
+        font-size: 1.35rem;
+      }
+
+      .connecting-node-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .connecting-wave {
+        position: relative;
+        height: 12px;
+        border-radius: 999px;
+        background: #e3ebe3;
+        overflow: hidden;
+      }
+
+      .connecting-wave::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 -32%;
+        width: 32%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(47, 125, 75, 0.08), rgba(47, 125, 75, 0.8), rgba(47, 125, 75, 0.08));
+        animation: wave 1.8s ease-in-out infinite;
+      }
+
+      .connecting-checklist {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .connecting-check {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        background: #f9fbf8;
+      }
+
+      .connecting-check-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #c8d2c8;
+      }
+
+      .connecting-check strong {
+        display: block;
+      }
+
+      .connecting-check span {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes wave {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(430%);
+        }
+      }
+
       @media (max-width: 480px) {
         main {
           width: min(100% - 24px, 520px);
@@ -206,54 +346,109 @@ SETUP_TEMPLATE = """
         h1 {
           font-size: 1.8rem;
         }
+
+        .connecting-signal {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .connecting-wave {
+          order: 3;
+          height: 10px;
+        }
       }
     </style>
   </head>
   <body>
     <main>
       <div class="card">
-        <p class="eyebrow">PlantLab Local Setup</p>
-        <h1>PlantLab Setup</h1>
-        <p>Connect this device to your home Wi-Fi and add it to your PlantLab account.</p>
-        <p>Enter your Wi-Fi details to finish setup.</p>
+        <div id="setup-form-view">
+          <p class="eyebrow">PlantLab Local Setup</p>
+          <h1>PlantLab Setup</h1>
+          <p>Connect this device to your home Wi-Fi and add it to your PlantLab account.</p>
+          <p>Enter your Wi-Fi details to finish setup.</p>
 
-        <form id="provision-form" novalidate>
-          <label>
-            Wi-Fi SSID
-            <select id="ssid-select" name="ssid_select">
-              <option value="">Scanning nearby Wi-Fi...</option>
-            </select>
-            <input class="manual-ssid" id="ssid" name="ssid" autocomplete="off" placeholder="Type Wi-Fi name">
-          </label>
+          <form id="provision-form" novalidate>
+            <label>
+              Wi-Fi SSID
+              <select id="ssid-select" name="ssid_select">
+                <option value="">Scanning nearby Wi-Fi...</option>
+              </select>
+              <input class="manual-ssid" id="ssid" name="ssid" autocomplete="off" placeholder="Type Wi-Fi name">
+            </label>
 
-          <label>
-            Wi-Fi password
-            <div class="password-row">
-              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Leave empty for open Wi-Fi">
-              <button class="secondary-button" id="toggle-password" type="button">Show</button>
+            <label>
+              Wi-Fi password
+              <div class="password-row">
+                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Leave empty for open Wi-Fi">
+                <button class="secondary-button" id="toggle-password" type="button">Show</button>
+              </div>
+            </label>
+
+            <label id="serial-number-field">
+              SN
+              <input id="serial-number" name="serial_number" required autocomplete="off" placeholder="123">
+            </label>
+
+            <label class="hidden" id="setup-code-field">
+              Setup code
+              <input id="claim-token" name="claim_token" required autocomplete="one-time-code" placeholder="PL-ABC123XYZ">
+            </label>
+
+            <input id="backend-url" name="backend_url" type="hidden" value="{{ backend_url }}">
+            <input id="return-url" name="return_url" type="hidden">
+            <input id="device-name" name="device_name" type="hidden">
+            <input id="location" name="location" type="hidden">
+
+            <button class="submit-button" id="submit-button" type="submit">Save and connect</button>
+          </form>
+
+          <div class="status" id="status" role="status" aria-live="polite"></div>
+          <p class="hint">After submitting, the device will leave setup mode and try to join your Wi-Fi.</p>
+        </div>
+
+        <div class="connecting-view" id="connecting-view" aria-live="polite">
+          <p class="eyebrow">Setup</p>
+          <h1>Connecting your PlantLab</h1>
+          <p>Your device is leaving setup mode, joining your Wi‑Fi, and reopening PlantLab as soon as it is ready.</p>
+
+          <div class="connecting-hero" aria-hidden="true">
+            <div class="connecting-hero-topline">
+              <span class="connecting-spinner"></span>
+              <strong>Reconnecting and syncing</strong>
             </div>
-          </label>
+            <div class="connecting-signal">
+              <div class="connecting-node">
+                <div class="connecting-node-badge">Pi</div>
+                <div class="connecting-node-label">Device</div>
+              </div>
+              <div class="connecting-wave"></div>
+              <div class="connecting-node">
+                <div class="connecting-node-badge">☁</div>
+                <div class="connecting-node-label">PlantLab</div>
+              </div>
+            </div>
+          </div>
 
-          <label id="serial-number-field">
-            SN
-            <input id="serial-number" name="serial_number" required autocomplete="off" placeholder="123">
-          </label>
+          <ul class="connecting-checklist">
+            <li class="connecting-check">
+              <span class="connecting-check-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Joining your Wi‑Fi</strong>
+                <span>PlantLab is switching from setup mode back to your home network.</span>
+              </div>
+            </li>
+            <li class="connecting-check">
+              <span class="connecting-check-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Reopening your dashboard</strong>
+                <span>The next page will open automatically when your browser can reach PlantLab again.</span>
+              </div>
+            </li>
+          </ul>
 
-          <label class="hidden" id="setup-code-field">
-            Setup code
-            <input id="claim-token" name="claim_token" required autocomplete="one-time-code" placeholder="PL-ABC123XYZ">
-          </label>
-
-          <input id="backend-url" name="backend_url" type="hidden" value="{{ backend_url }}">
-          <input id="return-url" name="return_url" type="hidden">
-          <input id="device-name" name="device_name" type="hidden">
-          <input id="location" name="location" type="hidden">
-
-          <button class="submit-button" id="submit-button" type="submit">Save and connect</button>
-        </form>
-
-        <div class="status" id="status" role="status" aria-live="polite"></div>
-        <p class="hint">After submitting, the device will leave setup mode and try to join your Wi-Fi.</p>
+          <div class="status visible success" id="connecting-status">Setup saved. PlantLab is reconnecting to your Wi‑Fi and will reopen the dashboard when it is ready.</div>
+        </div>
       </div>
     </main>
 
@@ -273,6 +468,9 @@ SETUP_TEMPLATE = """
       const togglePasswordButton = document.querySelector("#toggle-password");
       const submitButton = document.querySelector("#submit-button");
       const statusBox = document.querySelector("#status");
+      const setupFormView = document.querySelector("#setup-form-view");
+      const connectingView = document.querySelector("#connecting-view");
+      const connectingStatus = document.querySelector("#connecting-status");
 
       function setStatus(message, type = "info") {
         statusBox.textContent = message;
@@ -282,6 +480,12 @@ SETUP_TEMPLATE = """
       function clearStatus() {
         statusBox.textContent = "";
         statusBox.className = "status";
+      }
+
+      function showConnectingView(message) {
+        setupFormView.hidden = true;
+        connectingView.classList.add("visible");
+        connectingStatus.textContent = message;
       }
 
       function validateForm() {
@@ -442,13 +646,17 @@ SETUP_TEMPLATE = """
             throw new Error(data.message || "Could not save setup details.");
           }
 
-          setStatus("Setup saved. PlantLab is reconnecting to your Wi-Fi and will reopen the dashboard when it is ready.", "success");
+          const connectingMessage = "Setup saved. PlantLab is reconnecting to your Wi-Fi and will reopen the dashboard when it is ready.";
+          setStatus(connectingMessage, "success");
+          showConnectingView(connectingMessage);
           form.reset();
           if (data.redirect_url) {
             await redirectWhenReachable(data.redirect_url);
           }
         } catch (error) {
           submitButton.disabled = false;
+          setupFormView.hidden = false;
+          connectingView.classList.remove("visible");
           setStatus(error.message || "Something went wrong. Please try again.", "error");
         }
       });
