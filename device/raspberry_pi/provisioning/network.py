@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import re
 
 from .wifi import WiFiConnectionLayer, WiFiStatus
 
@@ -34,31 +35,14 @@ class NetworkManager:
         logger.info("starting SoftAP ssid=%s dry_run=%s", ssid, self.dry_run)
         self._run(["sudo", "nmcli", "radio", "wifi", "on"], dry_run_message="Wi-Fi radio enable skipped")
         self._cleanup_hotspot_profiles(ssid)
-        self._run(
-            [
-                "sudo",
-                "nmcli",
-                "connection",
-                "add",
-                "type",
-                "wifi",
-                "ifname",
-                "wlan0",
-                "con-name",
-                ssid,
-                "autoconnect",
-                "no",
-                "ssid",
-                ssid,
-            ],
-            dry_run_message="NetworkManager hotspot profile create skipped",
-        )
+        profile_uuid = self._create_hotspot_profile(ssid)
+        connection_ref = profile_uuid or ssid
         configure_command = [
             "sudo",
             "nmcli",
             "connection",
             "modify",
-            ssid,
+            connection_ref,
             "802-11-wireless.mode",
             "ap",
             "802-11-wireless.band",
@@ -80,7 +64,7 @@ class NetworkManager:
 
         self._run(configure_command, dry_run_message="NetworkManager hotspot profile configure skipped")
         self._run(
-            ["sudo", "nmcli", "connection", "up", ssid],
+            ["sudo", "nmcli", "connection", "up", connection_ref],
             dry_run_message="NetworkManager hotspot start skipped",
         )
 
@@ -127,6 +111,44 @@ class NetworkManager:
 
         logger.info("running command: %s", " ".join(command))
         subprocess.run(command, check=check)
+
+    def _run_capture(
+        self,
+        command: list[str],
+        dry_run_message: str | None = None,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        if self.dry_run:
+            logger.info("[dry-run] %s", dry_run_message or " ".join(command))
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        logger.info("running command: %s", " ".join(command))
+        return subprocess.run(command, check=check, capture_output=True, text=True)
+
+    def _create_hotspot_profile(self, ssid: str) -> str:
+        result = self._run_capture(
+            [
+                "sudo",
+                "nmcli",
+                "connection",
+                "add",
+                "type",
+                "wifi",
+                "ifname",
+                "wlan0",
+                "con-name",
+                ssid,
+                "autoconnect",
+                "no",
+                "ssid",
+                ssid,
+            ],
+            dry_run_message="NetworkManager hotspot profile create skipped",
+        )
+        match = re.search(r"\((?P<uuid>[0-9a-fA-F-]{36})\)", result.stdout)
+        if match:
+            return match.group("uuid")
+        return ""
 
     def _connection_ids_for_name(self, name: str) -> list[str]:
         if self.dry_run:

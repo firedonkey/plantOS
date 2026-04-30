@@ -92,7 +92,12 @@ class ProvisioningService:
                 )
                 logger.info("backend ownership released for platform_device_id=%s", platform_device_id)
             except Exception as exc:
-                logger.warning("backend factory reset cleanup failed: %s", exc)
+                if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code == 401:
+                    logger.info(
+                        "backend factory reset cleanup skipped because the saved device token is no longer valid"
+                    )
+                else:
+                    logger.warning("backend factory reset cleanup failed: %s", exc)
         else:
             logger.info("backend cleanup skipped; provisioning record is incomplete")
 
