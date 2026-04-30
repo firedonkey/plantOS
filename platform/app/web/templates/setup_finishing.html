@@ -262,6 +262,9 @@
         const readingCheck = document.querySelector("#setup-check-reading");
         const imageCheck = document.querySelector("#setup-check-image");
         let attempts = 0;
+        const fastPollIntervalMs = 800;
+        const steadyPollIntervalMs = 2000;
+        const fastPollAttempts = 15;
 
         function setCheckReady(element, ready) {
           element.classList.toggle("ready", ready);
@@ -301,10 +304,11 @@
           if (attempts >= 40) {
             note.textContent = "Setup is taking a little longer than usual. Keeping this page up to date while PlantLab finishes syncing.";
           }
-          window.setTimeout(pollStatus, 2000);
+          const nextPollDelay = attempts < fastPollAttempts ? fastPollIntervalMs : steadyPollIntervalMs;
+          window.setTimeout(pollStatus, nextPollDelay);
         }
 
-        window.setTimeout(pollStatus, 1200);
+        window.setTimeout(pollStatus, 500);
       }
     </script>
   </body>

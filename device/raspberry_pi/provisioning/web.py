@@ -676,6 +676,7 @@ SETUP_TEMPLATE = """
 
       async function redirectWhenReachable(url) {
         let consecutiveSuccesses = 0;
+        const reachabilityIntervalMs = 750;
 
         while (true) {
           if (await canReachReturnPage(url)) {
@@ -690,7 +691,7 @@ SETUP_TEMPLATE = """
             consecutiveSuccesses = 0;
           }
 
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          await new Promise((resolve) => window.setTimeout(resolve, reachabilityIntervalMs));
         }
       }
 
