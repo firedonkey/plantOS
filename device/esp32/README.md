@@ -7,7 +7,8 @@ Current status:
 - Phase 1 started
 - DHT22 local reading implemented
 - Power button + status LED state handling implemented in main firmware
-- No Wi-Fi/cloud/provisioning yet
+- Local Wi-Fi + platform HTTP path now available for dev testing
+- No provisioning yet
 
 ## Board
 
@@ -30,6 +31,82 @@ Current status:
 
 - DHT22 connected to `GPIO4`
 - Output over serial every 2 seconds
+
+## Local platform smoke test
+
+The ESP32 branch now mirrors the Raspberry Pi device contract for:
+
+- `POST /api/data`
+- `POST /api/devices/{device_id}/status`
+- `GET /api/devices/{device_id}/commands/pending`
+- `POST /api/devices/{device_id}/commands/{command_id}/ack`
+- `POST /api/image`
+
+Start the local stack first:
+
+```bash
+cd /Users/gary/plantOS
+docker compose --env-file .env.local -f docker-compose.local.yml up --build -d
+```
+
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Before flashing, copy:
+
+```bash
+cp /Users/gary/plantOS/device/esp32/include/platform_secrets.example.h \
+  /Users/gary/plantOS/device/esp32/include/platform_secrets.h
+```
+
+Then edit `platform_secrets.h` with:
+
+- your home Wi-Fi SSID/password
+- local platform URL, usually `http://<your-laptop-ip>:8000`
+- platform `device_id`
+- platform `device_token`
+
+For local dev, the quickest way to get `device_id` and `api_token` is:
+
+1. Sign in to the local web app and add a device once.
+2. Query the local Postgres container:
+
+```bash
+docker exec -it plantlab-local-postgres \
+  psql -U plantlab_user -d plantlab \
+  -c "select id, name, api_token from devices order by id desc;"
+```
+
+Use that `id` as `PLANTLAB_DEVICE_ID` and the `api_token` as `PLANTLAB_DEVICE_TOKEN`.
+
+Main firmware (`esp32-s3-devkitc-1`) now:
+
+- connects to Wi-Fi
+- sends sensor readings to the platform
+- sends status heartbeats
+- polls and acknowledges light/pump commands
+
+Camera uploader firmware (`camera-platform-test`) now:
+
+- runs on the XIAO ESP32-S3 Sense
+- captures JPEG frames
+- uploads images to the same platform device using the same device token
+
+That gives us a local end-to-end split matching the current ESP32 hardware split:
+
+- master board -> readings + commands
+- camera board -> images
+
+Suggested smoke-test order:
+
+1. Flash the master board with the default firmware.
+2. Confirm sensor readings begin showing on the device page.
+3. Use the web dashboard to send a light or pump command.
+4. Flash the XIAO camera board with `camera-platform-test`.
+5. Confirm images begin appearing for the same device.
 
 ## Build/Flash (PlatformIO)
 
@@ -69,6 +146,9 @@ Common options:
 
 # Flash dedicated camera-node capture debug firmware
 ./scripts/flash_esp32.sh --test-camera --port /dev/cu.usbmodem12201 --monitor
+
+# Flash camera-node platform uploader firmware
+./scripts/flash_esp32.sh --test-camera-platform --port /dev/cu.usbmodem12201 --monitor
 
 # Flash dedicated touch-button debug firmware (clean event-only output)
 ./scripts/flash_esp32.sh --test-touch --monitor

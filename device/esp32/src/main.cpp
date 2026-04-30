@@ -1,9 +1,11 @@
 #include <Arduino.h>
 #include <esp_sleep.h>
+#include <WiFi.h>
 
 #include "actuators/light_controller.h"
 #include "actuators/pump_controller.h"
 #include "config.h"
+#include "platform/platform_client.h"
 #include "sensors/dht22_sensor.h"
 #include "sensors/moisture_sensor.h"
 #include "system/power_button.h"
@@ -44,7 +46,203 @@ TouchButtonManager g_touch_button(
 #endif
 unsigned long g_last_dht22_read_ms = 0;
 unsigned long g_last_provisioning_heartbeat_ms = 0;
+unsigned long g_last_platform_send_ms = 0;
+unsigned long g_last_platform_status_ms = 0;
+unsigned long g_last_command_poll_ms = 0;
+unsigned long g_last_wifi_attempt_ms = 0;
 bool g_provisioning_mode = false;
+bool g_wifi_ready = false;
+PlatformClient g_platform_client(
+    PLANTLAB_PLATFORM_URL,
+    PLANTLAB_DEVICE_ID,
+    PLANTLAB_DEVICE_TOKEN);
+}
+
+bool platform_enabled() {
+  return g_platform_client.configured() && String(PLANTLAB_WIFI_SSID).length() > 0;
+}
+
+void ensure_wifi_connected(unsigned long now) {
+  if (!platform_enabled() || g_provisioning_mode) {
+    return;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!g_wifi_ready) {
+      g_wifi_ready = true;
+      Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
+    }
+    return;
+  }
+
+  g_wifi_ready = false;
+  if (now - g_last_wifi_attempt_ms < 5000) {
+    return;
+  }
+
+  g_last_wifi_attempt_ms = now;
+  Serial.printf("[wifi] connecting to %s\n", PLANTLAB_WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(PLANTLAB_WIFI_SSID, PLANTLAB_WIFI_PASSWORD);
+
+  const unsigned long started_at = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - started_at < PLANTLAB_WIFI_CONNECT_TIMEOUT_MS) {
+    delay(250);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    g_wifi_ready = true;
+    Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("[wifi] connect timed out");
+    WiFi.disconnect();
+  }
+}
+
+PlatformReading read_platform_reading() {
+  const Dht22Reading reading = g_dht22.read();
+  const MoistureReading moisture = g_moisture.read();
+
+  if (!reading.valid) {
+    Serial.println("[dht22] read failed (NaN)");
+  } else {
+    Serial.printf(
+        "[dht22] temp_c=%.1f humidity=%.1f%%\n",
+        reading.temperature_c,
+        reading.humidity_percent);
+  }
+
+  if (!moisture.valid) {
+    Serial.println("[moisture] read failed");
+  } else {
+    Serial.printf(
+        "[moisture] raw=%d percent=%.1f%%\n",
+        moisture.raw_adc,
+        moisture.moisture_percent);
+  }
+
+  Serial.printf(
+      "[actuators] light=%s pump=%s\n",
+      g_light.is_on() ? "on" : "off",
+      g_pump.is_on() ? "on" : "off");
+
+  PlatformReading platform_reading{};
+  platform_reading.temperature_c = reading.temperature_c;
+  platform_reading.humidity_percent = reading.humidity_percent;
+  platform_reading.moisture_percent = moisture.moisture_percent;
+  platform_reading.temperature_valid = reading.valid;
+  platform_reading.humidity_valid = reading.valid;
+  platform_reading.moisture_valid = moisture.valid;
+  platform_reading.light_on = g_light.is_on();
+  platform_reading.pump_on = g_pump.is_on();
+  platform_reading.pump_status = g_pump.is_on() ? "running" : "idle";
+  return platform_reading;
+}
+
+PlatformStatus platform_status(const String& message) {
+  PlatformStatus status{};
+  status.light_on = g_light.is_on();
+  status.pump_on = g_pump.is_on();
+  status.message = message;
+  return status;
+}
+
+void send_platform_reading(unsigned long now) {
+  if (!platform_enabled() || !g_wifi_ready || now - g_last_platform_send_ms < PLANTLAB_SENSOR_SEND_INTERVAL_MS) {
+    return;
+  }
+  g_last_platform_send_ms = now;
+
+  const PlatformReading reading = read_platform_reading();
+  String error;
+  if (g_platform_client.send_reading(reading, &error)) {
+    Serial.println("[platform] reading sent");
+  } else {
+    Serial.printf("[platform] reading upload failed: %s\n", error.c_str());
+  }
+}
+
+void send_platform_status(unsigned long now, const String& message = "online") {
+  if (!platform_enabled() || !g_wifi_ready || now - g_last_platform_status_ms < PLANTLAB_STATUS_INTERVAL_MS) {
+    return;
+  }
+  g_last_platform_status_ms = now;
+
+  String error;
+  if (!g_platform_client.send_status(platform_status(message), &error)) {
+    Serial.printf("[platform] status upload failed: %s\n", error.c_str());
+  }
+}
+
+void execute_platform_command(const PlatformCommand& command) {
+  String message;
+  bool success = true;
+
+  if (command.target == "light") {
+    if (command.action == "on") {
+      g_light.set_on(true);
+      message = "light turned on";
+    } else if (command.action == "off") {
+      g_light.set_on(false);
+      message = "light turned off";
+    } else {
+      success = false;
+      message = "unsupported light command";
+    }
+  } else if (command.target == "pump") {
+    if (command.action == "run") {
+      const unsigned long seconds =
+          command.value.length() > 0 ? static_cast<unsigned long>(command.value.toInt()) : 5UL;
+      g_pump.start_for_ms(seconds * 1000UL);
+      message = "pump started for " + String(seconds) + " seconds";
+    } else if (command.action == "off") {
+      g_pump.stop();
+      message = "pump turned off";
+    } else {
+      success = false;
+      message = "unsupported pump command";
+    }
+  } else {
+    success = false;
+    message = "unsupported command target";
+  }
+
+  String status_error;
+  g_platform_client.send_status(platform_status(message), &status_error);
+  String ack_error;
+  if (!g_platform_client.acknowledge_command(
+          command.id,
+          success ? "completed" : "failed",
+          message.c_str(),
+          g_light.is_on(),
+          g_pump.is_on(),
+          &ack_error)) {
+    Serial.printf("[platform] command ack failed: %s\n", ack_error.c_str());
+  } else {
+    Serial.printf("[platform] command %d handled: %s\n", command.id, message.c_str());
+  }
+}
+
+void poll_platform_commands(unsigned long now) {
+  if (!platform_enabled() || !g_wifi_ready || now - g_last_command_poll_ms < PLANTLAB_COMMAND_POLL_INTERVAL_MS) {
+    return;
+  }
+  g_last_command_poll_ms = now;
+
+  PlatformCommand commands[4]{};
+  String error;
+  int count = g_platform_client.poll_pending_commands(commands, 4, &error);
+  if (count < 0) {
+    Serial.printf("[platform] command poll failed: %s\n", error.c_str());
+    return;
+  }
+
+  for (int i = 0; i < count; ++i) {
+    if (!commands[i].valid) {
+      continue;
+    }
+    execute_platform_command(commands[i]);
+  }
 }
 
 void enter_deep_sleep() {
@@ -105,6 +303,12 @@ void setup() {
   Serial.println("[moisture] sensor initialized");
   Serial.println("[light] initialized OFF");
   Serial.println("[pump] initialized OFF");
+  if (platform_enabled()) {
+    Serial.printf("[platform] base_url: %s\n", g_platform_client.base_url().c_str());
+    Serial.printf("[platform] device_id: %d\n", g_platform_client.device_id());
+  } else {
+    Serial.println("[platform] disabled (missing Wi-Fi or platform credentials)");
+  }
 
   const esp_sleep_wakeup_cause_t wake_cause = esp_sleep_get_wakeup_cause();
   if (wake_cause == ESP_SLEEP_WAKEUP_EXT0) {
@@ -114,12 +318,16 @@ void setup() {
   }
 
   g_status_led.set_mode(StatusLedMode::kNormal);
+  if (platform_enabled()) {
+    ensure_wifi_connected(millis());
+  }
 }
 
 void loop() {
   const unsigned long now = millis();
   g_status_led.update(now);
   g_pump.update();
+  ensure_wifi_connected(now);
 
 #if ENABLE_TOUCH_BUTTON
   const TouchButtonEvent touch_event = g_touch_button.update(now);
@@ -165,34 +373,16 @@ void loop() {
     return;
   }
 
-  if (now - g_last_dht22_read_ms < DHT22_READ_INTERVAL_MS) {
-    return;
-  }
-  g_last_dht22_read_ms = now;
-
-  const Dht22Reading reading = g_dht22.read();
-  const MoistureReading moisture = g_moisture.read();
-
-  if (!reading.valid) {
-    Serial.println("[dht22] read failed (NaN)");
-  } else {
-    Serial.printf(
-        "[dht22] temp_c=%.1f humidity=%.1f%%\n",
-        reading.temperature_c,
-        reading.humidity_percent);
+  if (platform_enabled()) {
+    poll_platform_commands(now);
+    send_platform_status(now);
+    send_platform_reading(now);
   }
 
-  if (!moisture.valid) {
-    Serial.println("[moisture] read failed");
-  } else {
-    Serial.printf(
-        "[moisture] raw=%d percent=%.1f%%\n",
-        moisture.raw_adc,
-        moisture.moisture_percent);
+  if (now - g_last_dht22_read_ms >= DHT22_READ_INTERVAL_MS) {
+    g_last_dht22_read_ms = now;
+    if (!platform_enabled()) {
+      read_platform_reading();
+    }
   }
-
-  Serial.printf(
-      "[actuators] light=%s pump=%s\n",
-      g_light.is_on() ? "on" : "off",
-      g_pump.is_on() ? "on" : "off");
 }

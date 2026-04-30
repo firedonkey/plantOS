@@ -1,5 +1,11 @@
 #pragma once
 
+#if __has_include("platform_secrets.h")
+#include "platform_secrets.h"
+#elif __has_include("platform_secrets.example.h")
+#include "platform_secrets.example.h"
+#endif
+
 // PlantLab v2 - Phase 1 local bring-up
 // Board: ESP32-S3-DevKitC-1-N32R16V
 
@@ -70,3 +76,43 @@
 
 // Timing
 #define DHT22_READ_INTERVAL_MS 2000
+
+#ifndef PLANTLAB_WIFI_SSID
+#define PLANTLAB_WIFI_SSID ""
+#endif
+
+#ifndef PLANTLAB_WIFI_PASSWORD
+#define PLANTLAB_WIFI_PASSWORD ""
+#endif
+
+#ifndef PLANTLAB_PLATFORM_URL
+#define PLANTLAB_PLATFORM_URL ""
+#endif
+
+#ifndef PLANTLAB_DEVICE_ID
+#define PLANTLAB_DEVICE_ID 0
+#endif
+
+#ifndef PLANTLAB_DEVICE_TOKEN
+#define PLANTLAB_DEVICE_TOKEN ""
+#endif
+
+#ifndef PLANTLAB_SENSOR_SEND_INTERVAL_MS
+#define PLANTLAB_SENSOR_SEND_INTERVAL_MS 10000UL
+#endif
+
+#ifndef PLANTLAB_COMMAND_POLL_INTERVAL_MS
+#define PLANTLAB_COMMAND_POLL_INTERVAL_MS 2000UL
+#endif
+
+#ifndef PLANTLAB_STATUS_INTERVAL_MS
+#define PLANTLAB_STATUS_INTERVAL_MS 10000UL
+#endif
+
+#ifndef PLANTLAB_IMAGE_INTERVAL_MS
+#define PLANTLAB_IMAGE_INTERVAL_MS 15000UL
+#endif
+
+#ifndef PLANTLAB_WIFI_CONNECT_TIMEOUT_MS
+#define PLANTLAB_WIFI_CONNECT_TIMEOUT_MS 20000UL
+#endif
