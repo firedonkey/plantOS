@@ -24,13 +24,13 @@ class PlantAutomation:
         self.last_capture_time: datetime | None = None
         self.light_manual_override_until: datetime | None = None
 
-    def run_once(self) -> dict:
+    def run_once(self, *, capture_overrides: dict | None = None) -> dict:
         now = datetime.now()
         dht = self.dht22.read()
         moisture = self.moisture.read()
         if not self._light_manual_override_active(now):
             self.light.apply_schedule(now)
-        image_path = self._maybe_capture(now)
+        image_path = self._maybe_capture(now, capture_overrides=capture_overrides)
         pump_event = self._maybe_water(now, moisture.percent)
 
         errors = []
@@ -122,11 +122,11 @@ class PlantAutomation:
         self.last_pump_time = datetime.now()
         return f"ran_{run_seconds}s"
 
-    def _maybe_capture(self, now: datetime) -> str | None:
+    def _maybe_capture(self, now: datetime, *, capture_overrides: dict | None = None) -> str | None:
         interval = int(self.config["camera"].get("capture_interval_seconds", 3600))
         if self.last_capture_time and now - self.last_capture_time < timedelta(seconds=interval):
             return None
-        image_path = self.camera.capture()
+        image_path = self.camera.capture(overrides=capture_overrides)
         if image_path:
             self.last_capture_time = now
         return image_path

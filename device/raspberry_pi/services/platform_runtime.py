@@ -99,11 +99,16 @@ class PlatformRuntime:
         device_id = int(device_context["device_id"])
         device_token = str(device_context["device_token"])
         platform_config = self.config.get("platform", {})
+        camera_config = self.config.get("camera", {})
         send_interval = int(platform_config.get("send_interval_seconds") or 10)
         command_interval = int(platform_config.get("command_poll_interval_seconds") or 2)
         status_interval = int(platform_config.get("status_interval_seconds") or 10)
         image_every = int(platform_config.get("image_every_n_cycles") or 1)
         startup_send_interval = int(platform_config.get("startup_send_interval_seconds") or 2)
+        startup_capture_overrides = {
+            "resolution": str(camera_config.get("startup_resolution") or "640x480"),
+            "skip_frames": int(camera_config.get("startup_skip_frames", 5)),
+        }
 
         automation = PlantAutomation(self.config)
         command_thread = threading.Thread(
@@ -131,7 +136,9 @@ class PlatformRuntime:
                 now = time.monotonic()
                 if now >= next_send_at:
                     cycle += 1
-                    record = automation.run_once()
+                    record = automation.run_once(
+                        capture_overrides=None if has_uploaded_first_image else startup_capture_overrides
+                    )
                     try:
                         send_reading(platform_url, device_id, device_token, record)
                         has_uploaded_reading = True
