@@ -36,6 +36,9 @@ void StatusLed::update(uint32_t now_ms) {
   feedback_until_ms_ = 0;
 
   switch (mode_) {
+    case StatusLedMode::kOff:
+      apply(false);
+      return;
     case StatusLedMode::kNormal:
       apply(true);
       return;

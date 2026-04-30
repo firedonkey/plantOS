@@ -4,6 +4,7 @@
 
 enum class StatusLedMode {
   kBooting = 0,
+  kOff,
   kNormal,
   kProvisioning,
   kSleepPending,

@@ -13,7 +13,7 @@ OPEN_MONITOR=0
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-camera-platform|--test-wifi|--test-touch|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
+  $(basename "$0") [--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-camera-platform|--test-wifi|--test-touch|--test-button-led|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
 
 Options:
   --test-dht22      Flash dedicated DHT22 debug firmware (env: dht22-test)
@@ -23,6 +23,7 @@ Options:
   --test-camera-platform  Flash camera-node platform uploader firmware (env: camera-platform-test)
   --test-wifi       Flash dedicated XIAO Wi-Fi test firmware (env: wifi-test)
   --test-touch      Flash dedicated touch-button debug firmware (env: touch-test)
+  --test-button-led Flash dedicated physical-button + status-led test firmware (env: button-led-test)
   --test-espnow-master  Flash dedicated ESP-NOW master link-test firmware (env: espnow-master-test)
   --test-espnow-camera  Flash dedicated ESP-NOW camera link-test firmware (env: espnow-camera-test)
   --port <port>     Serial port (default: ${PORT})
@@ -39,6 +40,7 @@ Examples:
   $(basename "$0") --test-camera-platform --port /dev/cu.usbmodem12201 --monitor
   $(basename "$0") --test-wifi --port /dev/cu.usbmodem12201 --monitor
   $(basename "$0") --test-touch --monitor
+  $(basename "$0") --test-button-led --monitor
   $(basename "$0") --test-espnow-master --port /dev/cu.usbmodem1301 --monitor
   $(basename "$0") --test-espnow-camera --port /dev/cu.usbmodem12201 --monitor
   $(basename "$0") --port /dev/cu.usbmodem1301 --monitor
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --test-touch)
       ENV_NAME="touch-test"
+      shift
+      ;;
+    --test-button-led)
+      ENV_NAME="button-led-test"
       shift
       ;;
     --test-espnow-master)
