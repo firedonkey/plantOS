@@ -838,7 +838,10 @@ void send_platform_reading(unsigned long now) {
   const PlatformReading reading = read_platform_reading();
   String error;
   if (g_platform_client->send_reading(reading, &error)) {
-    Serial.println("[platform] reading sent");
+    Serial.printf(
+        "[platform] reading sent to %s/api/data (device_id=%d)\n",
+        g_platform_client->base_url().c_str(),
+        g_platform_client->device_id());
   } else {
     Serial.printf("[platform] reading upload failed: %s\n", error.c_str());
   }
@@ -934,12 +937,19 @@ void setup() {
   Serial.println();
   Serial.println("=== PlantLab ESP32 Master Node ===");
   Serial.printf("Board: %s\n", BOARD_NAME);
+  Serial.printf("Provisioning env: %s\n", PLANTLAB_ENV_LABEL);
   Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
   Serial.printf("Growing light gate pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
   Serial.printf("Pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
   Serial.printf("Provisioning button pin: GPIO%d\n", PIN_POWER_BUTTON);
   Serial.printf("Status LED pin: GPIO%d\n", PIN_STATUS_LED);
+  if (String(PLANTLAB_PLATFORM_URL).length() > 0) {
+    Serial.printf("Fallback platform URL: %s\n", PLANTLAB_PLATFORM_URL);
+  }
+  if (String(PLANTLAB_PROVISIONING_API_URL).length() > 0) {
+    Serial.printf("Fallback provisioning URL: %s\n", PLANTLAB_PROVISIONING_API_URL);
+  }
 
   pinMode(PIN_STATUS_LED, OUTPUT);
   pinMode(PIN_POWER_BUTTON, INPUT_PULLUP);

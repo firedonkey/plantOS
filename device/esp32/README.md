@@ -8,7 +8,7 @@ Current status:
 - DHT22 local reading implemented
 - Power button + status LED state handling implemented in main firmware
 - Local Wi-Fi + platform HTTP path now available for dev testing
-- No provisioning yet
+- ESP32 master provisioning now mirrors the Raspberry Pi user flow
 
 ## Board
 
@@ -64,10 +64,39 @@ cp /Users/gary/plantOS/device/esp32/include/platform_secrets.example.h \
 
 Then edit `platform_secrets.h` with:
 
-- your home Wi-Fi SSID/password
-- local platform URL, usually `http://<your-laptop-ip>:8000`
-- platform `device_id`
-- platform `device_token`
+- fallback Wi-Fi / platform values for direct smoke tests
+- local or cloud defaults if you want a backup when not using Add Device
+
+For the normal Add Device provisioning flow, the website now supplies:
+
+- setup code
+- platform URL
+- return URL
+
+so the firmware does not rely on hardcoded local-vs-GCP URLs during onboarding.
+
+## Main firmware environment selection
+
+The main ESP32 master firmware now has explicit environment targets:
+
+- `esp32-local`
+- `esp32-gcp`
+- `esp32-s3-devkitc-1` (neutral/default)
+
+These targets all use the same provisioning logic. The difference is intent and
+clearer serial logging, so you can tell what you flashed.
+
+Recommended usage:
+
+```bash
+# Local testing
+./scripts/flash_esp32.sh --local --monitor
+
+# GCP testing
+./scripts/flash_esp32.sh --gcp --monitor
+```
+
+This change is ESP32-only and does not alter the Raspberry Pi path.
 
 For local dev, the quickest way to get `device_id` and `api_token` is:
 
@@ -145,6 +174,12 @@ Common options:
 ```bash
 # Flash + open serial monitor
 ./scripts/flash_esp32.sh --monitor
+
+# Flash main firmware with explicit local profile
+./scripts/flash_esp32.sh --local --monitor
+
+# Flash main firmware with explicit GCP profile
+./scripts/flash_esp32.sh --gcp --monitor
 
 # Flash dedicated DHT22 debug firmware
 ./scripts/flash_esp32.sh --test-dht22 --monitor

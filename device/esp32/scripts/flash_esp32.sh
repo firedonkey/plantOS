@@ -35,9 +35,11 @@ release_port_if_busy() {
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-camera-platform|--test-wifi|--test-touch|--test-button-led|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
+  $(basename "$0") [--local|--gcp|--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-camera-platform|--test-wifi|--test-touch|--test-button-led|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
 
 Options:
+  --local           Flash main firmware with explicit local provisioning profile (env: esp32-local)
+  --gcp             Flash main firmware with explicit GCP provisioning profile (env: esp32-gcp)
   --test-dht22      Flash dedicated DHT22 debug firmware (env: dht22-test)
   --test-moisture   Flash dedicated moisture debug firmware (env: moisture-test)
   --test-actuators  Flash dedicated light/pump debug firmware (env: actuators-test)
@@ -55,6 +57,8 @@ Options:
 Examples:
   $(basename "$0")
   $(basename "$0") --monitor
+  $(basename "$0") --local --monitor
+  $(basename "$0") --gcp --monitor
   $(basename "$0") --test-dht22 --monitor
   $(basename "$0") --test-moisture --monitor
   $(basename "$0") --test-actuators --monitor
@@ -71,6 +75,14 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --local)
+      ENV_NAME="esp32-local"
+      shift
+      ;;
+    --gcp)
+      ENV_NAME="esp32-gcp"
+      shift
+      ;;
     --test-dht22)
       ENV_NAME="dht22-test"
       shift
