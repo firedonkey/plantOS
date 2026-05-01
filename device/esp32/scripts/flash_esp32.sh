@@ -10,6 +10,28 @@ ENV_NAME="esp32-s3-devkitc-1"
 PORT="/dev/cu.usbmodem1301"
 OPEN_MONITOR=0
 
+release_port_if_busy() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return
+  fi
+
+  local pids
+  pids="$(lsof -t "${PORT}" 2>/dev/null || true)"
+  pids="$(printf '%s' "${pids}" | tr '\n' ' ')"
+  if [[ -z "${pids// }" ]]; then
+    return
+  fi
+
+  echo "[plantlab] releasing serial port ${PORT} from existing process(es): ${pids}"
+  for pid in ${pids}; do
+    if [[ "${pid}" != "$$" ]]; then
+      kill "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  sleep 1
+}
+
 usage() {
   cat <<EOF
 Usage:
@@ -129,6 +151,8 @@ cd "${PROJECT_DIR}"
 
 echo "[plantlab] building firmware..."
 "${PIO_BIN}" run -e "${ENV_NAME}"
+
+release_port_if_busy
 
 echo "[plantlab] uploading firmware..."
 "${PIO_BIN}" run -e "${ENV_NAME}" -t upload --upload-port "${PORT}"

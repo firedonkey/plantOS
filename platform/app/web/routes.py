@@ -146,10 +146,16 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
 
     pending_device_name = str(request.query_params.get("device_name") or "").strip()
     pending_location = str(request.query_params.get("location") or "").strip()
+    expect_image = str(request.query_params.get("expect_image") or "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
     if not pending_device_name:
         legacy_pending = _pending_setup_from_raw_query(request.url.query)
         pending_device_name = legacy_pending["device_name"]
         pending_location = legacy_pending["location"]
+        expect_image = legacy_pending["expect_image"]
 
     if not pending_device_name:
         return RedirectResponse(url="/devices", status_code=303)
@@ -166,7 +172,7 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
     if matching_device is not None:
         latest_reading = get_latest_reading_for_device(session, matching_device.id)
         latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
-        if latest_reading is not None and latest_images:
+        if latest_reading is not None and (latest_images or not expect_image):
             return RedirectResponse(url=f"/devices/{matching_device.id}?setup=complete", status_code=303)
 
     response = templates.TemplateResponse(
@@ -177,6 +183,7 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
             "current_user": current_user,
             "pending_device_name": pending_device_name,
             "pending_location": pending_location,
+            "expect_image": expect_image,
         },
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -208,6 +215,12 @@ def add_device_page(request: Request, session: Session = Depends(get_session)):
             "suggested_device_name": f"Device {next_device_number}",
             "suggested_location": f"Location {next_device_number}",
             "local_setup_url": settings.local_setup_url,
+            "provisioning_api_url": settings.provisioning_api_url,
+            "device_platform_url": (
+                settings.device_platform_url.rstrip("/")
+                if settings.device_platform_url
+                else str(request.base_url).rstrip("/")
+            ),
         },
     )
 
@@ -329,6 +342,16 @@ def device_provisioning_status(
         or request.query_params.get("pending_location")
         or ""
     ).strip()
+    expect_image = str(request.query_params.get("expect_image") or "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    if not pending_device_name:
+        legacy_pending = _pending_setup_from_raw_query(request.url.query)
+        pending_device_name = legacy_pending["device_name"]
+        pending_location = legacy_pending["location"]
+        expect_image = legacy_pending["expect_image"]
     if not pending_device_name:
         return JSONResponse(
             {"ready": False},
@@ -360,7 +383,7 @@ def device_provisioning_status(
     latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
     has_reading = latest_reading is not None
     has_image = bool(latest_images)
-    ready = has_reading and has_image
+    ready = has_reading and (has_image or not expect_image)
 
     return JSONResponse(
         {
@@ -369,6 +392,7 @@ def device_provisioning_status(
             "device_id": matching_device.id,
             "has_reading": has_reading,
             "has_image": has_image,
+            "expect_image": expect_image,
             "redirect_url": f"/devices/{matching_device.id}?setup=complete" if ready else "",
         },
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
@@ -377,13 +401,24 @@ def device_provisioning_status(
 
 def _pending_setup_from_raw_query(raw_query: str) -> dict[str, str]:
     if not raw_query:
-        return {"device_name": "", "location": ""}
+        return {"device_name": "", "location": "", "expect_image": True}
 
     decoded_query = unquote(raw_query)
-    params = parse_qs(decoded_query, keep_blank_values=True)
+    normalized_query = decoded_query.replace("&amp;", "&")
+    params = parse_qs(normalized_query, keep_blank_values=True)
+
+    def _first(*keys: str) -> str:
+        for key in keys:
+            values = params.get(key)
+            if values:
+                return str(values[0]).strip()
+        return ""
+
+    expect_image_raw = _first("expect_image", "pending_expect_image")
     return {
-        "device_name": str((params.get("pending_device_name") or [""])[0]).strip(),
-        "location": str((params.get("pending_location") or [""])[0]).strip(),
+        "device_name": _first("pending_device_name", "device_name"),
+        "location": _first("pending_location", "location"),
+        "expect_image": expect_image_raw.lower() not in {"0", "false", "no"},
     }
 
 

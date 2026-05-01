@@ -32,6 +32,7 @@ class Settings:
     provisioning_api_url: str = "https://plantlab-provision-api-418533861080.us-central1.run.app"
     provisioning_service_secret: str | None = None
     local_setup_url: str = "http://10.42.0.1:8080/"
+    device_platform_url: str | None = None
 
     @property
     def google_auth_configured(self) -> bool:
@@ -72,6 +73,7 @@ def get_settings() -> Settings:
         provisioning_api_url=os.getenv("PLANTLAB_PROVISIONING_API_URL", Settings.provisioning_api_url).rstrip("/"),
         provisioning_service_secret=_optional_env("PLANTLAB_PROVISIONING_SHARED_SECRET"),
         local_setup_url=os.getenv("PLANTLAB_LOCAL_SETUP_URL", Settings.local_setup_url).rstrip("/") + "/",
+        device_platform_url=_optional_env("PLANTLAB_DEVICE_PLATFORM_URL"),
     )
     settings.validate()
     return settings

@@ -489,6 +489,8 @@
       const step3Pill = document.querySelector("#step-3-pill");
 
       const localSetupBaseUrl = "{{ local_setup_url }}";
+      const provisioningApiUrl = "{{ provisioning_api_url }}";
+      const devicePlatformUrl = "{{ device_platform_url }}";
 
       let deviceName = "";
       let deviceLocation = "";
@@ -639,6 +641,8 @@
         if (deviceLocation) {
           returnUrl.searchParams.set("location", deviceLocation);
         }
+        url.searchParams.set("backend_url", provisioningApiUrl);
+        url.searchParams.set("platform_url", devicePlatformUrl);
         url.searchParams.set("return_url", returnUrl.toString());
         return url.toString();
       }

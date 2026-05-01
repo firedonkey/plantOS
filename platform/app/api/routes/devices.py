@@ -1,7 +1,11 @@
+import logging
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_device_from_token
+from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import User
 from app.schemas.devices import DeviceCreate, DeviceRead
@@ -14,6 +18,7 @@ from app.services.devices import (
 
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=list[DeviceRead])
@@ -59,3 +64,36 @@ def factory_reset_device_route(
 
     factory_reset_device(session, device)
     return {"ok": True, "device_id": device_id, "status": "factory_reset"}
+
+
+@router.post("/register-provisioned")
+async def register_provisioned_device_proxy(request: Request):
+    settings = get_settings()
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.") from exc
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{settings.provisioning_api_url}/api/devices/register",
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Provisioning service unavailable: {exc}") from exc
+
+    try:
+        response_payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Provisioning service returned an invalid response.") from exc
+
+    if response.status_code >= 400:
+        logger.warning(
+            "provisioned device registration failed status=%s payload=%s response=%s",
+            response.status_code,
+            payload,
+            response_payload,
+        )
+
+    return JSONResponse(response_payload, status_code=response.status_code)
