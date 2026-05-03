@@ -322,11 +322,7 @@ std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
 String wifiOptionsHtml() {
   String options = "<option value=\"\">Select nearby Wi-Fi</option>";
   for (const WiFiNetworkOption& network : g_cached_wifi_networks) {
-    String label = network.ssid;
-    if (network.rssi > -127) {
-      label += " (" + String(network.rssi) + " dBm)";
-    }
-    options += "<option value=\"" + html_escape(network.ssid) + "\">" + html_escape(label) + "</option>";
+    options += "<option value=\"" + html_escape(network.ssid) + "\">" + html_escape(network.ssid) + "</option>";
   }
   options += "<option value=\"__manual__\">My Wi-Fi is not listed</option>";
   return options;

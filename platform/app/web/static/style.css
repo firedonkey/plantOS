@@ -710,6 +710,55 @@ input {
   font-size: 1.35rem;
 }
 
+.reading-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  text-align: right;
+}
+
+.reading-meta span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reading-meta strong {
+  font-size: 1.15rem;
+  line-height: 1.1;
+}
+
+.live-metric-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card-primary {
+  min-height: 116px;
+  padding: 18px 16px;
+}
+
+.metric-card-primary span,
+.metric-card-state span {
+  margin-bottom: 8px;
+}
+
+.metric-card-primary strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.metric-card-state {
+  min-height: 96px;
+}
+
+.metric-card-state strong {
+  font-size: 1.6rem;
+  line-height: 1;
+  text-transform: capitalize;
+}
+
 .detail-section {
   margin-top: 30px;
 }
@@ -1351,6 +1400,20 @@ tr:last-child td {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .live-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sensor-panel .section-heading {
+    display: grid;
+    gap: 10px;
+  }
+
+  .reading-meta {
+    justify-items: start;
+    text-align: left;
   }
 
   .site-header,
