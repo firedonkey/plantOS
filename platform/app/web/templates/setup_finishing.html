@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Finishing Setup - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=setup-finishing-20260429">
+    <link rel="stylesheet" href="/static/style.css?v=setup-finishing-20260502">
     <style>
       .finishing-shell {
         width: min(720px, calc(100% - 32px));
@@ -198,7 +198,11 @@
       <section class="finishing-card" id="setup-finishing-card" data-device-name="{{ pending_device_name }}" data-location="{{ pending_location }}" data-expect-image="{{ 'true' if expect_image else 'false' }}">
         <p class="eyebrow">Setup</p>
         <h1>Finishing setup for {{ pending_device_name }}</h1>
+        {% if expect_image %}
         <p>PlantLab is reconnecting, registering your device, and sending its first update. We’ll open the dashboard as soon as everything is ready.</p>
+        {% else %}
+        <p>PlantLab is reconnecting, registering your master node, and sending its first update. We’ll open the dashboard as soon as your device is ready.</p>
+        {% endif %}
 
         <div class="connection-hero" aria-hidden="true">
           <div class="connection-hero-topline">
@@ -233,16 +237,24 @@
               <span>Waiting for the first reading from the device.</span>
             </div>
           </li>
-          <li class="setup-check" id="setup-check-image" {% if not expect_image %}hidden{% endif %}>
+          {% if expect_image %}
+          <li class="setup-check" id="setup-check-image">
             <span class="setup-check-dot" aria-hidden="true"></span>
             <div>
               <strong>First photo uploaded</strong>
               <span>Waiting for the first camera image.</span>
             </div>
           </li>
+          {% endif %}
         </ul>
 
-        <p class="finishing-note" id="setup-finishing-note">This usually takes a few seconds after the device joins your Wi‑Fi.</p>
+        <p class="finishing-note" id="setup-finishing-note">
+          {% if expect_image %}
+          This usually takes a few seconds after the device joins your Wi‑Fi.
+          {% else %}
+          This usually takes a few seconds after the master node joins your Wi‑Fi and sends its first reading.
+          {% endif %}
+        </p>
       </section>
     </main>
 

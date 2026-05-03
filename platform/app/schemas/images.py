@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class ImageRead(BaseModel):
     id: int
     device_id: int
+    source_hardware_device_id: str | None = None
     path: str
     timestamp: datetime
 

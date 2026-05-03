@@ -19,6 +19,7 @@ def save_uploaded_image(
     session: Session,
     upload_file: UploadFile,
     device_id: int,
+    source_hardware_device_id: str | None,
     settings: Settings,
 ) -> Image:
     suffix = ALLOWED_IMAGE_TYPES.get(upload_file.content_type or "")
@@ -26,7 +27,11 @@ def save_uploaded_image(
         raise ValueError("Unsupported image type.")
 
     stored_file = get_image_storage(settings).save_image(upload_file, device_id, suffix)
-    image = Image(device_id=device_id, path=stored_file.path)
+    image = Image(
+        device_id=device_id,
+        source_hardware_device_id=source_hardware_device_id,
+        path=stored_file.path,
+    )
     session.add(image)
     session.commit()
     session.refresh(image)

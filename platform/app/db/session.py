@@ -24,12 +24,10 @@ def init_db(database_url: str | None = None) -> None:
         # Production schema changes should run through Alembic migrations.
         return
     Base.metadata.create_all(selected_engine)
-    _apply_lightweight_sqlite_migrations(selected_engine)
+    _apply_lightweight_migrations(selected_engine)
 
 
-def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
-    if not selected_engine.url.drivername.startswith("sqlite"):
-        return
+def _apply_lightweight_migrations(selected_engine) -> None:
     inspector = inspect(selected_engine)
     table_names = inspector.get_table_names()
     with selected_engine.begin() as connection:
@@ -53,12 +51,32 @@ def _apply_lightweight_sqlite_migrations(selected_engine) -> None:
                 connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_on BOOLEAN"))
             if "pump_status" not in reading_columns:
                 connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_status VARCHAR(120)"))
+        if "images" in table_names:
+            image_columns = {column["name"] for column in inspector.get_columns("images")}
+            if "source_hardware_device_id" not in image_columns:
+                connection.execute(text("ALTER TABLE images ADD COLUMN source_hardware_device_id VARCHAR(120)"))
         if "commands" in table_names:
             command_columns = {column["name"] for column in inspector.get_columns("commands")}
             if "light_on" not in command_columns:
                 connection.execute(text("ALTER TABLE commands ADD COLUMN light_on BOOLEAN"))
             if "pump_on" not in command_columns:
                 connection.execute(text("ALTER TABLE commands ADD COLUMN pump_on BOOLEAN"))
+        if "device_hardware_ids" in table_names:
+            node_columns = {column["name"] for column in inspector.get_columns("device_hardware_ids")}
+            if "node_role" not in node_columns:
+                connection.execute(
+                    text("ALTER TABLE device_hardware_ids ADD COLUMN node_role VARCHAR(40) NOT NULL DEFAULT 'single_board'")
+                )
+            if "node_index" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN node_index INTEGER"))
+            if "display_name" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN display_name VARCHAR(120)"))
+            if "hardware_model" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN hardware_model VARCHAR(120)"))
+            if "status" not in node_columns:
+                connection.execute(
+                    text("ALTER TABLE device_hardware_ids ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'provisioning'")
+                )
 
 
 def get_session() -> Generator[Session, None, None]:

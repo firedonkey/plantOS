@@ -142,6 +142,34 @@
             </div>
             <p class="notice" data-image-grid-notice {% if recent_images %}hidden{% endif %}>No images uploaded yet.</p>
           </div>
+
+          <div class="embedded-section">
+            <div class="section-heading components-heading">
+              <h3>Device Components</h3>
+              <span class="section-note" data-field="node_overall_status">{{ node_summary.overall_status.replace("_", " ") | title }}</span>
+            </div>
+            <div class="node-list" data-node-summary-list {% if not node_summary.primary and not node_summary.cameras %}hidden{% endif %}>
+              {% if node_summary.primary %}
+              <div class="node-item">
+                <div>
+                  <strong>{{ node_summary.primary.display_name or node_summary.primary.node_role.replace("_", " ") | title }}</strong>
+                  <span>{{ node_summary.primary.node_role.replace("_", " ") | title }}</span>
+                </div>
+                <span class="node-status {{ node_summary.primary.status }}">{{ node_summary.primary.status.replace("_", " ") | title }}</span>
+              </div>
+              {% endif %}
+              {% for camera in node_summary.cameras %}
+              <div class="node-item">
+                <div>
+                  <strong>{{ camera.display_name or camera.node_role.replace("_", " ") | title }}</strong>
+                  <span>{{ camera.node_role.replace("_", " ") | title }}</span>
+                </div>
+                <span class="node-status {{ camera.status }}">{{ camera.status.replace("_", " ") | title }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            <p class="notice" data-node-summary-empty {% if node_summary.primary or node_summary.cameras %}hidden{% endif %}>No hardware nodes registered yet.</p>
+          </div>
         </article>
       </section>
 
@@ -287,6 +315,8 @@
       const latestImage = document.querySelector("[data-latest-image]");
       const latestImageNotice = document.querySelector("[data-latest-image-notice]");
       const imageGridNotice = document.querySelector("[data-image-grid-notice]");
+      const nodeSummaryList = document.querySelector("[data-node-summary-list]");
+      const nodeSummaryEmptyNotice = document.querySelector("[data-node-summary-empty]");
       const activityPanel = document.querySelector("[data-command-history-panel]");
       let activityList = document.querySelector("[data-activity-list]");
       let activityEmptyNotice = document.querySelector("[data-activity-empty]");
@@ -376,6 +406,57 @@
           img.src = `${image.src}?v=${Date.now()}`;
           img.alt = image.alt || "Plant capture";
           imageGrid.appendChild(img);
+        });
+      }
+
+      function updateNodeSummary(summary) {
+        if (!summary) {
+          return;
+        }
+        setField("node_overall_status", titleCase(summary.overall_status || "offline"));
+        if (!nodeSummaryList || !nodeSummaryEmptyNotice) {
+          return;
+        }
+
+        const items = [];
+        if (summary.primary) {
+          items.push(summary.primary);
+        }
+        (summary.cameras || []).forEach((camera) => items.push(camera));
+
+        if (!items.length) {
+          nodeSummaryList.hidden = true;
+          nodeSummaryEmptyNotice.hidden = false;
+          nodeSummaryList.innerHTML = "";
+          return;
+        }
+
+        nodeSummaryList.hidden = false;
+        nodeSummaryEmptyNotice.hidden = true;
+        const signature = items.map((item) => `${item.hardware_device_id}:${item.status}:${item.display_name || ""}`).join("|");
+        if (nodeSummaryList.dataset.signature === signature) {
+          return;
+        }
+        nodeSummaryList.dataset.signature = signature;
+        nodeSummaryList.innerHTML = "";
+
+        items.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "node-item";
+
+          const details = document.createElement("div");
+          const label = document.createElement("strong");
+          label.textContent = item.display_name || titleCase((item.node_role || "node").replaceAll("_", " "));
+          const role = document.createElement("span");
+          role.textContent = titleCase((item.node_role || "node").replaceAll("_", " "));
+          details.append(label, role);
+
+          const status = document.createElement("span");
+          status.className = `node-status ${item.status || "offline"}`;
+          status.textContent = titleCase((item.status || "offline").replaceAll("_", " "));
+
+          row.append(details, status);
+          nodeSummaryList.append(row);
         });
       }
 
@@ -571,6 +652,7 @@
           updateActivity(payload.command_activity);
           updateReading(payload.latest_reading);
           updateImages(payload);
+          updateNodeSummary(payload.node_summary);
         } catch (error) {
           console.debug("Dashboard summary refresh skipped", error);
         } finally {

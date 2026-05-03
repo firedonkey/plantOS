@@ -84,6 +84,7 @@ def _delete_device_record(session: Session, device: Device) -> None:
     session.execute(delete(Event).where(Event.device_id == device.id))
     session.execute(delete(Image).where(Image.device_id == device.id))
     session.execute(delete(SensorReading).where(SensorReading.device_id == device.id))
+    _clear_attached_device_nodes(session, device.id)
     session.delete(device)
     session.commit()
 
@@ -91,6 +92,8 @@ def _delete_device_record(session: Session, device: Device) -> None:
 def _clear_provisioning_references(session: Session, device_id: int) -> None:
     """Best-effort cleanup for provisioning tables managed by the Node service."""
     statements = [
+        text("DELETE FROM device_access_tokens WHERE device_id = :device_id"),
+        text("DELETE FROM device_hardware_ids WHERE device_id = :device_id"),
         text(
             """
             UPDATE device_serial_numbers
@@ -110,3 +113,10 @@ def _clear_provisioning_references(session: Session, device_id: int) -> None:
             session.execute(statement, {"device_id": device_id})
         except SQLAlchemyError:
             session.rollback()
+
+
+def _clear_attached_device_nodes(session: Session, device_id: int) -> None:
+    try:
+        session.execute(text("DELETE FROM device_hardware_ids WHERE device_id = :device_id"), {"device_id": device_id})
+    except SQLAlchemyError:
+        session.rollback()

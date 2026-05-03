@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Devices - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=device-card-20260428">
+    <link rel="stylesheet" href="/static/style.css?v=device-card-20260502">
     <style>
       .setup-pending {
         margin: 20px 0;
@@ -110,6 +110,9 @@
               <span><strong>{{ card.light }}</strong>Growing light</span>
               <span><strong>{{ card.pump }}</strong>Pump</span>
             </div>
+            {% if card.node_health %}
+            <p class="device-card-node-health">{{ card.node_health }}</p>
+            {% endif %}
             <div class="device-card-footer">
               <span>{{ card.connection.last_seen }}</span>
               <div class="device-card-actions">

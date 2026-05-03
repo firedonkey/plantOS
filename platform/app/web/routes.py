@@ -14,6 +14,7 @@ from app.db.session import get_session
 from app.schemas.commands import CommandCreate
 from app.schemas.devices import DeviceCreate
 from app.services.commands import create_command, list_commands_for_device
+from app.services.device_nodes import build_node_summary, list_nodes_for_device
 from app.services.devices import (
     create_device_for_user,
     delete_device_for_user,
@@ -151,8 +152,8 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
         "false",
         "no",
     }
-    if not pending_device_name:
-        legacy_pending = _pending_setup_from_raw_query(request.url.query)
+    legacy_pending = _pending_setup_from_raw_query(request.url.query)
+    if not pending_device_name or "&amp;" in request.url.query:
         pending_device_name = legacy_pending["device_name"]
         pending_location = legacy_pending["location"]
         expect_image = legacy_pending["expect_image"]
@@ -170,8 +171,10 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
         None,
     )
     if matching_device is not None:
+        nodes = list_nodes_for_device(session, matching_device.id)
         latest_reading = get_latest_reading_for_device(session, matching_device.id)
         latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
+        expect_image = _setup_finishing_expect_image(nodes, expect_image)
         if latest_reading is not None and (latest_images or not expect_image):
             return RedirectResponse(url=f"/devices/{matching_device.id}?setup=complete", status_code=303)
 
@@ -251,6 +254,7 @@ def device_detail_page(
     recent_readings = list_recent_readings_for_device(session, device.id, limit=2000, since=since)
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
+    nodes = list_nodes_for_device(session, device.id)
     latest_image = recent_images[0] if recent_images else None
     latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
@@ -271,6 +275,7 @@ def device_detail_page(
             "recent_commands": recent_commands,
             "command_activity": command_activity,
             "connection": connection,
+            "node_summary": build_node_summary(nodes),
             "image_src": proxied_image_src,
             "reading_chart": reading_chart,
             "chart_range": chart_range,
@@ -302,6 +307,7 @@ def device_summary_json(
     latest_reading = get_latest_reading_for_device(session, device.id)
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
+    nodes = list_nodes_for_device(session, device.id)
     latest_image = recent_images[0] if recent_images else None
     latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
@@ -314,6 +320,7 @@ def device_summary_json(
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
             "active_command_keys": _active_command_keys(recent_commands),
+            "node_summary": build_node_summary(nodes),
         }
     )
 
@@ -347,8 +354,8 @@ def device_provisioning_status(
         "false",
         "no",
     }
-    if not pending_device_name:
-        legacy_pending = _pending_setup_from_raw_query(request.url.query)
+    legacy_pending = _pending_setup_from_raw_query(request.url.query)
+    if not pending_device_name or "&amp;" in request.url.query:
         pending_device_name = legacy_pending["device_name"]
         pending_location = legacy_pending["location"]
         expect_image = legacy_pending["expect_image"]
@@ -381,6 +388,8 @@ def device_provisioning_status(
 
     latest_reading = get_latest_reading_for_device(session, matching_device.id)
     latest_images = list_recent_images_for_device(session, matching_device.id, limit=1)
+    nodes = list_nodes_for_device(session, matching_device.id)
+    expect_image = _setup_finishing_expect_image(nodes, expect_image)
     has_reading = latest_reading is not None
     has_image = bool(latest_images)
     ready = has_reading and (has_image or not expect_image)
@@ -420,6 +429,19 @@ def _pending_setup_from_raw_query(raw_query: str) -> dict[str, str]:
         "location": _first("pending_location", "location"),
         "expect_image": expect_image_raw.lower() not in {"0", "false", "no"},
     }
+
+
+def _setup_finishing_expect_image(nodes: list, requested_expect_image: bool) -> bool:
+    roles = {
+        str(getattr(node, "node_role", "") or "").strip().lower()
+        for node in nodes
+        if getattr(node, "node_role", None) is not None
+    }
+    if "master" in roles:
+        return False
+    if "single_board" in roles:
+        return True
+    return requested_expect_image
 
 
 @router.post("/devices")
@@ -605,6 +627,8 @@ def _device_overview_card(session: Session, device) -> dict:
     latest_images = list_recent_images_for_device(session, device.id, limit=1)
     latest_image = latest_images[0] if latest_images else None
     recent_commands = list_commands_for_device(session, device.id, limit=5)
+    nodes = list_nodes_for_device(session, device.id)
+    node_summary = build_node_summary(nodes)
     latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
     status_state = _device_status_state(device, latest_reading.timestamp if latest_reading else None)
@@ -620,6 +644,7 @@ def _device_overview_card(session: Session, device) -> dict:
         "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
         "light": _bool_label(light_value),
         "pump": _bool_label(pump_value),
+        "node_health": _device_node_health_summary(node_summary),
     }
 
 
@@ -710,6 +735,78 @@ def _device_connection(activity: dict | None) -> dict:
         "last_seen": _relative_time(age_seconds),
         "source": f"Last seen from {activity['description']}",
     }
+
+
+def _device_node_health_summary(summary: dict | None) -> str:
+    if not summary:
+        return ""
+
+    primary = summary.get("primary")
+    cameras = summary.get("cameras") or []
+    if primary is None:
+        return ""
+
+    parts = [
+        f"{_device_node_label(primary)} {_device_node_status_phrase(primary.get('status'))}"
+    ]
+    if cameras:
+        camera_parts = []
+        counts = {
+            "online": 0,
+            "provisioning": 0,
+            "offline": 0,
+            "error": 0,
+            "degraded": 0,
+        }
+        for camera in cameras:
+            status = str(camera.get("status") or "offline").strip().lower()
+            counts[status if status in counts else "offline"] += 1
+
+        if counts["online"]:
+            camera_parts.append(_pluralized_camera_status(counts["online"], "online"))
+        if counts["provisioning"]:
+            camera_parts.append(_pluralized_camera_status(counts["provisioning"], "needs setup"))
+        if counts["offline"]:
+            camera_parts.append(_pluralized_camera_status(counts["offline"], "offline"))
+        if counts["error"] or counts["degraded"]:
+            camera_parts.append(
+                _pluralized_camera_status(
+                    counts["error"] + counts["degraded"],
+                    "need attention",
+                )
+            )
+        parts.extend(camera_parts)
+    return " · ".join(parts)
+
+
+def _device_node_label(node_summary: dict) -> str:
+    display_name = str(node_summary.get("display_name") or "").strip()
+    if display_name:
+        return display_name
+
+    role = str(node_summary.get("node_role") or "").strip().lower()
+    if role == "master":
+        return "Master"
+    if role == "single_board":
+        return "Raspberry Pi"
+    return "Node"
+
+
+def _device_node_status_phrase(status: str | None) -> str:
+    normalized = str(status or "offline").strip().lower()
+    mapping = {
+        "online": "online",
+        "provisioning": "needs setup",
+        "offline": "offline",
+        "error": "needs attention",
+        "degraded": "needs attention",
+    }
+    return mapping.get(normalized, "offline")
+
+
+def _pluralized_camera_status(count: int, phrase: str) -> str:
+    label = "camera" if count == 1 else "cameras"
+    return f"{count} {label} {phrase}"
 
 
 def _as_utc(timestamp: datetime) -> datetime:

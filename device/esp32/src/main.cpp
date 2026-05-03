@@ -5,14 +5,17 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_now.h>
 
 #include <algorithm>
 #include <memory>
 #include <vector>
 
 #include "actuators/light_controller.h"
+#include "camera_capture_schedule.h"
 #include "actuators/pump_controller.h"
 #include "config.h"
+#include "espnow_test_protocol.h"
 #include "platform/platform_client.h"
 #include "sensors/dht22_sensor.h"
 #include "sensors/moisture_sensor.h"
@@ -33,6 +36,9 @@ constexpr char kSoftwareVersion[] = "0.1.0";
 constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
+constexpr uint16_t kCameraProvisioningConfigVersion = 1;
+constexpr uint16_t kDefaultCameraNodeIndex = 1;
+constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -72,6 +78,7 @@ StatusLed g_status_led(PIN_STATUS_LED, STATUS_LED_ON_LEVEL, STATUS_LED_OFF_LEVEL
 Preferences g_preferences;
 WebServer g_web_server(kProvisioningPort);
 std::unique_ptr<PlatformClient> g_platform_client;
+MasterCaptureScheduleState g_camera_capture_schedule{};
 
 DeviceConfig g_config;
 DeviceMode g_device_mode = DeviceMode::kBooting;
@@ -90,6 +97,12 @@ String g_pending_backend_url;
 String g_pending_platform_url;
 String g_pending_return_url;
 std::vector<WiFiNetworkOption> g_cached_wifi_networks;
+bool g_espnow_ready = false;
+uint32_t g_next_espnow_request_id = 1;
+MasterProvisioningSession g_camera_provisioning_session{};
+bool g_camera_provisioning_ready = false;
+unsigned long g_last_camera_provisioning_attempt_ms = 0;
+constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -160,6 +173,55 @@ String stableHardwareDeviceId() {
   return String(buffer);
 }
 
+String macToString(const uint8_t* mac) {
+  char buffer[18];
+  snprintf(
+      buffer,
+      sizeof(buffer),
+      "%02X:%02X:%02X:%02X:%02X:%02X",
+      mac[0],
+      mac[1],
+      mac[2],
+      mac[3],
+      mac[4],
+      mac[5]);
+  return String(buffer);
+}
+
+const char* espnowCommandToString(EspNowCommandType command) {
+  switch (command) {
+    case EspNowCommandType::kCaptureImage:
+      return "capture_image";
+    case EspNowCommandType::kProvisionStart:
+      return "provision_start";
+    case EspNowCommandType::kHealthCheck:
+      return "health_check";
+    case EspNowCommandType::kPauseCapture:
+      return "pause_capture";
+    case EspNowCommandType::kUpdateCaptureInterval:
+      return "update_capture_interval";
+    default:
+      return "unknown";
+  }
+}
+
+const char* espnowAckToString(EspNowAckStatus status) {
+  switch (status) {
+    case EspNowAckStatus::kOk:
+      return "ok";
+    case EspNowAckStatus::kUnsupported:
+      return "unsupported";
+    case EspNowAckStatus::kBusy:
+      return "busy";
+    case EspNowAckStatus::kFailed:
+      return "failed";
+    case EspNowAckStatus::kInvalid:
+      return "invalid";
+    default:
+      return "unknown";
+  }
+}
+
 void rebuildPlatformClient() {
   g_platform_client.reset();
   if (!hasRuntimeRegistration()) {
@@ -181,6 +243,208 @@ void rebuildPlatformClient() {
 
 bool platform_enabled() {
   return g_platform_client != nullptr && g_platform_client->configured();
+}
+
+bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
+  if (payload == nullptr || !hasWifiCredentials() || !hasRuntimeRegistration()) {
+    return false;
+  }
+  String platform_url = runtimePlatformUrl();
+  platform_url.trim();
+  if (platform_url.length() == 0) {
+    return false;
+  }
+  return espnow_build_provisioning_payload(
+      payload,
+      kCameraProvisioningConfigVersion,
+      kDefaultCameraNodeIndex,
+      static_cast<uint32_t>(g_config.platform_device_id),
+      g_config.wifi_ssid.c_str(),
+      g_config.wifi_password.c_str(),
+      platform_url.c_str(),
+      g_config.device_token.c_str());
+}
+
+void onEspNowDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
+  if (status != ESP_NOW_SEND_SUCCESS) {
+    Serial.printf(
+        "[camera-schedule] ESP-NOW send failed status=%d target=%s\n",
+        static_cast<int>(status),
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+  }
+}
+
+void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len) {
+  if (len != static_cast<int>(sizeof(EspNowPacket))) {
+    return;
+  }
+
+  EspNowPacket packet{};
+  memcpy(&packet, data, sizeof(packet));
+  if (packet.magic != ESPNOW_TEST_MAGIC || packet.version != ESPNOW_TEST_VERSION) {
+    return;
+  }
+
+  if (static_cast<EspNowMessageKind>(packet.kind) != EspNowMessageKind::kAck) {
+    return;
+  }
+
+  const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
+
+  if (command == EspNowCommandType::kProvisionStart &&
+      espnow_handle_provisioning_ack(&g_camera_provisioning_session, mac_addr, packet)) {
+    g_camera_provisioning_ready =
+        g_camera_provisioning_session.state == MasterProvisioningState::kSucceeded;
+    Serial.printf(
+        "[camera-provisioning] ACK request=%u command=%s status=%s from %s\n",
+        static_cast<unsigned int>(packet.request_id),
+        espnowCommandToString(command),
+        espnowAckToString(static_cast<EspNowAckStatus>(packet.ack_status)),
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    return;
+  }
+
+  if (command != EspNowCommandType::kCaptureImage) {
+    return;
+  }
+
+  Serial.printf(
+      "[camera-schedule] ACK request=%u command=%s status=%s from %s\n",
+      static_cast<unsigned int>(packet.request_id),
+      espnowCommandToString(command),
+      espnowAckToString(static_cast<EspNowAckStatus>(packet.ack_status)),
+      mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+}
+
+bool setupEspNow() {
+  if (g_espnow_ready || !hasWifiCredentials() || g_provisioning_mode) {
+    return g_espnow_ready;
+  }
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[camera-schedule] ESP-NOW init failed");
+    return false;
+  }
+
+  esp_now_register_send_cb(onEspNowDataSent);
+  esp_now_register_recv_cb(onEspNowDataReceived);
+
+  esp_now_peer_info_t peer{};
+  memcpy(peer.peer_addr, kEspNowBroadcastMac, sizeof(kEspNowBroadcastMac));
+  peer.channel = 0;
+  peer.encrypt = false;
+  if (!esp_now_is_peer_exist(kEspNowBroadcastMac)) {
+    if (esp_now_add_peer(&peer) != ESP_OK) {
+      Serial.println("[camera-schedule] failed to add broadcast ESP-NOW peer");
+      esp_now_deinit();
+      return false;
+    }
+  }
+
+  g_espnow_ready = true;
+  Serial.println("[camera-schedule] ESP-NOW ready");
+  return true;
+}
+
+bool sendCameraProvisioningPacket(unsigned long now) {
+  if (!g_espnow_ready || !espnow_should_send_provisioning_packet(g_camera_provisioning_session)) {
+    return false;
+  }
+
+  EspNowPacket packet{};
+  espnow_build_provisioning_packet(g_camera_provisioning_session, now, &packet);
+  const esp_err_t err = esp_now_send(
+      g_camera_provisioning_session.target_mac,
+      reinterpret_cast<const uint8_t*>(&packet),
+      sizeof(packet));
+  if (err != ESP_OK) {
+    Serial.printf("[camera-provisioning] provisioning send failed err=%d\n", static_cast<int>(err));
+    return false;
+  }
+
+  espnow_mark_provisioning_packet_sent(&g_camera_provisioning_session, now);
+  Serial.printf(
+      "[camera-provisioning] request=%u sent camera_index=%u target=%s\n",
+      static_cast<unsigned int>(packet.request_id),
+      static_cast<unsigned int>(g_camera_provisioning_session.payload.camera_node_index),
+      macToString(g_camera_provisioning_session.target_mac).c_str());
+  return true;
+}
+
+void serviceCameraProvisioning(unsigned long now) {
+  const bool runtime_ready =
+      g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode;
+  if (!runtime_ready || g_camera_provisioning_ready) {
+    return;
+  }
+
+  espnow_update_provisioning_session(&g_camera_provisioning_session, now);
+  if (g_camera_provisioning_session.state == MasterProvisioningState::kTimedOut ||
+      g_camera_provisioning_session.state == MasterProvisioningState::kFailed) {
+    g_camera_provisioning_session = MasterProvisioningSession{};
+  }
+
+  if (!g_camera_provisioning_session.active) {
+    if (now - g_last_camera_provisioning_attempt_ms < kCameraProvisioningRetryMs) {
+      return;
+    }
+    CameraProvisioningPayload payload{};
+    if (!buildCameraProvisioningPayload(&payload)) {
+      return;
+    }
+    espnow_start_provisioning_session(
+        &g_camera_provisioning_session,
+        kEspNowBroadcastMac,
+        g_next_espnow_request_id++,
+        payload,
+        now,
+        1500UL,
+        3);
+    g_last_camera_provisioning_attempt_ms = now;
+  }
+
+  sendCameraProvisioningPacket(now);
+}
+
+bool sendEspNowCaptureCommand(uint32_t now) {
+  if (!g_espnow_ready) {
+    return false;
+  }
+
+  EspNowPacket packet{};
+  packet.magic = ESPNOW_TEST_MAGIC;
+  packet.version = ESPNOW_TEST_VERSION;
+  packet.kind = static_cast<uint8_t>(EspNowMessageKind::kCommand);
+  packet.command = static_cast<uint8_t>(EspNowCommandType::kCaptureImage);
+  packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
+  packet.request_id = g_next_espnow_request_id++;
+  packet.timestamp_ms = now;
+
+  const esp_err_t err = esp_now_send(
+      kEspNowBroadcastMac,
+      reinterpret_cast<const uint8_t*>(&packet),
+      sizeof(packet));
+  if (err != ESP_OK) {
+    Serial.printf("[camera-schedule] capture send failed err=%d\n", static_cast<int>(err));
+    return false;
+  }
+
+  capture_schedule_mark_requested(&g_camera_capture_schedule, now);
+  Serial.printf(
+      "[camera-schedule] capture request=%u sent interval_ms=%lu\n",
+      static_cast<unsigned int>(packet.request_id),
+      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms));
+  return true;
+}
+
+void pollCameraCaptureSchedule(unsigned long now) {
+  const bool runtime_ready =
+      g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
+      g_camera_provisioning_ready;
+  if (!capture_schedule_should_request(g_camera_capture_schedule, now, runtime_ready)) {
+    return;
+  }
+  sendEspNowCaptureCommand(now);
 }
 
 void updateStatusLed() {
@@ -269,6 +533,8 @@ void clearConfig() {
   g_preferences.end();
   g_config = DeviceConfig{};
   g_platform_client.reset();
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_ready = false;
 }
 
 std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
@@ -711,6 +977,9 @@ bool registerProvisionedDevice() {
   StaticJsonDocument<384> payload;
   payload["device_id"] = stableHardwareDeviceId();
   payload["claim_token"] = g_config.claim_token;
+  payload["node_role"] = "master";
+  payload["display_name"] = "Master";
+  payload["hardware_model"] = "esp32_master";
   payload["hardware_version"] = BOARD_NAME;
   payload["software_version"] = kSoftwareVersion;
   JsonObject capabilities = payload.createNestedObject("capabilities");
@@ -759,6 +1028,8 @@ bool registerProvisionedDevice() {
   g_config.device_token = String(device_access_token);
   g_config.claim_token = "";
   saveConfig();
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_ready = false;
   Serial.printf("[provisioning] registration complete, platform_device_id=%d\n", g_config.platform_device_id);
   return true;
 }
@@ -770,6 +1041,8 @@ void checkProvisioningButton() {
     g_config.claim_token = "";
     g_config.device_token = "";
     g_config.platform_device_id = 0;
+    g_camera_provisioning_session = MasterProvisioningSession{};
+    g_camera_provisioning_ready = false;
     saveConfig();
     startProvisioningMode();
     return;
@@ -805,6 +1078,7 @@ PlatformReading read_platform_reading() {
       g_pump.is_on() ? "on" : "off");
 
   PlatformReading platform_reading{};
+  platform_reading.hardware_device_id = stableHardwareDeviceId();
   platform_reading.temperature_c = reading.temperature_c;
   platform_reading.humidity_percent = reading.humidity_percent;
   platform_reading.moisture_percent = moisture.moisture_percent;
@@ -946,6 +1220,10 @@ void setup() {
   if (String(PLANTLAB_PROVISIONING_API_URL).length() > 0) {
     Serial.printf("Fallback provisioning URL: %s\n", PLANTLAB_PROVISIONING_API_URL);
   }
+  Serial.printf(
+      "Camera capture schedule: %s (%lu ms)\n",
+      PLANTLAB_CAMERA_CAPTURE_ENABLED ? "enabled" : "disabled",
+      static_cast<unsigned long>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS));
 
   pinMode(PIN_STATUS_LED, OUTPUT);
   pinMode(PIN_POWER_BUTTON, INPUT_PULLUP);
@@ -962,6 +1240,10 @@ void setup() {
   Serial.println("[moisture] sensor initialized");
   Serial.println("[growing-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
+  capture_schedule_init(
+      &g_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
 
   loadConfig();
   if (hasWifiCredentials()) {
@@ -990,6 +1272,9 @@ void loop() {
   }
 
   connectToWiFi();
+  if (g_wifi_ready) {
+    setupEspNow();
+  }
 
   if (g_wifi_ready && hasPendingClaim()) {
     if (registerProvisionedDevice()) {
@@ -998,6 +1283,8 @@ void loop() {
   }
 
   if (platform_enabled()) {
+    serviceCameraProvisioning(now);
+    pollCameraCaptureSchedule(now);
     poll_platform_commands(now);
     send_platform_status(now);
     send_platform_reading(now);

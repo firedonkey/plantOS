@@ -150,7 +150,7 @@ def test_device_detail_page_shows_latest_data():
         assert "Waiting" in detail_response.text
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text
-        assert "Raspberry Pi Connection" in detail_response.text
+        assert "Online" in detail_response.text
     finally:
         teardown_overrides()
 
@@ -417,11 +417,10 @@ def test_devices_page_prefills_next_device_defaults():
         )
         assert create_response.status_code == 201
 
-        response = client.get("/devices")
+        response = client.get("/devices/add")
 
         assert response.status_code == 200
         assert 'value="Device 2"' in response.text
-        assert 'value="Plant 2"' in response.text
         assert 'value="Location 2"' in response.text
     finally:
         teardown_overrides()

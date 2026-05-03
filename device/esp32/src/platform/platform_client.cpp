@@ -41,6 +41,9 @@ int PlatformClient::device_id() const {
 bool PlatformClient::send_reading(const PlatformReading& reading, String* error) {
   StaticJsonDocument<384> doc;
   doc["device_id"] = device_id_;
+  if (reading.hardware_device_id.length() > 0) {
+    doc["hardware_device_id"] = reading.hardware_device_id;
+  }
   if (reading.temperature_valid) {
     doc["temperature"] = reading.temperature_c;
   }
@@ -167,6 +170,7 @@ bool PlatformClient::upload_jpeg(
     const uint8_t* bytes,
     size_t length,
     const char* filename,
+    const char* source_hardware_device_id,
     String* error) {
   if (bytes == nullptr || length == 0) {
     set_error(error, "image upload skipped: empty buffer");
@@ -189,7 +193,14 @@ bool PlatformClient::upload_jpeg(
   String prefix =
       "--" + boundary + "\r\n"
       "Content-Disposition: form-data; name=\"device_id\"\r\n\r\n" +
-      String(device_id_) + "\r\n"
+      String(device_id_) + "\r\n";
+  if (source_hardware_device_id != nullptr && String(source_hardware_device_id).length() > 0) {
+    prefix +=
+        "--" + boundary + "\r\n"
+        "Content-Disposition: form-data; name=\"source_hardware_device_id\"\r\n\r\n" +
+        String(source_hardware_device_id) + "\r\n";
+  }
+  prefix +=
       "--" + boundary + "\r\n"
       "Content-Disposition: form-data; name=\"file\"; filename=\"" + file_name + "\"\r\n"
       "Content-Type: image/jpeg\r\n\r\n";

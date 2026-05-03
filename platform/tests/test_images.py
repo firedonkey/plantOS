@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Device, Image, User
 from app.models.base import Base
+from app.services.device_nodes import upsert_device_node
 from app.services.storage import image_src
 
 
@@ -137,6 +138,57 @@ def test_upload_image_accepts_device_token(tmp_path, monkeypatch):
 
         assert response.status_code == 201
         assert response.json()["device_id"] == device_id
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_stores_attached_camera_source(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "source_hardware_device_id": "cam-01"},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["device_id"] == device_id
+        assert payload["source_hardware_device_id"] == "cam-01"
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_rejects_unattached_camera_source(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "source_hardware_device_id": "cam-99"},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Image source node is not attached to this device."
     finally:
         teardown_overrides()
 

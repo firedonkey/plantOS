@@ -11,6 +11,7 @@ struct PlatformCommand {
 };
 
 struct PlatformReading {
+  String hardware_device_id;
   float temperature_c;
   float humidity_percent;
   float moisture_percent;
@@ -50,6 +51,7 @@ class PlatformClient {
       const uint8_t* bytes,
       size_t length,
       const char* filename,
+      const char* source_hardware_device_id = nullptr,
       String* error = nullptr);
 
  private:

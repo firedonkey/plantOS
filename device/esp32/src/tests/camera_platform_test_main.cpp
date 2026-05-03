@@ -1,10 +1,14 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <esp_camera.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 
+#include <memory>
+
+#include "camera_node_runtime_config.h"
 #include "camera/xiao_camera.h"
 #include "config.h"
 #include "espnow_test_protocol.h"
@@ -15,23 +19,39 @@ extern "C" {
 }
 
 namespace {
+constexpr char kPreferencesNamespace[] = "plcam";
+constexpr char kConfigKeyProvisioned[] = "prov";
+constexpr char kConfigKeyVersion[] = "ver";
+constexpr char kConfigKeyCameraIndex[] = "cam_idx";
+constexpr char kConfigKeyPlatformId[] = "plat_id";
+constexpr char kConfigKeySsid[] = "wifi_ssid";
+constexpr char kConfigKeyPassword[] = "wifi_pass";
+constexpr char kConfigKeyPlatformUrl[] = "plat_url";
+constexpr char kConfigKeyDeviceToken[] = "dev_token";
+constexpr char kNodeRoleCamera[] = "camera";
+constexpr char kCameraSoftwareVersion[] = "0.1.0";
 XiaoCamera g_camera;
-PlatformClient g_platform_client(
-    PLANTLAB_PLATFORM_URL,
-    PLANTLAB_DEVICE_ID,
-    PLANTLAB_DEVICE_TOKEN);
+Preferences g_preferences;
+std::unique_ptr<PlatformClient> g_platform_client;
+CameraNodeRuntimeConfig g_runtime_config{};
+String g_hardware_device_id;
 
 constexpr uint32_t kWifiReconnectRetryMs = 5000UL;
 constexpr uint32_t kHeartbeatHttpTimeoutMs = 8000UL;
+constexpr uint32_t kNodeRegisterRetryMs = 5000UL;
 
 unsigned long g_last_wifi_attempt_ms = 0;
 unsigned long g_last_heartbeat_ms = 0;
+unsigned long g_last_node_register_attempt_ms = 0;
 unsigned long g_wifi_connect_started_at_ms = 0;
 bool g_wifi_connecting = false;
 bool g_wifi_ready = false;
 bool g_wifi_power_save_configured = false;
 bool g_camera_initialized = false;
 bool g_capture_in_progress = false;
+bool g_node_registered = false;
+bool g_restart_scheduled = false;
+unsigned long g_restart_at_ms = 0;
 
 volatile bool g_capture_requested = false;
 volatile bool g_capture_request_has_sender = false;
@@ -39,8 +59,138 @@ volatile uint32_t g_capture_request_id = 0;
 uint8_t g_capture_request_mac[6] = {0};
 }
 
+String stableHardwareDeviceId() {
+  if (g_hardware_device_id.length() > 0) {
+    return g_hardware_device_id;
+  }
+  const uint64_t chip_id = ESP.getEfuseMac();
+  char buffer[32];
+  snprintf(
+      buffer,
+      sizeof(buffer),
+      "pl-cam-%04x%08x",
+      static_cast<unsigned int>((chip_id >> 32) & 0xFFFF),
+      static_cast<unsigned int>(chip_id & 0xFFFFFFFF));
+  g_hardware_device_id = String(buffer);
+  return g_hardware_device_id;
+}
+
+String runtimeWifiSsid() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return String(g_runtime_config.wifi_ssid);
+  }
+  return String(PLANTLAB_WIFI_SSID);
+}
+
+String runtimeWifiPassword() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return String(g_runtime_config.wifi_password);
+  }
+  return String(PLANTLAB_WIFI_PASSWORD);
+}
+
+String runtimePlatformUrl() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return String(g_runtime_config.platform_url);
+  }
+  return String(PLANTLAB_PLATFORM_URL);
+}
+
+int runtimePlatformDeviceId() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return static_cast<int>(g_runtime_config.platform_device_id);
+  }
+  return PLANTLAB_DEVICE_ID;
+}
+
+String runtimeDeviceToken() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return String(g_runtime_config.device_token);
+  }
+  return String(PLANTLAB_DEVICE_TOKEN);
+}
+
+void rebuildPlatformClient() {
+  g_platform_client.reset();
+  const String platform_url = runtimePlatformUrl();
+  const String device_token = runtimeDeviceToken();
+  const int device_id = runtimePlatformDeviceId();
+  g_platform_client.reset(new PlatformClient(platform_url.c_str(), device_id, device_token.c_str()));
+}
+
+bool loadProvisionedConfig() {
+  camera_node_clear_runtime_config(&g_runtime_config);
+  g_preferences.begin(kPreferencesNamespace, true);
+  const bool provisioned = g_preferences.getBool(kConfigKeyProvisioned, false);
+  if (!provisioned) {
+    g_preferences.end();
+    rebuildPlatformClient();
+    Serial.println("[camera-node] no stored provisioning config");
+    return false;
+  }
+
+  g_runtime_config.provisioned = provisioned;
+  g_runtime_config.config_version = static_cast<uint16_t>(g_preferences.getUShort(kConfigKeyVersion, 0));
+  g_runtime_config.camera_node_index = static_cast<uint16_t>(g_preferences.getUShort(kConfigKeyCameraIndex, 0));
+  g_runtime_config.platform_device_id = static_cast<uint32_t>(g_preferences.getUInt(kConfigKeyPlatformId, 0));
+  String ssid = g_preferences.getString(kConfigKeySsid, "");
+  String password = g_preferences.getString(kConfigKeyPassword, "");
+  String platform_url = g_preferences.getString(kConfigKeyPlatformUrl, "");
+  String device_token = g_preferences.getString(kConfigKeyDeviceToken, "");
+  g_preferences.end();
+
+  espnow_copy_bounded_string(g_runtime_config.wifi_ssid, sizeof(g_runtime_config.wifi_ssid), ssid.c_str());
+  espnow_copy_bounded_string(g_runtime_config.wifi_password, sizeof(g_runtime_config.wifi_password), password.c_str());
+  espnow_copy_bounded_string(g_runtime_config.platform_url, sizeof(g_runtime_config.platform_url), platform_url.c_str());
+  espnow_copy_bounded_string(g_runtime_config.device_token, sizeof(g_runtime_config.device_token), device_token.c_str());
+
+  rebuildPlatformClient();
+  Serial.printf(
+      "[camera-node] loaded provisioning config version=%u camera_index=%u platform_device_id=%u ssid=%s\n",
+      static_cast<unsigned int>(g_runtime_config.config_version),
+      static_cast<unsigned int>(g_runtime_config.camera_node_index),
+      static_cast<unsigned int>(g_runtime_config.platform_device_id),
+      g_runtime_config.wifi_ssid);
+  return camera_node_runtime_config_complete(g_runtime_config);
+}
+
+bool saveProvisionedConfig(const CameraNodeRuntimeConfig& config) {
+  if (!camera_node_runtime_config_complete(config)) {
+    return false;
+  }
+  g_preferences.begin(kPreferencesNamespace, false);
+  g_preferences.putBool(kConfigKeyProvisioned, true);
+  g_preferences.putUShort(kConfigKeyVersion, config.config_version);
+  g_preferences.putUShort(kConfigKeyCameraIndex, config.camera_node_index);
+  g_preferences.putUInt(kConfigKeyPlatformId, config.platform_device_id);
+  g_preferences.putString(kConfigKeySsid, String(config.wifi_ssid));
+  g_preferences.putString(kConfigKeyPassword, String(config.wifi_password));
+  g_preferences.putString(kConfigKeyPlatformUrl, String(config.platform_url));
+  g_preferences.putString(kConfigKeyDeviceToken, String(config.device_token));
+  g_preferences.end();
+  g_runtime_config = config;
+  rebuildPlatformClient();
+  return true;
+}
+
+String defaultCameraDisplayName() {
+  const uint16_t index =
+      camera_node_runtime_config_complete(g_runtime_config) ? g_runtime_config.camera_node_index : 0;
+  if (index > 0) {
+    return String("Camera ") + String(index);
+  }
+  return String("Camera");
+}
+
+void scheduleRestart(uint32_t delay_ms) {
+  g_restart_scheduled = true;
+  g_restart_at_ms = millis() + delay_ms;
+  Serial.printf("[camera-node] reboot scheduled in %lu ms\n", static_cast<unsigned long>(delay_ms));
+}
+
 bool platform_enabled() {
-  return g_platform_client.configured() && String(PLANTLAB_WIFI_SSID).length() > 0;
+  return g_platform_client != nullptr && g_platform_client->configured() &&
+         runtimeWifiSsid().length() > 0;
 }
 
 String macToString(const uint8_t* mac) {
@@ -167,10 +317,12 @@ void setupWiFi() {
     return;
   }
 
-  Serial.printf("[camera-node] connecting to %s\n", PLANTLAB_WIFI_SSID);
+  const String wifi_ssid = runtimeWifiSsid();
+  const String wifi_password = runtimeWifiPassword();
+  Serial.printf("[camera-node] connecting to %s\n", wifi_ssid.c_str());
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(true);
-  WiFi.begin(PLANTLAB_WIFI_SSID, PLANTLAB_WIFI_PASSWORD);
+  WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
   g_last_wifi_attempt_ms = millis();
   g_wifi_connect_started_at_ms = millis();
   g_wifi_connecting = true;
@@ -202,8 +354,10 @@ void maintainWiFiConnection() {
   }
 
   if (!g_wifi_connecting && now - g_last_wifi_attempt_ms >= kWifiReconnectRetryMs) {
-    Serial.printf("[camera-node] retrying Wi-Fi for %s\n", PLANTLAB_WIFI_SSID);
-    WiFi.begin(PLANTLAB_WIFI_SSID, PLANTLAB_WIFI_PASSWORD);
+    const String wifi_ssid = runtimeWifiSsid();
+    const String wifi_password = runtimeWifiPassword();
+    Serial.printf("[camera-node] retrying Wi-Fi for %s\n", wifi_ssid.c_str());
+    WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
     g_last_wifi_attempt_ms = now;
     g_wifi_connect_started_at_ms = now;
     g_wifi_connecting = true;
@@ -215,9 +369,35 @@ bool sendHeartbeat() {
     return false;
   }
 
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    HTTPClient http;
+    http.setTimeout(kHeartbeatHttpTimeoutMs);
+    const String url = g_platform_client->base_url() + "/api/device-nodes/heartbeat";
+    if (!http.begin(url)) {
+      Serial.println("[camera-node] heartbeat failed: request setup failed");
+      return false;
+    }
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-Token", runtimeDeviceToken());
+
+    String body =
+        "{\"device_id\":" + String(g_platform_client->device_id()) +
+        ",\"hardware_device_id\":\"" + stableHardwareDeviceId() +
+        "\",\"node_role\":\"camera\",\"status\":\"online\"}";
+    const int code = http.POST(body);
+    const String response = code > 0 ? http.getString() : http.errorToString(code);
+    http.end();
+    if (code >= 200 && code < 300) {
+      Serial.printf("[camera-node] heartbeat sent to %s (%d)\n", url.c_str(), code);
+      return true;
+    }
+    Serial.printf("[camera-node] heartbeat failed HTTP %d: %s\n", code, response.c_str());
+    return false;
+  }
+
   HTTPClient http;
   http.setTimeout(kHeartbeatHttpTimeoutMs);
-  const String url = g_platform_client.base_url() + "/health";
+  const String url = g_platform_client->base_url() + "/health";
   if (!http.begin(url)) {
     Serial.println("[camera-node] heartbeat failed: request setup failed");
     return false;
@@ -233,6 +413,56 @@ bool sendHeartbeat() {
   }
 
   Serial.printf("[camera-node] heartbeat failed HTTP %d: %s\n", code, body.c_str());
+  return false;
+}
+
+bool registerDeviceNode() {
+  if (!camera_node_runtime_config_complete(g_runtime_config) || !platform_enabled() || !g_wifi_ready) {
+    return false;
+  }
+  if (g_node_registered) {
+    return true;
+  }
+
+  const unsigned long now = millis();
+  if (now - g_last_node_register_attempt_ms < kNodeRegisterRetryMs) {
+    return false;
+  }
+  g_last_node_register_attempt_ms = now;
+
+  HTTPClient http;
+  http.setTimeout(kHeartbeatHttpTimeoutMs);
+  const String url = g_platform_client->base_url() + "/api/device-nodes/register";
+  if (!http.begin(url)) {
+    Serial.println("[camera-node] node registration failed: request setup failed");
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Token", runtimeDeviceToken());
+
+  String body =
+      "{\"device_id\":" + String(g_platform_client->device_id()) +
+      ",\"hardware_device_id\":\"" + stableHardwareDeviceId() +
+      "\",\"node_role\":\"camera\"" +
+      ",\"node_index\":" + String(static_cast<unsigned int>(g_runtime_config.camera_node_index)) +
+      ",\"display_name\":\"" + defaultCameraDisplayName() +
+      "\",\"hardware_model\":\"xiao_esp32s3_camera\"" +
+      ",\"hardware_version\":\"" + String(BOARD_NAME) +
+      "\",\"software_version\":\"" + String(kCameraSoftwareVersion) +
+      "\",\"capabilities\":{\"camera\":true}" +
+      ",\"status\":\"online\"}";
+
+  const int code = http.POST(body);
+  const String response = code > 0 ? http.getString() : http.errorToString(code);
+  http.end();
+
+  if (code >= 200 && code < 300) {
+    g_node_registered = true;
+    Serial.printf("[camera-node] node registration succeeded at %s (%d)\n", url.c_str(), code);
+    return true;
+  }
+
+  Serial.printf("[camera-node] node registration failed HTTP %d: %s\n", code, response.c_str());
   return false;
 }
 
@@ -270,6 +500,10 @@ bool captureAndUploadImage() {
     Serial.println("[camera-node] upload skipped: Wi-Fi not ready");
     return false;
   }
+  if (camera_node_runtime_config_complete(g_runtime_config) && !registerDeviceNode()) {
+    Serial.println("[camera-node] upload skipped: camera node is not registered yet");
+    return false;
+  }
 
   if (!initCamera()) {
     return false;
@@ -289,10 +523,11 @@ bool captureAndUploadImage() {
       static_cast<unsigned int>(frame->len));
 
   String error;
-  const bool uploaded = g_platform_client.upload_jpeg(
+  const bool uploaded = g_platform_client->upload_jpeg(
       frame->buf,
       frame->len,
       "esp32-camera.jpg",
+      camera_node_runtime_config_complete(g_runtime_config) ? stableHardwareDeviceId().c_str() : nullptr,
       &error);
   esp_camera_fb_return(frame);
 
@@ -330,6 +565,40 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
       static_cast<unsigned int>(packet.request_id),
       commandToString(command),
       macToString(mac_addr).c_str());
+
+  if (command == EspNowCommandType::kProvisionStart) {
+    if (g_capture_in_progress) {
+      sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kBusy);
+      return;
+    }
+    const CameraProvisioningPayload payload = espnow_packet_get_provisioning_payload(packet);
+    CameraNodeRuntimeConfig next_config{};
+    if (!camera_node_apply_provisioning_payload(&next_config, payload)) {
+      Serial.println("[camera-node] provisioning payload invalid");
+      sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kInvalid);
+      return;
+    }
+    if (camera_node_runtime_config_equal(g_runtime_config, next_config)) {
+      Serial.println("[camera-node] provisioning config unchanged");
+      sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+      return;
+    }
+    if (!saveProvisionedConfig(next_config)) {
+      Serial.println("[camera-node] provisioning save failed");
+      sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kFailed);
+      return;
+    }
+    g_node_registered = false;
+    Serial.printf(
+        "[camera-node] provisioning config saved version=%u camera_index=%u platform_device_id=%u ssid=%s\n",
+        static_cast<unsigned int>(next_config.config_version),
+        static_cast<unsigned int>(next_config.camera_node_index),
+        static_cast<unsigned int>(next_config.platform_device_id),
+        next_config.wifi_ssid);
+    sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+    scheduleRestart(1500UL);
+    return;
+  }
 
   if (command != EspNowCommandType::kCaptureImage) {
     sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kUnsupported);
@@ -387,20 +656,39 @@ void setup() {
 
   Serial.println();
   Serial.println("=== PlantLab ESP32 Camera Platform Test ===");
-  Serial.printf("[camera-node] base_url: %s\n", g_platform_client.base_url().c_str());
-  Serial.printf("[camera-node] device_id: %d\n", g_platform_client.device_id());
+  Serial.printf("[camera-node] hardware_device_id: %s\n", stableHardwareDeviceId().c_str());
 
   disableBluetooth();
   enterIdlePowerMode();
+  const bool loaded_provisioned_config = loadProvisionedConfig();
+  if (loaded_provisioned_config) {
+    Serial.println("[camera-node] runtime config source: Preferences");
+  } else {
+    rebuildPlatformClient();
+    Serial.println("[camera-node] runtime config source: compile-time fallback");
+  }
+  if (g_platform_client != nullptr) {
+    Serial.printf("[camera-node] base_url: %s\n", g_platform_client->base_url().c_str());
+    Serial.printf("[camera-node] device_id: %d\n", g_platform_client->device_id());
+  }
   setupWiFi();
   setupEspNow();
   deinitCamera();
 }
 
 void loop() {
+  if (g_restart_scheduled && millis() >= g_restart_at_ms) {
+    g_restart_scheduled = false;
+    Serial.println("[camera-node] rebooting to apply provisioning");
+    ESP.restart();
+  }
+
   maintainWiFiConnection();
 
   const unsigned long now = millis();
+  if (camera_node_runtime_config_complete(g_runtime_config) && g_wifi_ready) {
+    registerDeviceNode();
+  }
   if (platform_enabled() && g_wifi_ready && now - g_last_heartbeat_ms >= PLANTLAB_CAMERA_HEARTBEAT_INTERVAL_MS) {
     g_last_heartbeat_ms = now;
     sendHeartbeat();
