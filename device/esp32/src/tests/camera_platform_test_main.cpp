@@ -39,6 +39,7 @@ String g_hardware_device_id;
 constexpr uint32_t kWifiReconnectRetryMs = 5000UL;
 constexpr uint32_t kHeartbeatHttpTimeoutMs = 8000UL;
 constexpr uint32_t kNodeRegisterRetryMs = 5000UL;
+constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 unsigned long g_last_wifi_attempt_ms = 0;
 unsigned long g_last_heartbeat_ms = 0;
@@ -52,6 +53,9 @@ bool g_capture_in_progress = false;
 bool g_node_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
+bool g_last_provision_sender_known = false;
+uint8_t g_last_provision_sender_mac[6] = {0};
+uint32_t g_last_provision_request_id = 0;
 
 volatile bool g_capture_requested = false;
 volatile bool g_capture_request_has_sender = false;
@@ -278,6 +282,49 @@ void sendAck(
   }
 }
 
+void sendHealthReport(const uint8_t* target_mac, uint32_t request_id = 0) {
+  if (!ensurePeer(target_mac)) {
+    return;
+  }
+
+  EspNowPacket packet{};
+  packet.magic = ESPNOW_TEST_MAGIC;
+  packet.version = ESPNOW_TEST_VERSION;
+  packet.kind = static_cast<uint8_t>(EspNowMessageKind::kHealthReport);
+  packet.command = static_cast<uint8_t>(EspNowCommandType::kHealthCheck);
+  packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
+  packet.request_id = request_id;
+  packet.timestamp_ms = millis();
+  uint32_t flags = 0;
+  if (g_wifi_ready) {
+    flags |= ESPNOW_HEALTH_FLAG_WIFI_READY;
+  }
+  if (g_node_registered) {
+    flags |= ESPNOW_HEALTH_FLAG_NODE_REGISTERED;
+  }
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    flags |= ESPNOW_HEALTH_FLAG_CONFIG_READY;
+  }
+  packet.value_u32_1 = flags;
+  packet.value_u32_2 =
+      camera_node_runtime_config_complete(g_runtime_config) ? g_runtime_config.camera_node_index : 0;
+
+  const esp_err_t err = esp_now_send(
+      target_mac,
+      reinterpret_cast<const uint8_t*>(&packet),
+      sizeof(packet));
+  if (err == ESP_OK) {
+    Serial.printf(
+        "[camera-node] HEALTH request=%u flags=%u camera_index=%u -> %s\n",
+        static_cast<unsigned int>(request_id),
+        static_cast<unsigned int>(packet.value_u32_1),
+        static_cast<unsigned int>(packet.value_u32_2),
+        macToString(target_mac).c_str());
+  } else {
+    Serial.printf("[camera-node] HEALTH send failed err=%d\n", static_cast<int>(err));
+  }
+}
+
 void disableBluetooth() {
   const bool stopped = btStop();
   Serial.printf("[camera-node] bluetooth %s\n", stopped ? "disabled" : "already disabled");
@@ -389,6 +436,9 @@ bool sendHeartbeat() {
     http.end();
     if (code >= 200 && code < 300) {
       Serial.printf("[camera-node] heartbeat sent to %s (%d)\n", url.c_str(), code);
+      if (g_last_provision_sender_known) {
+        sendHealthReport(g_last_provision_sender_mac, g_last_provision_request_id);
+      }
       return true;
     }
     Serial.printf("[camera-node] heartbeat failed HTTP %d: %s\n", code, response.c_str());
@@ -459,6 +509,10 @@ bool registerDeviceNode() {
   if (code >= 200 && code < 300) {
     g_node_registered = true;
     Serial.printf("[camera-node] node registration succeeded at %s (%d)\n", url.c_str(), code);
+    sendHealthReport(kEspNowBroadcastMac);
+    if (g_last_provision_sender_known) {
+      sendHealthReport(g_last_provision_sender_mac, g_last_provision_request_id);
+    }
     return true;
   }
 
@@ -567,6 +621,9 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
       macToString(mac_addr).c_str());
 
   if (command == EspNowCommandType::kProvisionStart) {
+    memcpy(g_last_provision_sender_mac, mac_addr, sizeof(g_last_provision_sender_mac));
+    g_last_provision_sender_known = true;
+    g_last_provision_request_id = packet.request_id;
     if (g_capture_in_progress) {
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kBusy);
       return;
@@ -581,6 +638,9 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
     if (camera_node_runtime_config_equal(g_runtime_config, next_config)) {
       Serial.println("[camera-node] provisioning config unchanged");
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+      if (g_node_registered && g_wifi_ready) {
+        sendHealthReport(mac_addr, packet.request_id);
+      }
       return;
     }
     if (!saveProvisionedConfig(next_config)) {

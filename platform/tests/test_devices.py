@@ -151,6 +151,45 @@ def test_device_detail_page_shows_latest_data():
         assert "Last seen from sensor reading" in detail_response.text
         assert "data-auto-refresh" not in detail_response.text
         assert "Online" in detail_response.text
+        assert "42.5%" in detail_response.text
+        assert "22.2 C" in detail_response.text
+        assert "51.0%" in detail_response.text
+    finally:
+        teardown_overrides()
+
+
+def test_device_detail_page_formats_initial_soil_moisture_value():
+    client, _ = build_client_with_user(set_session_cookie=True)
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 29.05556,
+                "temperature": 23.0,
+                "humidity": 53.1,
+                "light_on": False,
+                "pump_on": False,
+                "pump_status": "idle",
+            },
+        )
+        assert data_response.status_code == 201
+
+        detail_response = client.get(f"/devices/{device_id}")
+
+        assert detail_response.status_code == 200
+        assert "29.1%" in detail_response.text
+        assert "29.05556" not in detail_response.text
     finally:
         teardown_overrides()
 

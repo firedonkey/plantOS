@@ -269,6 +269,7 @@ def device_detail_page(
             "current_user": current_user,
             "device": device,
             "latest_reading": latest_reading,
+            "latest_reading_summary": _reading_summary(device, latest_reading, recent_commands),
             "recent_readings": recent_readings,
             "recent_images": recent_images,
             "latest_image": latest_image,
@@ -437,8 +438,8 @@ def _setup_finishing_expect_image(nodes: list, requested_expect_image: bool) -> 
         for node in nodes
         if getattr(node, "node_role", None) is not None
     }
-    if "master" in roles:
-        return False
+    if "camera" in roles:
+        return True
     if "single_board" in roles:
         return True
     return requested_expect_image

@@ -453,7 +453,7 @@ def test_setup_status_waits_for_image_for_single_board_device():
         teardown_overrides()
 
 
-def test_setup_status_for_master_device_is_ready_after_first_reading_without_image():
+def test_setup_status_for_master_only_device_is_ready_after_first_reading_without_image():
     client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
     try:
         with TestingSessionLocal() as session:
@@ -499,6 +499,51 @@ def test_setup_status_for_master_device_is_ready_after_first_reading_without_ima
         teardown_overrides()
 
 
+def test_setup_status_for_master_only_device_keeps_explicit_image_expectation():
+    client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
+    try:
+        with TestingSessionLocal() as session:
+            device = session.get(Device, device_id)
+            device.name = "Device 1"
+            device.location = "Grow Tent"
+            device.user_id = user_id
+            session.add(device)
+            session.commit()
+
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            session.add(
+                SensorReading(
+                    device_id=device_id,
+                    moisture=39.2,
+                    temperature=22.4,
+                    humidity=54.0,
+                )
+            )
+            session.commit()
+
+        response = client.get(
+            "/setup/status.json",
+            params={"device_name": "Device 1", "location": "Grow Tent", "expect_image": "1"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_found"] is True
+        assert payload["has_reading"] is True
+        assert payload["has_image"] is False
+        assert payload["expect_image"] is True
+        assert payload["ready"] is False
+    finally:
+        teardown_overrides()
+
+
 def test_setup_finishing_page_hides_image_wait_for_master_device():
     client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
     try:
@@ -533,7 +578,102 @@ def test_setup_finishing_page_hides_image_wait_for_master_device():
         teardown_overrides()
 
 
-def test_setup_status_accepts_legacy_query_but_keeps_master_image_optional():
+def test_setup_status_for_master_with_camera_waits_for_first_image():
+    client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
+    try:
+        with TestingSessionLocal() as session:
+            device = session.get(Device, device_id)
+            device.name = "Device 1"
+            device.location = "Grow Tent"
+            device.user_id = user_id
+            session.add(device)
+            session.commit()
+
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+            session.add(
+                SensorReading(
+                    device_id=device_id,
+                    moisture=39.2,
+                    temperature=22.4,
+                    humidity=54.0,
+                )
+            )
+            session.commit()
+
+        response = client.get(
+            "/setup/status.json",
+            params={"device_name": "Device 1", "location": "Grow Tent", "expect_image": "0"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_found"] is True
+        assert payload["has_reading"] is True
+        assert payload["has_image"] is False
+        assert payload["expect_image"] is True
+        assert payload["ready"] is False
+    finally:
+        teardown_overrides()
+
+
+def test_setup_finishing_page_shows_image_wait_for_master_with_camera():
+    client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
+    try:
+        with TestingSessionLocal() as session:
+            device = session.get(Device, device_id)
+            device.name = "Device 1"
+            device.location = "Grow Tent"
+            device.user_id = user_id
+            session.add(device)
+            session.commit()
+
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+            session.commit()
+
+        response = client.get(
+            "/devices/setup-finishing",
+            params={"device_name": "Device 1", "location": "Grow Tent", "expect_image": "0"},
+        )
+
+        assert response.status_code == 200
+        assert "First photo uploaded" in response.text
+    finally:
+        teardown_overrides()
+
+
+def test_setup_status_accepts_legacy_query_for_master_only_device():
     client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
     try:
         with TestingSessionLocal() as session:

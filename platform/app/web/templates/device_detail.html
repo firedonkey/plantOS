@@ -41,29 +41,29 @@
             </div>
             <div class="reading-meta">
               <span>Last reading</span>
-              <strong data-field="last_reading">{% if latest_reading %}{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}{% else %}Waiting{% endif %}</strong>
+              <strong data-field="last_reading">{% if latest_reading_summary %}{{ latest_reading_summary.last_reading }}{% else %}Waiting{% endif %}</strong>
             </div>
           </div>
           <div class="metric-grid live-metric-grid" aria-label="Latest reading">
             <article class="metric-card metric-card-primary">
               <span>Soil Moisture</span>
-              <strong data-field="moisture">{% if latest_reading %}{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.moisture is not none %}%{% endif %}</strong>
+              <strong data-field="moisture">{% if latest_reading_summary %}{{ latest_reading_summary.moisture }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-primary">
               <span>Temperature</span>
-              <strong data-field="temperature">{% if latest_reading %}{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.temperature is not none %} C{% endif %}</strong>
+              <strong data-field="temperature">{% if latest_reading_summary %}{{ latest_reading_summary.temperature }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-primary">
               <span>Humidity</span>
-              <strong data-field="humidity">{% if latest_reading %}{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.humidity is not none %}%{% endif %}</strong>
+              <strong data-field="humidity">{% if latest_reading_summary %}{{ latest_reading_summary.humidity }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-state">
               <span>Growing light</span>
-              <strong data-field="light">{% if latest_reading %}{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
+              <strong data-field="light">{% if latest_reading_summary %}{{ latest_reading_summary.light }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-state">
               <span>Pump</span>
-              <strong data-field="pump">{% if latest_reading %}{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
+              <strong data-field="pump">{% if latest_reading_summary %}{{ latest_reading_summary.pump }}{% else %}n/a{% endif %}</strong>
             </article>
           </div>
 

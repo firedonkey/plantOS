@@ -39,6 +39,8 @@ constexpr uint32_t kHttpTimeoutMs = 20000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
+constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
+constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -100,9 +102,15 @@ std::vector<WiFiNetworkOption> g_cached_wifi_networks;
 bool g_espnow_ready = false;
 uint32_t g_next_espnow_request_id = 1;
 MasterProvisioningSession g_camera_provisioning_session{};
-bool g_camera_provisioning_ready = false;
+bool g_camera_provisioning_acknowledged = false;
+bool g_camera_runtime_ready = false;
 unsigned long g_last_camera_provisioning_attempt_ms = 0;
 constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t g_camera_target_mac[6] = {0};
+bool g_camera_target_mac_known = false;
+bool g_camera_bootstrap_capture_active = false;
+uint8_t g_camera_bootstrap_capture_attempts = 0;
+unsigned long g_next_camera_bootstrap_capture_ms = 0;
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -122,17 +130,27 @@ String js_string_escape(const String& value) {
   return escaped;
 }
 
-String withNoImageExpectation(const String& return_url) {
-  if (return_url.length() == 0) {
-    return return_url;
+String withExpectedImageSetting(const String& url, bool expect_image) {
+  if (url.length() == 0) {
+    return url;
   }
-  if (return_url.indexOf("expect_image=") >= 0) {
-    return return_url;
+
+  const String target = String("expect_image=") + (expect_image ? "1" : "0");
+  const int query_index = url.indexOf('?');
+  if (query_index < 0) {
+    return url + "?" + target;
   }
-  if (return_url.indexOf('?') >= 0) {
-    return return_url + "&expect_image=0";
+
+  const int expect_index = url.indexOf("expect_image=", query_index + 1);
+  if (expect_index < 0) {
+    return url + "&" + target;
   }
-  return return_url + "?expect_image=0";
+
+  int value_end = url.indexOf('&', expect_index);
+  if (value_end < 0) {
+    value_end = url.length();
+  }
+  return url.substring(0, expect_index) + target + url.substring(value_end);
 }
 
 bool hasWifiCredentials() {
@@ -285,15 +303,38 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
     return;
   }
 
-  if (static_cast<EspNowMessageKind>(packet.kind) != EspNowMessageKind::kAck) {
+  const EspNowMessageKind kind = static_cast<EspNowMessageKind>(packet.kind);
+  const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
+
+  if (kind == EspNowMessageKind::kHealthReport) {
+    const uint32_t flags = packet.value_u32_1;
+    const bool wifi_ready = (flags & ESPNOW_HEALTH_FLAG_WIFI_READY) != 0;
+    const bool node_registered = (flags & ESPNOW_HEALTH_FLAG_NODE_REGISTERED) != 0;
+    const bool config_ready = (flags & ESPNOW_HEALTH_FLAG_CONFIG_READY) != 0;
+    if (mac_addr != nullptr) {
+      memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
+      g_camera_target_mac_known = true;
+    }
+    Serial.printf(
+        "[camera-provisioning] health report request=%u flags=%lu camera_index=%lu from %s\n",
+        static_cast<unsigned int>(packet.request_id),
+        static_cast<unsigned long>(flags),
+        static_cast<unsigned long>(packet.value_u32_2),
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    if (wifi_ready && node_registered && config_ready && !g_camera_runtime_ready) {
+      g_camera_runtime_ready = true;
+      Serial.println("[camera-provisioning] camera runtime is ready; first capture can start now");
+    }
     return;
   }
 
-  const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
+  if (kind != EspNowMessageKind::kAck) {
+    return;
+  }
 
   if (command == EspNowCommandType::kProvisionStart &&
       espnow_handle_provisioning_ack(&g_camera_provisioning_session, mac_addr, packet)) {
-    g_camera_provisioning_ready =
+    g_camera_provisioning_acknowledged =
         g_camera_provisioning_session.state == MasterProvisioningState::kSucceeded;
     Serial.printf(
         "[camera-provisioning] ACK request=%u command=%s status=%s from %s\n",
@@ -346,6 +387,25 @@ bool setupEspNow() {
   return true;
 }
 
+bool ensureEspNowPeer(const uint8_t* peer_mac) {
+  if (peer_mac == nullptr) {
+    return false;
+  }
+  if (esp_now_is_peer_exist(peer_mac)) {
+    return true;
+  }
+
+  esp_now_peer_info_t peer{};
+  memcpy(peer.peer_addr, peer_mac, 6);
+  peer.channel = 0;
+  peer.encrypt = false;
+  if (esp_now_add_peer(&peer) != ESP_OK) {
+    Serial.printf("[camera-schedule] failed to add ESP-NOW peer %s\n", macToString(peer_mac).c_str());
+    return false;
+  }
+  return true;
+}
+
 bool sendCameraProvisioningPacket(unsigned long now) {
   if (!g_espnow_ready || !espnow_should_send_provisioning_packet(g_camera_provisioning_session)) {
     return false;
@@ -374,7 +434,7 @@ bool sendCameraProvisioningPacket(unsigned long now) {
 void serviceCameraProvisioning(unsigned long now) {
   const bool runtime_ready =
       g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode;
-  if (!runtime_ready || g_camera_provisioning_ready) {
+  if (!runtime_ready || g_camera_provisioning_acknowledged) {
     return;
   }
 
@@ -420,8 +480,12 @@ bool sendEspNowCaptureCommand(uint32_t now) {
   packet.request_id = g_next_espnow_request_id++;
   packet.timestamp_ms = now;
 
+  const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
+  if (!ensureEspNowPeer(target_mac)) {
+    return false;
+  }
   const esp_err_t err = esp_now_send(
-      kEspNowBroadcastMac,
+      target_mac,
       reinterpret_cast<const uint8_t*>(&packet),
       sizeof(packet));
   if (err != ESP_OK) {
@@ -431,16 +495,46 @@ bool sendEspNowCaptureCommand(uint32_t now) {
 
   capture_schedule_mark_requested(&g_camera_capture_schedule, now);
   Serial.printf(
-      "[camera-schedule] capture request=%u sent interval_ms=%lu\n",
+      "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
       static_cast<unsigned int>(packet.request_id),
-      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms));
+      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      macToString(target_mac).c_str());
   return true;
 }
 
+void maybeSendBootstrapCapture(unsigned long now) {
+  if (!g_camera_bootstrap_capture_active || g_provisioning_mode || !g_espnow_ready || !g_wifi_ready ||
+      !platform_enabled()) {
+    return;
+  }
+  if (g_camera_runtime_ready) {
+    g_camera_bootstrap_capture_active = false;
+    return;
+  }
+  if (g_camera_bootstrap_capture_attempts >= kCameraBootstrapCaptureMaxAttempts) {
+    g_camera_bootstrap_capture_active = false;
+    Serial.println("[camera-schedule] bootstrap capture window expired");
+    return;
+  }
+  if (now < g_next_camera_bootstrap_capture_ms) {
+    return;
+  }
+  if (sendEspNowCaptureCommand(now)) {
+    g_camera_bootstrap_capture_attempts =
+        static_cast<uint8_t>(g_camera_bootstrap_capture_attempts + 1);
+    g_next_camera_bootstrap_capture_ms = now + kCameraBootstrapCaptureRetryMs;
+    Serial.printf(
+        "[camera-schedule] bootstrap capture attempt=%u/%u\n",
+        static_cast<unsigned int>(g_camera_bootstrap_capture_attempts),
+        static_cast<unsigned int>(kCameraBootstrapCaptureMaxAttempts));
+  }
+}
+
 void pollCameraCaptureSchedule(unsigned long now) {
+  maybeSendBootstrapCapture(now);
   const bool runtime_ready =
       g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
-      g_camera_provisioning_ready;
+      g_camera_runtime_ready;
   if (!capture_schedule_should_request(g_camera_capture_schedule, now, runtime_ready)) {
     return;
   }
@@ -534,7 +628,18 @@ void clearConfig() {
   g_config = DeviceConfig{};
   g_platform_client.reset();
   g_camera_provisioning_session = MasterProvisioningSession{};
-  g_camera_provisioning_ready = false;
+  g_camera_provisioning_acknowledged = false;
+  g_camera_runtime_ready = false;
+  g_last_camera_provisioning_attempt_ms = 0;
+  g_camera_target_mac_known = false;
+  memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
+  g_camera_bootstrap_capture_active = false;
+  g_camera_bootstrap_capture_attempts = 0;
+  g_next_camera_bootstrap_capture_ms = 0;
+  capture_schedule_init(
+      &g_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
 }
 
 std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
@@ -595,7 +700,6 @@ String wifiOptionsHtml() {
 }
 
 String connectingPageHtml(const String& return_url) {
-  const String effective_return_url = withNoImageExpectation(return_url);
   String html = R"HTML(
 <!doctype html>
 <html lang="en">
@@ -671,7 +775,7 @@ String connectingPageHtml(const String& return_url) {
     </script>
   </body>
 </html>)HTML";
-  html.replace("__RETURN_URL__", js_string_escape(effective_return_url));
+  html.replace("__RETURN_URL__", js_string_escape(return_url));
   return html;
 }
 
@@ -817,7 +921,9 @@ void handleProvisioningSubmit() {
   const String claim_token = g_pending_claim_token;
   const String backend_url = g_pending_backend_url;
   const String platform_url = g_pending_platform_url;
-  const String return_url = g_pending_return_url;
+  const String return_url = withExpectedImageSetting(
+      g_pending_return_url,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0);
 
   if (ssid.length() == 0 || claim_token.length() == 0 || platform_url.length() == 0) {
     Serial.println("[provisioning] submission rejected: Wi-Fi SSID, setup code, or platform URL missing");
@@ -869,7 +975,7 @@ void startProvisioningMode() {
   if (!g_web_routes_registered) {
     g_web_server.on("/", HTTP_GET, []() {
       const String setup_code = g_web_server.arg("setup_code");
-      const String return_url = withNoImageExpectation(g_web_server.arg("return_url"));
+      const String return_url = g_web_server.arg("return_url");
       const String backend_url = g_web_server.arg("backend_url");
       const String platform_url = g_web_server.arg("platform_url");
       if (setup_code.length() > 0) {
@@ -1029,7 +1135,18 @@ bool registerProvisionedDevice() {
   g_config.claim_token = "";
   saveConfig();
   g_camera_provisioning_session = MasterProvisioningSession{};
-  g_camera_provisioning_ready = false;
+  g_camera_provisioning_acknowledged = false;
+  g_camera_runtime_ready = false;
+  g_last_camera_provisioning_attempt_ms = 0;
+  g_camera_target_mac_known = false;
+  memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
+  g_camera_bootstrap_capture_active = PLANTLAB_CAMERA_CAPTURE_ENABLED != 0;
+  g_camera_bootstrap_capture_attempts = 0;
+  g_next_camera_bootstrap_capture_ms = millis() + 1000UL;
+  capture_schedule_init(
+      &g_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
   Serial.printf("[provisioning] registration complete, platform_device_id=%d\n", g_config.platform_device_id);
   return true;
 }
@@ -1042,7 +1159,18 @@ void checkProvisioningButton() {
     g_config.device_token = "";
     g_config.platform_device_id = 0;
     g_camera_provisioning_session = MasterProvisioningSession{};
-    g_camera_provisioning_ready = false;
+    g_camera_provisioning_acknowledged = false;
+    g_camera_runtime_ready = false;
+    g_last_camera_provisioning_attempt_ms = 0;
+    g_camera_target_mac_known = false;
+    memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
+    g_camera_bootstrap_capture_active = false;
+    g_camera_bootstrap_capture_attempts = 0;
+    g_next_camera_bootstrap_capture_ms = 0;
+    capture_schedule_init(
+        &g_camera_capture_schedule,
+        PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+        PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
     saveConfig();
     startProvisioningMode();
     return;

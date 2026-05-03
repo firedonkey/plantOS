@@ -11,6 +11,9 @@ constexpr size_t ESPNOW_TEST_WIFI_SSID_MAX_LEN = 32;
 constexpr size_t ESPNOW_TEST_WIFI_PASSWORD_MAX_LEN = 63;
 constexpr size_t ESPNOW_TEST_PLATFORM_URL_MAX_LEN = 56;
 constexpr size_t ESPNOW_TEST_DEVICE_TOKEN_MAX_LEN = 56;
+constexpr uint32_t ESPNOW_HEALTH_FLAG_WIFI_READY = 1u << 0;
+constexpr uint32_t ESPNOW_HEALTH_FLAG_NODE_REGISTERED = 1u << 1;
+constexpr uint32_t ESPNOW_HEALTH_FLAG_CONFIG_READY = 1u << 2;
 
 enum class EspNowMessageKind : uint8_t {
   kCommand = 1,
