@@ -336,6 +336,13 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       espnow_handle_provisioning_ack(&g_camera_provisioning_session, mac_addr, packet)) {
     g_camera_provisioning_acknowledged =
         g_camera_provisioning_session.state == MasterProvisioningState::kSucceeded;
+    if (g_camera_provisioning_acknowledged && !g_camera_runtime_ready &&
+        PLANTLAB_CAMERA_CAPTURE_ENABLED != 0) {
+      g_camera_bootstrap_capture_active = true;
+      g_camera_bootstrap_capture_attempts = 0;
+      g_next_camera_bootstrap_capture_ms = millis();
+      Serial.println("[camera-schedule] bootstrap capture window armed after provisioning ACK");
+    }
     Serial.printf(
         "[camera-provisioning] ACK request=%u command=%s status=%s from %s\n",
         static_cast<unsigned int>(packet.request_id),
@@ -349,11 +356,24 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
     return;
   }
 
+  const EspNowAckStatus ack_status = static_cast<EspNowAckStatus>(packet.ack_status);
+  if (ack_status == EspNowAckStatus::kOk) {
+    if (mac_addr != nullptr) {
+      memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
+      g_camera_target_mac_known = true;
+    }
+    if (!g_camera_runtime_ready) {
+      g_camera_runtime_ready = true;
+      Serial.println("[camera-schedule] capture ACK confirms camera runtime is ready");
+    }
+    g_camera_bootstrap_capture_active = false;
+  }
+
   Serial.printf(
       "[camera-schedule] ACK request=%u command=%s status=%s from %s\n",
       static_cast<unsigned int>(packet.request_id),
       espnowCommandToString(command),
-      espnowAckToString(static_cast<EspNowAckStatus>(packet.ack_status)),
+      espnowAckToString(ack_status),
       mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
 }
 
@@ -1140,9 +1160,9 @@ bool registerProvisionedDevice() {
   g_last_camera_provisioning_attempt_ms = 0;
   g_camera_target_mac_known = false;
   memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
-  g_camera_bootstrap_capture_active = PLANTLAB_CAMERA_CAPTURE_ENABLED != 0;
+  g_camera_bootstrap_capture_active = false;
   g_camera_bootstrap_capture_attempts = 0;
-  g_next_camera_bootstrap_capture_ms = millis() + 1000UL;
+  g_next_camera_bootstrap_capture_ms = 0;
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
