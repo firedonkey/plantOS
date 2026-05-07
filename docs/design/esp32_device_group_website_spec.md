@@ -34,7 +34,7 @@ From the user's perspective, these are all still just **one device**.
 
 - Do not add a separate user-facing camera provisioning flow.
 - Do not make camera nodes appear as standalone devices in the device list.
-- Do not block initial ESP32 onboarding on camera provisioning or first image upload.
+- Do not add a separate user-facing camera onboarding step.
 - Do not change the Raspberry Pi path to require multi-node behavior.
 
 ## Terminology
@@ -328,15 +328,16 @@ Setup is ready when:
 - master node exists
 - first master reading exists
 
-Do not block setup completion on:
+If camera capture is **not** expected for this setup, the flow may finish there.
 
-- camera node provisioning
+If camera capture **is** expected for this setup, setup should also wait for:
+
 - first image upload
 
-Post-setup dashboard may still show:
+Current desired behavior:
 
-- `Waiting for first image`
-- `Camera 1 provisioning`
+- master-only ESP32 setup may land after first reading
+- master + camera ESP32 setup should land with the first image already present on the dashboard
 
 ## API and Backend Contract Rules
 
@@ -495,7 +496,7 @@ For ESP32:
 1. Add node summary to device detail page.
 2. Keep devices list one card per logical device.
 3. Keep readings, controls, and gallery device-level.
-4. Update setup-finishing rules so ESP32 master does not wait for first image.
+4. Update setup-finishing rules so ESP32 setup behavior depends on whether camera capture is expected.
 
 ### Phase 3: platform APIs
 

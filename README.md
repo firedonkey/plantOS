@@ -1,6 +1,6 @@
 # AI Plant Lab Kit
 
-A Raspberry Pi 3 based indoor plant monitoring and control MVP for hobbyists, makers, and educators.
+A PlantLab hardware and platform repository for indoor plant monitoring and control, with both Raspberry Pi and ESP32 device paths.
 
 ## Overview
 
@@ -57,8 +57,10 @@ For the MVP, the emphasis is reliability, simplicity, and fast iteration.
 - water pump via relay
 - USB light via relay
 
-### Controller
+### Controllers
 - Raspberry Pi 3
+- ESP32-S3 master node
+- XIAO ESP32-S3 Sense camera node
 
 ## Software goals
 
@@ -75,9 +77,16 @@ The software should include:
 ```text
 plantOS/
   README.md
-  readme_PRD.md
   docs/
-    api_contract.md
+    design/
+      README.md
+      current_system_design.md
+      esp32_device_group_website_spec.md
+      api_contract.md
+      product_requirements.md
+      softap_provisioning_design.md
+      provisioning_v1_implementation.md
+      qr_provisioning_exploration.md
   device/
     README.md
     raspberry_pi/
@@ -111,7 +120,11 @@ plantOS/
     tests/
 ```
 
-The `device/` folder is now a hardware container. The active Python device app runs under `device/raspberry_pi/` and owns Raspberry Pi hardware-level debugging. `device/esp32/` is reserved for future ESP32 work. The `platform/` app runs the FastAPI web platform. The two sides communicate over HTTP and should not import each other.
+The `device/` folder is a hardware container. The Raspberry Pi app lives under `device/raspberry_pi/`. The ESP32 master and camera-node firmware lives under `device/esp32/`. The `platform/` app runs the FastAPI web platform. The two sides communicate over HTTP and should not import each other.
+
+For the current architecture and design source of truth, start with:
+
+- [Design Docs Index](/Users/gary/plantOS/docs/design/README.md)
 
 ## MVP behavior
 
