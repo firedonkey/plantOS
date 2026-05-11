@@ -21,6 +21,8 @@ Status:
 - uses backend APIs when available
 - keeps mock fallback mode available when the backend is unavailable
 - does not replace backend-rendered web routes yet
+- manual image capture is intentionally postponed for now
+- the standalone UI treats capture as a coming-later capability instead of a broken action
 
 Manual test checklist:
 

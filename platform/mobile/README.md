@@ -24,3 +24,5 @@ Status:
 - Expo app scaffold is in place
 - tries the local backend first
 - falls back to mock mode when the backend is unavailable
+- manual image capture is intentionally postponed for now
+- the mobile UI treats capture as a coming-later capability instead of a failed command

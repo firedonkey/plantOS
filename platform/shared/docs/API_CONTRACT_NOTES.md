@@ -105,6 +105,7 @@ Current capture note:
 - `POST /api/devices/{device_id}/commands/capture` currently returns `501 Not Implemented`
 - that is intentional for now; the shared backend command queue does not yet support a real capture command contract
 - the `501` response now uses the standard API error envelope and includes a `future_response` example in `error.details`
+- web and mobile should currently present manual capture as postponed or coming later, rather than as a broken action
 
 ### Sensor readings
 
