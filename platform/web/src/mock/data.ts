@@ -1,0 +1,60 @@
+import { Device, DeviceDashboard, DeviceCommand, LatestImage, SensorReading } from "@/types";
+
+const now = new Date();
+
+const latestImage: LatestImage = {
+  id: "web-mock-image-1",
+  url: "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&fit=crop&w=1200&q=80",
+  capturedAt: now.toISOString(),
+};
+
+const latestReading: SensorReading = {
+  timestamp: now.toISOString(),
+  temperatureC: 23.4,
+  humidityPercent: 52.8,
+  soilMoisturePercent: 31.2,
+  waterLevelPercent: 72,
+  lightOn: false,
+  pumpOn: false,
+};
+
+const recentCommands: DeviceCommand[] = [
+  {
+    id: "web-cmd-1",
+    deviceId: "1",
+    action: "capture_image",
+    createdAt: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
+    status: "acknowledged",
+  },
+];
+
+const history: SensorReading[] = Array.from({ length: 12 }, (_, index) => ({
+  timestamp: new Date(now.getTime() - index * 2 * 60 * 60 * 1000).toISOString(),
+  temperatureC: 22.4 + index * 0.08,
+  humidityPercent: 51.5 + index * 0.15,
+  soilMoisturePercent: 34 - index * 0.35,
+  waterLevelPercent: 80 - index,
+  lightOn: index % 2 === 0,
+  pumpOn: false,
+})).reverse();
+
+export const mockDevices: Device[] = [
+  {
+    id: "1",
+    name: "Device 1",
+    location: "Location 1",
+    plantType: "Basil",
+    status: "online",
+    lastSeenAt: now.toISOString(),
+    latestReading,
+    latestImage,
+  },
+];
+
+export const mockDashboards: Record<string, DeviceDashboard> = {
+  "1": {
+    device: mockDevices[0],
+    recentCommands,
+    history,
+  },
+};
