@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
+from app.api.errors import api_http_exception_handler, api_validation_exception_handler
 from app.api.routes import auth, commands, device_nodes, devices, health, images, readings, status
 from app.core.settings import get_settings
 from app.db.session import init_db
@@ -16,6 +18,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version=settings.version)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+    app.add_exception_handler(HTTPException, api_http_exception_handler)
+    app.add_exception_handler(RequestValidationError, api_validation_exception_handler)
     app.mount("/static", StaticFiles(directory=APP_DIR / "web/static"), name="static")
     if settings.storage_backend == "local":
         Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)

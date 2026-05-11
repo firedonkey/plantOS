@@ -206,7 +206,7 @@ def test_ingest_sensor_data_rejects_camera_origin_for_grouped_device():
         )
 
         assert response.status_code == 403
-        assert response.json()["detail"] == "Camera nodes cannot post device-level sensor readings."
+        assert response.json()["error"]["message"] == "Camera nodes cannot post device-level sensor readings."
     finally:
         teardown_overrides()
 
@@ -242,7 +242,7 @@ def test_ingest_sensor_data_requires_hardware_id_for_grouped_device():
         )
 
         assert response.status_code == 400
-        assert "hardware_device_id is required" in response.json()["detail"]
+        assert "hardware_device_id is required" in response.json()["error"]["message"]
     finally:
         teardown_overrides()
 

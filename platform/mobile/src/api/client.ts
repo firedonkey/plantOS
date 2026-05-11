@@ -2,21 +2,33 @@ import { getApiBaseUrl } from "./config";
 
 export class ApiError extends Error {
   status: number | null;
+  code: string | null;
   detail: string | null;
+  details: Record<string, unknown> | null;
   isNetworkError: boolean;
 
   constructor(
     message: string,
     {
       status = null,
+      code = null,
       detail = null,
+      details = null,
       isNetworkError = false,
-    }: { status?: number | null; detail?: string | null; isNetworkError?: boolean } = {},
+    }: {
+      status?: number | null;
+      code?: string | null;
+      detail?: string | null;
+      details?: Record<string, unknown> | null;
+      isNetworkError?: boolean;
+    } = {},
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
     this.detail = detail;
+    this.details = details;
     this.isNetworkError = isNetworkError;
   }
 }
@@ -63,15 +75,32 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     let detail: string | null = null;
+    let code: string | null = null;
+    let details: Record<string, unknown> | null = null;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      detail = typeof payload.detail === "string" ? payload.detail : null;
+      const payload = (await response.json()) as {
+        detail?: string;
+        error?: {
+          code?: string;
+          message?: string;
+          details?: Record<string, unknown>;
+        };
+      };
+      if (payload.error && typeof payload.error.message === "string") {
+        detail = payload.error.message;
+        code = typeof payload.error.code === "string" ? payload.error.code : null;
+        details = payload.error.details ?? null;
+      } else {
+        detail = typeof payload.detail === "string" ? payload.detail : null;
+      }
     } catch {
       detail = null;
     }
     throw new ApiError(detail ?? `API request failed: ${response.status}`, {
       status: response.status,
+      code,
       detail,
+      details,
     });
   }
 

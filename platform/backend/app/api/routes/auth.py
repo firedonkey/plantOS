@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.api.errors import api_error
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.schemas.auth import AuthSessionRead, AuthUserRead, CurrentUserRead, DevLoginRequest
@@ -95,7 +96,11 @@ def me(request: Request, session: Session = Depends(get_session)) -> CurrentUser
 def dev_token_login(payload: DevLoginRequest, session: Session = Depends(get_session)) -> AuthSessionRead:
     settings = get_settings()
     if not settings.dev_token_auth_enabled:
-        raise HTTPException(status_code=403, detail="Dev-only token auth is disabled.")
+        raise api_error(
+            403,
+            "dev_token_auth_disabled",
+            "Dev-only token auth is disabled.",
+        )
 
     user = get_or_create_local_dev_user(session, email=payload.email)
     token = issue_dev_token(settings, user.id)

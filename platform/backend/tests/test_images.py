@@ -188,7 +188,7 @@ def test_upload_image_rejects_unattached_camera_source(tmp_path, monkeypatch):
         )
 
         assert response.status_code == 403
-        assert response.json()["detail"] == "Image source node is not attached to this device."
+        assert response.json()["error"]["message"] == "Image source node is not attached to this device."
     finally:
         teardown_overrides()
 

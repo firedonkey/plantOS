@@ -124,7 +124,51 @@ def test_dev_login_rejected_when_disabled(monkeypatch):
             json={"email": "dev@plantlab.local", "password": "password"},
         )
         assert response.status_code == 403
-        assert response.json()["detail"] == "Dev-only token auth is disabled."
+        assert response.json() == {
+            "error": {
+                "code": "dev_token_auth_disabled",
+                "message": "Dev-only token auth is disabled.",
+                "details": {},
+            }
+        }
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_api_validation_errors_use_standard_error_shape(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_DEV_TOKEN_AUTH_ENABLED", "true")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_session():
+        with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    client = TestClient(app)
+    try:
+        response = client.post(
+            "/api/auth/login",
+            json={"email": "dev@plantlab.local"},
+        )
+        assert response.status_code == 422
+        payload = response.json()
+        assert payload["error"]["code"] == "validation_error"
+        assert payload["error"]["message"] == "Request validation failed."
+        assert payload["error"]["details"]["errors"]
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
