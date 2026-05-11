@@ -1,0 +1,2076 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PlantLab Platform",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/auth/login": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_auth_login_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Auth Callback",
+        "operationId": "auth_callback_auth_callback_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/commands": {
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "List Commands",
+        "operationId": "list_commands_api_devices__device_id__commands_get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommandRead"
+                  },
+                  "title": "Response List Commands Api Devices  Device Id  Commands Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Create Device Command",
+        "operationId": "create_device_command_api_devices__device_id__commands_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/commands/pending": {
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Poll Pending Commands",
+        "operationId": "poll_pending_commands_api_devices__device_id__commands_pending_get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommandRead"
+                  },
+                  "title": "Response Poll Pending Commands Api Devices  Device Id  Commands Pending Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/commands/{command_id}/ack": {
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Acknowledge Device Command",
+        "operationId": "acknowledge_device_command_api_devices__device_id__commands__command_id__ack_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          },
+          {
+            "name": "command_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Command Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandAck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/device-nodes/register": {
+      "post": {
+        "tags": [
+          "device-nodes"
+        ],
+        "summary": "Register Device Node",
+        "operationId": "register_device_node_api_device_nodes_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceNodeRegisterCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceNodeRegisterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/device-nodes/heartbeat": {
+      "post": {
+        "tags": [
+          "device-nodes"
+        ],
+        "summary": "Heartbeat",
+        "operationId": "heartbeat_api_device_nodes_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceNodeHeartbeatCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceNodeHeartbeatRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "List Devices",
+        "operationId": "list_devices_api_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Devices Api Devices Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Create Device",
+        "operationId": "create_device_api_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get Device",
+        "operationId": "get_device_api_devices__device_id__get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/factory-reset": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Factory Reset Device Route",
+        "operationId": "factory_reset_device_route_api_devices__device_id__factory_reset_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/register-provisioned": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Register Provisioned Device Proxy",
+        "operationId": "register_provisioned_device_proxy_api_devices_register_provisioned_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/image": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "Upload Image",
+        "operationId": "upload_image_api_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_api_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/content": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "Image Content",
+        "operationId": "image_content_api_images__image_id__content_get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data": {
+      "post": {
+        "tags": [
+          "readings"
+        ],
+        "summary": "Ingest Sensor Data",
+        "operationId": "ingest_sensor_data_api_data_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SensorReadingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensorReadingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/status": {
+      "post": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Update Status",
+        "operationId": "update_status_api_devices__device_id__status_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceStatusCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceStatusRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Api Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Index",
+        "operationId": "index__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Login Page",
+        "operationId": "login_page_login_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Devices Page",
+        "operationId": "devices_page_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Create Device Page",
+        "operationId": "create_device_page_devices_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/setup-finishing": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Device Setup Finishing Page",
+        "operationId": "device_setup_finishing_page_devices_setup_finishing_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/add": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Add Device Page",
+        "operationId": "add_device_page_devices_add_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Device Detail Page",
+        "operationId": "device_detail_page_devices__device_id__get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/summary.json": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Device Summary Json",
+        "operationId": "device_summary_json_devices__device_id__summary_json_get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/setup/status.json": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Device Provisioning Status",
+        "operationId": "device_provisioning_status_setup_status_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/setup-code": {
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Create Device Setup Code Page",
+        "operationId": "create_device_setup_code_page_devices_setup_code_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/delete": {
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Delete Device Page",
+        "operationId": "delete_device_page_devices__device_id__delete_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/commands": {
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Create Device Command Page",
+        "operationId": "create_device_command_page_devices__device_id__commands_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_image_api_image_post": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "source_hardware_device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hardware Device Id"
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "file"
+        ],
+        "title": "Body_upload_image_api_image_post"
+      },
+      "CommandAck": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CommandStatus"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CommandAck"
+      },
+      "CommandAction": {
+        "type": "string",
+        "enum": [
+          "on",
+          "off",
+          "run"
+        ],
+        "title": "CommandAction"
+      },
+      "CommandCreate": {
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/CommandTarget"
+          },
+          "action": {
+            "$ref": "#/components/schemas/CommandAction"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "action"
+        ],
+        "title": "CommandCreate"
+      },
+      "CommandRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "target": {
+            "$ref": "#/components/schemas/CommandTarget"
+          },
+          "action": {
+            "$ref": "#/components/schemas/CommandAction"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommandStatus"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "target",
+          "action",
+          "value",
+          "status",
+          "message",
+          "light_on",
+          "pump_on",
+          "created_at",
+          "sent_at",
+          "completed_at"
+        ],
+        "title": "CommandRead"
+      },
+      "CommandStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "sent",
+          "completed",
+          "failed",
+          "timed_out"
+        ],
+        "title": "CommandStatus"
+      },
+      "CommandTarget": {
+        "type": "string",
+        "enum": [
+          "pump",
+          "light"
+        ],
+        "title": "CommandTarget"
+      },
+      "DeviceCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "plant_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plant Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DeviceCreate"
+      },
+      "DeviceNodeHeartbeatCreate": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Hardware Device Id"
+          },
+          "node_role": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 3,
+            "title": "Node Role"
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "hardware_device_id",
+          "node_role",
+          "status"
+        ],
+        "title": "DeviceNodeHeartbeatCreate"
+      },
+      "DeviceNodeHeartbeatRead": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "type": "string",
+            "title": "Hardware Device Id"
+          },
+          "node_role": {
+            "type": "string",
+            "title": "Node Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "hardware_device_id",
+          "node_role",
+          "status",
+          "last_seen_at"
+        ],
+        "title": "DeviceNodeHeartbeatRead"
+      },
+      "DeviceNodeRegisterCreate": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Hardware Device Id"
+          },
+          "node_role": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 3,
+            "title": "Node Role"
+          },
+          "node_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Index"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "hardware_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Version"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Status",
+            "default": "online"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "hardware_device_id",
+          "node_role"
+        ],
+        "title": "DeviceNodeRegisterCreate"
+      },
+      "DeviceNodeRegisterRead": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "type": "string",
+            "title": "Hardware Device Id"
+          },
+          "node_role": {
+            "type": "string",
+            "title": "Node Role"
+          },
+          "node_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Index"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "hardware_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Version"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "hardware_device_id",
+          "node_role",
+          "node_index",
+          "display_name",
+          "hardware_model",
+          "hardware_version",
+          "software_version",
+          "status",
+          "last_seen_at"
+        ],
+        "title": "DeviceNodeRegisterRead"
+      },
+      "DeviceRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "plant_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plant Type"
+          },
+          "api_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Token"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "location",
+          "plant_type",
+          "api_token",
+          "created_at"
+        ],
+        "title": "DeviceRead"
+      },
+      "DeviceStatusCreate": {
+        "properties": {
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "DeviceStatusCreate"
+      },
+      "DeviceStatusRead": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "light_on",
+          "pump_on",
+          "message",
+          "updated_at"
+        ],
+        "title": "DeviceStatusRead"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "source_hardware_device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hardware Device Id"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "path",
+          "timestamp"
+        ],
+        "title": "ImageRead"
+      },
+      "SensorReadingCreate": {
+        "properties": {
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Device Id"
+          },
+          "moisture": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moisture"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "humidity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity"
+          },
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          },
+          "pump_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump Status"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "SensorReadingCreate"
+      },
+      "SensorReadingRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "moisture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moisture"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "humidity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity"
+          },
+          "light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light On"
+          },
+          "pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump On"
+          },
+          "pump_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pump Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "timestamp",
+          "moisture",
+          "temperature",
+          "humidity",
+          "light_on",
+          "pump_on",
+          "pump_status"
+        ],
+        "title": "SensorReadingRead"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
