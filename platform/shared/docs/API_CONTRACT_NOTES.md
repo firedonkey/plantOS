@@ -55,6 +55,15 @@ Current purpose:
 - device-level provisioning registration proxy
 - device reset path for device-authenticated callers
 
+Current shape note:
+
+- `GET /api/devices` remains backward-compatible for existing fields
+- it now also includes summary-ready fields for standalone clients:
+  - `status`
+  - `latest_reading`
+  - `latest_image`
+  - `node_summary`
+
 ### Commands
 
 - `GET /api/devices/{device_id}/commands`
@@ -72,10 +81,30 @@ Current purpose:
 - device command polling
 - device command acknowledgement
 
-Current note:
+Current wrapper response note:
+
+- standalone wrapper endpoints now use a consistent response envelope:
+
+```json
+{
+  "status": "accepted",
+  "device_id": 30,
+  "command": "light",
+  "action": "on",
+  "message": "Light command queued: turn on.",
+  "queued": true,
+  "command_id": 42,
+  "command_status": "pending",
+  "created_at": "2026-05-11T22:00:00Z",
+  "value": null
+}
+```
+
+Current capture note:
 
 - `POST /api/devices/{device_id}/commands/capture` currently returns `501 Not Implemented`
 - that is intentional for now; the shared backend command queue does not yet support a real capture command contract
+- the `501` response now uses the standard API error envelope and includes a `future_response` example in `error.details`
 
 ### Sensor readings
 
@@ -173,17 +202,57 @@ Needed later:
 
 - API contract for setup or onboarding progress if standalone web reproduces the current flow
 
-### 4. Capture command contract
+### 4. Capture command device support
 
 Current state:
 
 - light and pump convenience wrappers now exist
 - capture convenience endpoint exists but intentionally returns `501 Not Implemented`
+- the future accepted response is now documented in the error payload
 
 Needed later:
 
-- decide whether manual capture belongs in the shared backend command queue
-- if yes, define the real target/action/device behavior and update device consumers accordingly
+- implement device-side support for a queued `capture` command so the backend can move from `unsupported` to `accepted`
+
+## Standard API error envelope
+
+All `/api/*` routes now return a consistent error envelope for API and validation errors:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Request validation failed.",
+    "details": {
+      "errors": []
+    }
+  }
+}
+```
+
+Notes:
+
+- backend-rendered non-API routes are intentionally unchanged
+- old browser flows still rely on their existing responses
+
+## Standard standalone command envelope
+
+The standalone wrapper endpoints currently return:
+
+```json
+{
+  "status": "accepted" | "unsupported" | "error",
+  "device_id": 30,
+  "command": "light" | "pump" | "capture",
+  "action": "on" | "off" | "run" | "capture",
+  "message": "Human-readable command status",
+  "queued": true,
+  "command_id": 42,
+  "command_status": "pending",
+  "created_at": "2026-05-11T22:00:00Z",
+  "value": "7"
+}
+```
 
 ## Current safe contract for client planning
 

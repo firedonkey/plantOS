@@ -699,7 +699,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CommandRead"
+                  "$ref": "#/components/schemas/DeviceCommandEnvelopeRead"
                 }
               }
             }
@@ -751,7 +751,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CommandRead"
+                  "$ref": "#/components/schemas/DeviceCommandEnvelopeRead"
                 }
               }
             }
@@ -792,7 +792,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandEnvelopeRead"
+                }
               }
             }
           },
@@ -1758,6 +1760,98 @@
         ],
         "title": "DevLoginRequest"
       },
+      "DeviceCommandEnvelopeRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "unsupported",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "command": {
+            "type": "string",
+            "enum": [
+              "light",
+              "pump",
+              "capture"
+            ],
+            "title": "Command"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "queued": {
+            "type": "boolean",
+            "title": "Queued"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "command_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command Id"
+          },
+          "command_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommandStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "device_id",
+          "command",
+          "action",
+          "queued",
+          "message"
+        ],
+        "title": "DeviceCommandEnvelopeRead"
+      },
       "DeviceCreate": {
         "properties": {
           "name": {
@@ -2119,6 +2213,49 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "latest_reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSummaryReadingRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSummaryImageRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Summary"
           }
         },
         "type": "object",
