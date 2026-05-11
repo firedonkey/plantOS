@@ -101,6 +101,12 @@ input {
   color: #55635d;
 }
 
+.meta-text {
+  margin: 0;
+  color: #708078;
+  font-size: 13px;
+}
+
 .card-grid,
 .metrics-grid {
   display: grid;
@@ -176,6 +182,12 @@ input {
   cursor: pointer;
 }
 
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .primary-button {
   background: #2f855a;
   color: white;
@@ -248,10 +260,47 @@ input {
   font-weight: 700;
 }
 
+.status-banner {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #edf2f4;
+  color: #1f2a24;
+}
+
+.status-banner-success {
+  background: #dff7e8;
+  color: #157347;
+}
+
+.status-banner-error {
+  background: #fde4e4;
+  color: #b42318;
+}
+
+.status-banner-info {
+  background: #efe7ff;
+  color: #6941c6;
+}
+
 .history-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.empty-state {
+  background: #ffffff;
+  border: 1px solid #d7dee3;
+  border-radius: 8px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty-state h3 {
+  margin: 0;
 }
 
 @media (max-width: 900px) {

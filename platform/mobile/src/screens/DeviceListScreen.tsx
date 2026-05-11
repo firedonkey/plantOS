@@ -8,18 +8,30 @@ import { useDevices } from "@/hooks/useDevices";
 import { theme } from "@/styles/theme";
 
 export function DeviceListScreen() {
-  const { devices, usedMock, isLoading, error, refresh } = useDevices();
+  const { devices, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDevices();
 
   return (
     <Screen onRefresh={refresh} refreshing={isLoading}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>PLANTLAB</Text>
         <Text style={styles.title}>Devices</Text>
-        <Text style={styles.subtitle}>Your local-first smart growing dashboard.</Text>
+        <Text style={styles.subtitle}>
+          {usedMock ? "Showing bundled mock devices because the backend is unavailable." : "Showing devices from your local PlantLab backend."}
+        </Text>
+        <Text style={styles.meta}>
+          {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh when you are ready."}
+        </Text>
       </View>
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {isLoading && devices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
+      {!isLoading && devices.length === 0 ? (
+        <Card>
+          <Text style={styles.cardTitle}>No devices yet</Text>
+          <Text style={styles.cardSubtitle}>Add a PlantLab from the existing backend-rendered flow, then come back here to monitor it.</Text>
+        </Card>
+      ) : null}
 
       {devices.map((device) => (
         <Pressable key={device.id} onPress={() => router.push(`/(app)/devices/${device.id}`)}>
@@ -31,6 +43,11 @@ export function DeviceListScreen() {
               </View>
               <StatusChip label={device.status} tone={device.status} />
             </View>
+            <Text style={styles.meta}>
+              {device.latestReading
+                ? `Reading from ${new Date(device.latestReading.timestamp).toLocaleString()}`
+                : "No reading received yet."}
+            </Text>
             <Text style={styles.summary}>
               {device.latestReading
                 ? `${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C • ${device.latestReading.humidityPercent?.toFixed(1) ?? "--"}% • ${device.latestReading.soilMoisturePercent?.toFixed(1) ?? "--"}%`
@@ -48,7 +65,9 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
   title: { fontSize: 34, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: 16, color: theme.colors.textSecondary },
+  meta: { fontSize: 13, color: theme.colors.textMuted },
   error: { color: "#b42318" },
+  info: { color: theme.colors.textSecondary },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",

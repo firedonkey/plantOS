@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiError } from "@/api/client";
 import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
@@ -12,6 +11,9 @@ export function useDeviceDashboard(deviceId: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [commandMessage, setCommandMessage] = useState<string | null>(null);
+  const [commandTone, setCommandTone] = useState<"success" | "error" | "info" | null>(null);
+  const [isCommandRunning, setIsCommandRunning] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -20,6 +22,7 @@ export function useDeviceDashboard(deviceId: string) {
       const result = await getDeviceDashboard(deviceId, token ?? undefined);
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (err) {
       setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
@@ -37,17 +40,29 @@ export function useDeviceDashboard(deviceId: string) {
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {
+      if (action === "capture_image") {
+        setCommandTone("info");
+        setCommandMessage("Image capture is coming later. For now, use the latest image already uploaded by the device.");
+        return;
+      }
+      setIsCommandRunning(true);
       setError(null);
       setCommandMessage(null);
+      setCommandTone(null);
       try {
         const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
-        setCommandMessage(result.usedMock ? `Mock command: ${action}` : `Sent command: ${action}`);
+        setCommandTone("success");
+        setCommandMessage(
+          result.usedMock
+            ? `Simulated ${friendlyCommandLabel(action)} in mock mode.`
+            : `${friendlyCommandLabel(action)} queued for the device.`,
+        );
       } catch (err) {
-        if (err instanceof ApiError && action === "capture_image" && err.status === 501) {
-          setError("Capture command is not supported by the backend yet.");
-          return;
-        }
+        setCommandTone("error");
         setError(err instanceof Error ? err.message : "Unable to send command.");
+        setCommandMessage("The command did not go through. Please try again.");
+      } finally {
+        setIsCommandRunning(false);
       }
     },
     [deviceId, token],
@@ -60,5 +75,30 @@ export function useDeviceDashboard(deviceId: string) {
     return { Authorization: `Bearer ${token}` };
   }, [token]);
 
-  return { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand, imageAuthHeaders };
+  return {
+    dashboard,
+    usedMock,
+    isLoading,
+    error,
+    commandMessage,
+    commandTone,
+    isCommandRunning,
+    lastUpdatedAt,
+    refresh,
+    runCommand,
+    imageAuthHeaders,
+  };
+}
+
+function friendlyCommandLabel(action: DeviceCommand["action"]): string {
+  switch (action) {
+    case "light_on":
+      return "Light on";
+    case "light_off":
+      return "Light off";
+    case "pump_run":
+      return "Pump run";
+    case "capture_image":
+      return "Capture image";
+  }
 }

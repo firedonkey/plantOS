@@ -10,6 +10,7 @@ export function useDevices() {
   const [usedMock, setUsedMock] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -18,6 +19,7 @@ export function useDevices() {
       const result = await listDevices(token ?? undefined);
       setDevices(result.devices);
       setUsedMock(result.usedMock);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load devices.");
     } finally {
@@ -35,5 +37,6 @@ export function useDevices() {
     isLoading,
     error,
     refresh,
+    lastUpdatedAt,
   };
 }

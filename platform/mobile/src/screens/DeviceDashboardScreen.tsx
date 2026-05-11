@@ -15,7 +15,18 @@ type DeviceDashboardScreenProps = {
 };
 
 export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) {
-  const { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand } = useDeviceDashboard(deviceId);
+  const {
+    dashboard,
+    usedMock,
+    isLoading,
+    error,
+    commandMessage,
+    commandTone,
+    isCommandRunning,
+    lastUpdatedAt,
+    refresh,
+    runCommand,
+  } = useDeviceDashboard(deviceId);
   const { token, session } = useSession();
 
   if (!deviceId) {
@@ -37,12 +48,24 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
               <Text style={styles.subtitle}>
                 {dashboard.device.plantType ?? "Plant type not set"} • {dashboard.device.location ?? "No location set"}
               </Text>
+              <Text style={styles.meta}>
+                {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh for the latest device state."}
+              </Text>
             </View>
             <StatusChip label={usedMock ? "Mock mode" : dashboard.device.status} tone={usedMock ? "mock" : dashboard.device.status} />
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {commandMessage ? <Text style={styles.commandMessage}>{commandMessage}</Text> : null}
+          {commandMessage ? (
+            <Text
+              style={[
+                styles.feedback,
+                commandTone === "error" ? styles.feedbackError : commandTone === "info" ? styles.feedbackInfo : styles.feedbackSuccess,
+              ]}
+            >
+              {commandMessage}
+            </Text>
+          ) : null}
 
           <Card>
             <View style={styles.metricsGrid}>
@@ -72,20 +95,23 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                 <Text style={styles.meta}>Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</Text>
               </>
             ) : (
-              <Text style={styles.meta}>No image available yet.</Text>
+              <Text style={styles.meta}>
+                No image available yet. Manual capture is coming later, so this card updates when the device uploads a new image on its own.
+              </Text>
             )}
           </Card>
 
           <Card>
             <Text style={styles.sectionTitle}>Manual controls</Text>
             <View style={styles.buttonRow}>
-              <PrimaryButton label="Light on" onPress={() => runCommand("light_on")} />
-              <PrimaryButton label="Light off" onPress={() => runCommand("light_off")} />
+              <PrimaryButton disabled={isCommandRunning} label={isCommandRunning ? "Working..." : "Light on"} onPress={() => runCommand("light_on")} />
+              <PrimaryButton disabled={isCommandRunning} label="Light off" onPress={() => runCommand("light_off")} />
             </View>
             <View style={styles.buttonRow}>
-              <PrimaryButton label="Pump run" onPress={() => runCommand("pump_run")} />
-              <PrimaryButton label="Capture image" onPress={() => runCommand("capture_image")} />
+              <PrimaryButton disabled={isCommandRunning} label="Pump run" onPress={() => runCommand("pump_run")} />
+              <PrimaryButton disabled label="Capture later" tone="secondary" onPress={() => {}} />
             </View>
+            <Text style={styles.meta}>Manual image capture is postponed while the shared backend capture contract stays in 501 mode.</Text>
           </Card>
 
           <Link href={`/(app)/devices/${deviceId}/history`} style={styles.historyLink}>
@@ -93,7 +119,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           </Link>
         </>
       ) : (
-        <Text style={styles.meta}>Loading dashboard...</Text>
+        <Text style={styles.meta}>Loading dashboard…</Text>
       )}
     </Screen>
   );
@@ -104,12 +130,15 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
   title: { fontSize: 34, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: 16, color: theme.colors.textSecondary },
+  meta: { fontSize: 14, color: theme.colors.textSecondary },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
   image: { width: "100%", height: 220, borderRadius: 8, backgroundColor: "#dfe5e9" },
-  meta: { fontSize: 14, color: theme.colors.textSecondary },
   error: { color: "#b42318" },
-  commandMessage: { color: theme.colors.accent, fontWeight: "600" },
+  feedback: { fontWeight: "600", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  feedbackSuccess: { color: theme.colors.accent, backgroundColor: "#dff7e8" },
+  feedbackError: { color: "#b42318", backgroundColor: "#fde4e4" },
+  feedbackInfo: { color: "#6941c6", backgroundColor: "#efe7ff" },
   buttonRow: { gap: 10 },
   historyLink: { color: theme.colors.accent, fontSize: 16, fontWeight: "700" },
 });

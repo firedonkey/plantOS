@@ -4,7 +4,7 @@ import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 
 export function HistoryScreen() {
   const { deviceId = "" } = useParams();
-  const { dashboard, usedMock, isLoading, error, refresh } = useDeviceDashboard(deviceId);
+  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDeviceDashboard(deviceId);
 
   return (
     <section className="page-section">
@@ -15,13 +15,23 @@ export function HistoryScreen() {
           <p className="subtitle">
             {usedMock ? "Mock history data shown because the backend is unavailable." : "Backend history data loaded from the standalone API."}
           </p>
+          <p className="meta-text">
+            {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
+          </p>
         </div>
-        <button className="secondary-button" onClick={refresh}>
+        <button className="secondary-button" disabled={isLoading} onClick={refresh}>
           {isLoading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      {error ? <p className="error-text">{error}</p> : null}
+      {error ? <p className="status-banner status-banner-error">{error}</p> : null}
+      {isLoading && !dashboard ? <p className="status-banner">Loading readings…</p> : null}
+      {!isLoading && !dashboard?.history.length ? (
+        <div className="empty-state">
+          <h3>No readings yet</h3>
+          <p className="subtitle">Once the device reports sensor data, the recent history will appear here.</p>
+        </div>
+      ) : null}
 
       <div className="history-list">
         {dashboard?.history.map((reading) => (
@@ -29,6 +39,9 @@ export function HistoryScreen() {
             <strong>{new Date(reading.timestamp).toLocaleString()}</strong>
             <p className="subtitle">
               {reading.temperatureC?.toFixed(1) ?? "--"} C • {reading.humidityPercent?.toFixed(1) ?? "--"}% • {reading.soilMoisturePercent?.toFixed(1) ?? "--"}%
+            </p>
+            <p className="meta-text">
+              Light {reading.lightOn ? "on" : "off"} • Pump {reading.pumpOn ? "on" : "off"}
             </p>
           </div>
         ))}

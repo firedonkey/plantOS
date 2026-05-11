@@ -10,7 +10,7 @@ type HistoryScreenProps = {
 };
 
 export function HistoryScreen({ deviceId }: HistoryScreenProps) {
-  const { dashboard, usedMock, isLoading, error, refresh } = useDeviceDashboard(deviceId);
+  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDeviceDashboard(deviceId);
 
   return (
     <Screen onRefresh={refresh} refreshing={isLoading}>
@@ -18,11 +18,21 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
         <Text style={styles.eyebrow}>HISTORY</Text>
         <Text style={styles.title}>Recent sensor history</Text>
         <Text style={styles.subtitle}>
-          {usedMock ? "Mock data shown. TODO: replace with charted API history." : "Chart-ready structure placeholder."}
+          {usedMock ? "Mock history data is shown because the backend is unavailable." : "Recent readings from the local PlantLab backend."}
+        </Text>
+        <Text style={styles.meta}>
+          {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh for the latest readings."}
         </Text>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {isLoading && !dashboard ? <Text style={styles.meta}>Loading readings…</Text> : null}
+      {!isLoading && !dashboard?.history.length ? (
+        <Card>
+          <Text style={styles.timestamp}>No readings yet</Text>
+          <Text style={styles.row}>Once the device reports sensor data, the recent history will appear here.</Text>
+        </Card>
+      ) : null}
 
       {dashboard?.history.map((reading) => (
         <Card key={reading.timestamp}>
@@ -30,6 +40,7 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
           <Text style={styles.row}>
             {reading.temperatureC?.toFixed(1) ?? "--"} C • {reading.humidityPercent?.toFixed(1) ?? "--"}% • {reading.soilMoisturePercent?.toFixed(1) ?? "--"}%
           </Text>
+          <Text style={styles.meta}>Light {reading.lightOn ? "on" : "off"} • Pump {reading.pumpOn ? "on" : "off"}</Text>
         </Card>
       ))}
     </Screen>
@@ -41,6 +52,7 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
   title: { fontSize: 30, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: 16, color: theme.colors.textSecondary },
+  meta: { fontSize: 14, color: theme.colors.textSecondary },
   timestamp: { fontSize: 14, fontWeight: "700", color: theme.colors.textPrimary },
   row: { fontSize: 15, color: theme.colors.textSecondary },
   error: { color: "#b42318" },

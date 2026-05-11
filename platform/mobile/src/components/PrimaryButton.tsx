@@ -5,30 +5,57 @@ import { theme } from "@/styles/theme";
 type PrimaryButtonProps = {
   label: string;
   onPress: () => void;
+  disabled?: boolean;
+  tone?: "primary" | "secondary";
 };
 
-export function PrimaryButton({ label, onPress }: PrimaryButtonProps) {
+export function PrimaryButton({ label, onPress, disabled = false, tone = "primary" }: PrimaryButtonProps) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-      <Text style={styles.label}>{label}</Text>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        tone === "secondary" ? styles.secondaryButton : styles.primaryButton,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.label, tone === "secondary" ? styles.secondaryLabel : styles.primaryLabel]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: theme.colors.accent,
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
+    borderWidth: 1,
+  },
+  primaryButton: {
+    backgroundColor: theme.colors.accent,
+    borderColor: theme.colors.accent,
+  },
+  secondaryButton: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
   },
   pressed: {
     opacity: 0.85,
   },
+  disabled: {
+    opacity: 0.55,
+  },
   label: {
-    color: "#ffffff",
     fontSize: 15,
     fontWeight: "700",
+  },
+  primaryLabel: {
+    color: "#ffffff",
+  },
+  secondaryLabel: {
+    color: theme.colors.textPrimary,
   },
 });

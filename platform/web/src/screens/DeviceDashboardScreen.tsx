@@ -7,7 +7,19 @@ import { useSession } from "@/hooks/useSession";
 export function DeviceDashboardScreen() {
   const { deviceId = "" } = useParams();
   const { session } = useSession();
-  const { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand, imageAuthHeaders } =
+  const {
+    dashboard,
+    usedMock,
+    isLoading,
+    error,
+    commandMessage,
+    commandTone,
+    isCommandRunning,
+    lastUpdatedAt,
+    refresh,
+    runCommand,
+    imageAuthHeaders,
+  } =
     useDeviceDashboard(deviceId);
   const [protectedImageUrl, setProtectedImageUrl] = useState<string | null>(null);
 
@@ -68,17 +80,24 @@ export function DeviceDashboardScreen() {
               <p className="subtitle">
                 {dashboard.device.plantType ?? "Plant type not set"} • {dashboard.device.location ?? "No location set"}
               </p>
+              <p className="meta-text">
+                {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
+              </p>
             </div>
             <div className="header-actions">
               {usedMock ? <span className="chip chip-mock">Mock mode</span> : null}
-              <button className="secondary-button" onClick={refresh}>
+              <button className="secondary-button" disabled={isLoading || isCommandRunning} onClick={refresh}>
                 {isLoading ? "Refreshing..." : "Refresh"}
               </button>
             </div>
           </div>
 
-          {error ? <p className="error-text">{error}</p> : null}
-          {commandMessage ? <p className="success-text">{commandMessage}</p> : null}
+          {error ? <p className="status-banner status-banner-error">{error}</p> : null}
+          {commandMessage ? (
+            <p className={`status-banner ${commandTone === "error" ? "status-banner-error" : commandTone === "info" ? "status-banner-info" : "status-banner-success"}`}>
+              {commandMessage}
+            </p>
+          ) : null}
 
           <div className="metrics-grid">
             <div className="metric-card"><span>Temperature</span><strong>{dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C</strong></div>
@@ -97,17 +116,21 @@ export function DeviceDashboardScreen() {
                 <p className="subtitle">Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</p>
               </>
             ) : (
-              <p className="subtitle">No image available yet.</p>
+              <p className="subtitle">No image available yet. Manual capture is coming later, so this card updates when the device uploads a new image on its own.</p>
             )}
           </div>
 
           <div className="card">
             <h3>Manual controls</h3>
             <div className="button-row">
-              <button className="primary-button" onClick={() => runCommand("light_on")}>Light on</button>
-              <button className="primary-button" onClick={() => runCommand("light_off")}>Light off</button>
-              <button className="primary-button" onClick={() => runCommand("pump_run")}>Pump run</button>
-              <button className="primary-button" onClick={() => runCommand("capture_image")}>Capture image</button>
+              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("light_on")}>
+                {isCommandRunning ? "Working..." : "Light on"}
+              </button>
+              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("light_off")}>Light off</button>
+              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("pump_run")}>Pump run</button>
+              <button className="secondary-button" disabled title="Image capture is coming later.">
+                Capture coming later
+              </button>
             </div>
           </div>
 
@@ -116,7 +139,7 @@ export function DeviceDashboardScreen() {
           </Link>
         </>
       ) : (
-        <p className="subtitle">Loading dashboard...</p>
+        <p className="status-banner">Loading dashboard…</p>
       )}
     </section>
   );
