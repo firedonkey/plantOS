@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
 from app.db.session import get_session
-from app.services.users import get_user_by_id, upsert_google_user
+from app.schemas.auth import AuthSessionRead, AuthUserRead, CurrentUserRead, DevLoginRequest
+from app.services.dev_auth import issue_dev_token
+from app.services.users import get_or_create_local_dev_user, get_user_by_id, upsert_google_user
 
 
 router = APIRouter(tags=["auth"])
@@ -71,22 +73,40 @@ def logout(request: Request):
 
 
 @router.get("/api/me")
-def me(request: Request, session: Session = Depends(get_session)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return {"authenticated": False, "user": None}
+def me(request: Request, session: Session = Depends(get_session)) -> CurrentUserRead:
+    from app.api.deps import get_optional_current_user
 
-    user = get_user_by_id(session, int(user_id))
+    user = get_optional_current_user(request, session)
     if user is None:
-        request.session.clear()
-        return {"authenticated": False, "user": None}
+        return CurrentUserRead(authenticated=False, user=None)
 
-    return {
-        "authenticated": True,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "avatar_url": user.avatar_url,
-        },
-    }
+    return CurrentUserRead(
+        authenticated=True,
+        user=AuthUserRead(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            avatar_url=user.avatar_url,
+        ),
+    )
+
+
+@router.post("/api/auth/login", response_model=AuthSessionRead)
+def dev_token_login(payload: DevLoginRequest, session: Session = Depends(get_session)) -> AuthSessionRead:
+    settings = get_settings()
+    if not settings.dev_token_auth_enabled:
+        raise HTTPException(status_code=403, detail="Dev-only token auth is disabled.")
+
+    user = get_or_create_local_dev_user(session, email=payload.email)
+    token = issue_dev_token(settings, user.id)
+    return AuthSessionRead(
+        token=token,
+        email=user.email,
+        mode="api",
+        user=AuthUserRead(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            avatar_url=user.avatar_url,
+        ),
+    )

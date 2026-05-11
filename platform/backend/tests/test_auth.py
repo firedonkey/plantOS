@@ -1,12 +1,16 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 import app.api.routes.auth as auth_routes
+from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
+from app.db.session import get_session
 from app.main import app
+from app.models import User
 from app.models.base import Base
-from app.services.users import upsert_google_user
+from app.services.users import get_user_by_id, upsert_google_user
 
 
 def test_google_login_reports_missing_config(monkeypatch):
@@ -32,6 +36,99 @@ def test_me_reports_anonymous_user():
 
     assert response.status_code == 200
     assert response.json() == {"authenticated": False, "user": None}
+
+
+def test_dev_login_returns_bearer_token_and_me_works(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_DEV_TOKEN_AUTH_ENABLED", "true")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_session():
+        with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+
+    client = TestClient(app)
+    try:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"email": "dev@plantlab.local", "password": "password"},
+        )
+
+        assert login_response.status_code == 200
+        payload = login_response.json()
+        assert payload["mode"] == "api"
+        assert payload["email"] == "dev@plantlab.local"
+        assert payload["token"]
+
+        with next(override_session()) as session:
+            user = session.query(User).filter(User.email == "dev@plantlab.local").one()
+            assert user.name == "Dev"
+
+        me_response = client.get(
+            "/api/me",
+            headers={"Authorization": f"Bearer {payload['token']}"},
+        )
+        assert me_response.status_code == 200
+        assert me_response.json()["authenticated"] is True
+        assert me_response.json()["user"]["email"] == "dev@plantlab.local"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_dev_login_rejected_when_disabled(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PLANTLAB_DEV_TOKEN_AUTH_ENABLED", "false")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")
+    monkeypatch.setenv("APP_SECRET_KEY", "a-secure-production-session-secret")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_session():
+        with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    client = TestClient(app)
+    try:
+        response = client.post(
+            "/api/auth/login",
+            json={"email": "dev@plantlab.local", "password": "password"},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Dev-only token auth is disabled."
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
 
 
 def test_upsert_google_user_creates_and_updates_user():

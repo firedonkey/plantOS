@@ -33,6 +33,7 @@ class Settings:
     provisioning_service_secret: str | None = None
     local_setup_url: str = "http://10.42.0.1:8080/"
     device_platform_url: str | None = None
+    dev_token_auth_enabled: bool = True
 
     @property
     def google_auth_configured(self) -> bool:
@@ -57,6 +58,8 @@ class Settings:
             raise ValueError("PLANTLAB_PROVISIONING_SHARED_SECRET is required in production.")
         if self.is_production and self.session_secret == Settings.session_secret:
             raise ValueError("APP_SECRET_KEY must be set to a secure value in production.")
+        if self.is_production and self.dev_token_auth_enabled:
+            raise ValueError("PLANTLAB_DEV_TOKEN_AUTH_ENABLED cannot be enabled in production.")
 
 
 @lru_cache
@@ -74,6 +77,10 @@ def get_settings() -> Settings:
         provisioning_service_secret=_optional_env("PLANTLAB_PROVISIONING_SHARED_SECRET"),
         local_setup_url=os.getenv("PLANTLAB_LOCAL_SETUP_URL", Settings.local_setup_url).rstrip("/") + "/",
         device_platform_url=_optional_env("PLANTLAB_DEVICE_PLATFORM_URL"),
+        dev_token_auth_enabled=_env_bool(
+            "PLANTLAB_DEV_TOKEN_AUTH_ENABLED",
+            default=os.getenv("APP_ENV", Settings.app_env).lower() != "production",
+        ),
     )
     settings.validate()
     return settings
@@ -86,6 +93,19 @@ def _optional_env(name: str, legacy_name: str | None = None) -> str | None:
     if value is None or value.strip() == "":
         return None
     return value.strip()
+
+
+def _env_bool(name: str, *, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _required_or_default_secret(name: str, legacy_name: str | None = None) -> str:

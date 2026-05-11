@@ -8,6 +8,17 @@ def get_user_by_id(session: Session, user_id: int) -> User | None:
     return session.get(User, user_id)
 
 
+def get_or_create_local_dev_user(session: Session, *, email: str) -> User:
+    user = session.scalar(select(User).where(User.email == email))
+    if user is None:
+        default_name = email.split("@", 1)[0].replace(".", " ").replace("_", " ").strip().title() or "PlantLab User"
+        user = User(email=email, name=default_name)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    return user
+
+
 def upsert_google_user(
     session: Session,
     *,

@@ -2,12 +2,27 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.core.settings import get_settings
 from app.models import Device, User
 from app.services.devices import get_device_by_api_token
+from app.services.dev_auth import read_dev_token
 from app.services.users import get_user_by_id
 
 
 def get_optional_current_user(request: Request, session: Session = Depends(get_session)) -> User | None:
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    if authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        if not token:
+            return None
+        settings = get_settings()
+        if not settings.dev_token_auth_enabled:
+            return None
+        user_id = read_dev_token(settings, token)
+        if user_id is None:
+            return None
+        return get_user_by_id(session, user_id)
+
     user_id = request.session.get("user_id")
     if not user_id:
         return None
