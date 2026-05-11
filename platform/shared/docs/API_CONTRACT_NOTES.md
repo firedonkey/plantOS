@@ -24,6 +24,7 @@ Current purpose:
 
 ### Auth and current user
 
+- `POST /api/auth/login`
 - `GET /auth/login`
 - `GET /auth/callback`
 - `POST /auth/logout`
@@ -31,21 +32,26 @@ Current purpose:
 
 Current state:
 
-- browser-session oriented
-- suitable for the existing backend-rendered web
-- not yet a standalone token-based client auth contract
+- browser session and Google OAuth still power the existing backend-rendered web
+- `POST /api/auth/login` is now available as a **dev-only** bearer-token login for local standalone clients
+- `GET /api/me` works for either browser session auth or bearer auth from the dev-only login path
 
 ### Devices
 
 - `GET /api/devices`
 - `POST /api/devices`
 - `GET /api/devices/{device_id}`
+- `GET /api/devices/{device_id}/summary`
+- `GET /api/devices/{device_id}/readings`
+- `GET /api/devices/{device_id}/images/latest`
 - `POST /api/devices/{device_id}/factory-reset`
 - `POST /api/devices/register-provisioned`
 
 Current purpose:
 
 - user device listing and creation
+- client-friendly device summary and latest-image retrieval
+- client-friendly reading history retrieval
 - device-level provisioning registration proxy
 - device reset path for device-authenticated callers
 
@@ -53,14 +59,23 @@ Current purpose:
 
 - `GET /api/devices/{device_id}/commands`
 - `POST /api/devices/{device_id}/commands`
+- `POST /api/devices/{device_id}/commands/light`
+- `POST /api/devices/{device_id}/commands/pump`
+- `POST /api/devices/{device_id}/commands/capture`
 - `GET /api/devices/{device_id}/commands/pending`
 - `POST /api/devices/{device_id}/commands/{command_id}/ack`
 
 Current purpose:
 
 - user command creation
+- convenience wrappers for light and pump commands used by standalone clients
 - device command polling
 - device command acknowledgement
+
+Current note:
+
+- `POST /api/devices/{device_id}/commands/capture` currently returns `501 Not Implemented`
+- that is intentional for now; the shared backend command queue does not yet support a real capture command contract
 
 ### Sensor readings
 
@@ -118,68 +133,37 @@ Why they matter:
 - they already provide browser-facing data for the current dashboard and setup flow
 - they are implemented under backend web routes, not under a standalone API namespace
 
-## Current contract gaps for standalone web and mobile
+## Remaining contract gaps for standalone web and mobile
 
-### 1. Standalone auth contract
+### 1. Production-ready standalone auth contract
 
-Current gap:
+Current state:
 
-- browser login is session and redirect based
-- mobile-friendly token login is not defined yet
-
-Needed later:
-
-- a dev-only placeholder token auth path for local standalone clients
-- clear current-user contract for token-authenticated clients
-
-### 2. Device summary endpoint for clients
-
-Current gap:
-
-- dashboard summary currently lives at `/devices/{device_id}/summary.json`
-- it is not yet a formal client API endpoint under `/api/...`
+- a dev-only bearer login now exists for local standalone clients
+- production auth is still browser-session / Google-OAuth oriented
 
 Needed later:
 
-- a stable device summary endpoint for web and mobile
+- a production-ready token or equivalent standalone auth contract
+- clear rollout rules for web/mobile auth beyond local dev
 
-Suggested direction:
+### 2. Full image-list endpoint for clients
 
-- `GET /api/devices/{device_id}/summary`
-
-### 3. Reading history endpoint for clients
-
-Current gap:
-
-- reading ingest exists
-- client-facing history retrieval is still mostly assembled through backend web logic
-
-Needed later:
-
-- stable client history endpoint
-
-Suggested direction:
-
-- `GET /api/devices/{device_id}/readings`
-
-### 4. Image list endpoint for clients
-
-Current gap:
+Current state:
 
 - image upload exists
 - image content retrieval exists
-- image list and latest-image retrieval are not yet formal standalone-client endpoints
+- latest-image retrieval now exists at `GET /api/devices/{device_id}/images/latest`
 
 Needed later:
 
-- stable client image-list endpoint
+- stable image-list endpoint if standalone clients need more than the latest image
 
 Suggested direction:
 
 - `GET /api/devices/{device_id}/images`
-- `GET /api/devices/{device_id}/images/latest`
 
-### 5. Setup flow status endpoint
+### 3. Setup flow status endpoint
 
 Current gap:
 
@@ -189,17 +173,17 @@ Needed later:
 
 - API contract for setup or onboarding progress if standalone web reproduces the current flow
 
-### 6. Command convenience endpoints
+### 4. Capture command contract
 
 Current state:
 
-- command creation exists through the commands collection endpoint
+- light and pump convenience wrappers now exist
+- capture convenience endpoint exists but intentionally returns `501 Not Implemented`
 
-Possible future convenience:
+Needed later:
 
-- domain-specific wrappers for capture image, light control, and pump control if that improves client ergonomics
-
-This is optional and should not be added unless it simplifies the standalone clients meaningfully.
+- decide whether manual capture belongs in the shared backend command queue
+- if yes, define the real target/action/device behavior and update device consumers accordingly
 
 ## Current safe contract for client planning
 
@@ -207,7 +191,8 @@ For the immediate next steps:
 
 - treat the existing backend endpoints as the authoritative runtime surface for devices
 - treat web-route JSON endpoints as transitional
-- do not promise token-authenticated standalone clients until the auth step is implemented
+- standalone mobile can use the dev-only bearer login for local development
+- do not treat the dev-only login as the final production auth design
 
 ## Migration rule
 
