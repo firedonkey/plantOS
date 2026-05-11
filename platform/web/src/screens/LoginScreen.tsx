@@ -1,11 +1,11 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
-import { loginWithPlaceholder } from "@/api/auth";
+import { loginWithBackendFallback } from "@/api/auth";
 import { useSession } from "@/hooks/useSession";
 
 export function LoginScreen() {
-  const { token, signIn } = useSession();
+  const { token, signIn, authError } = useSession();
   const navigate = useNavigate();
   const [email, setEmail] = useState("dev@plantlab.local");
   const [password, setPassword] = useState("password");
@@ -21,7 +21,7 @@ export function LoginScreen() {
     setIsSubmitting(true);
     setError(null);
     try {
-      const session = await loginWithPlaceholder({ email, password });
+      const session = await loginWithBackendFallback({ email, password });
       signIn(session);
       navigate("/devices", { replace: true });
     } catch (err) {
@@ -36,7 +36,7 @@ export function LoginScreen() {
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="eyebrow">PLANTLAB WEB</div>
         <h1>Sign in</h1>
-        <p className="subtitle">Dev-only placeholder login while standalone web is being built locally.</p>
+        <p className="subtitle">Dev-only login uses the local backend when available and falls back to mock mode when it is not.</p>
         <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
         <input
           value={password}
@@ -44,6 +44,7 @@ export function LoginScreen() {
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Password"
         />
+        {authError ? <p className="error-text">{authError}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
         <button className="primary-button" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Signing in..." : "Continue"}

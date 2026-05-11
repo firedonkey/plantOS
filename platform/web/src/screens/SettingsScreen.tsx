@@ -25,7 +25,7 @@ export function SettingsScreen() {
 
       <div className="card">
         <h3>Notes</h3>
-        <p className="subtitle">TODO: replace dev-only placeholder login before standalone web replaces backend-rendered auth.</p>
+        <p className="subtitle">Dev-only bearer auth is for local standalone development only. Production auth still lives in the backend-rendered web flow.</p>
       </div>
 
       <button className="primary-button" onClick={signOut}>

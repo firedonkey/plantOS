@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ApiError } from "@/api/client";
 import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
@@ -20,6 +21,7 @@ export function useDeviceDashboard(deviceId: string) {
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
     } catch (err) {
+      setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
     } finally {
       setIsLoading(false);
@@ -35,11 +37,28 @@ export function useDeviceDashboard(deviceId: string) {
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {
-      const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
-      setCommandMessage(result.usedMock ? `Mock command: ${action}` : `Sent command: ${action}`);
+      setError(null);
+      setCommandMessage(null);
+      try {
+        const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
+        setCommandMessage(result.usedMock ? `Mock command: ${action}` : `Sent command: ${action}`);
+      } catch (err) {
+        if (err instanceof ApiError && action === "capture_image" && err.status === 501) {
+          setError("Capture command is not supported by the backend yet.");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Unable to send command.");
+      }
     },
     [deviceId, token],
   );
 
-  return { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand };
+  const imageAuthHeaders = useMemo(() => {
+    if (!token) {
+      return undefined;
+    }
+    return { Authorization: `Bearer ${token}` };
+  }, [token]);
+
+  return { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand, imageAuthHeaders };
 }

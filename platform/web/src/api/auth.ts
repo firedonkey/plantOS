@@ -1,3 +1,4 @@
+import { apiRequest, shouldUseMockFallback } from "./client";
 import { AuthSession } from "@/types";
 
 type LoginInput = {
@@ -5,13 +6,41 @@ type LoginInput = {
   password: string;
 };
 
-export async function loginWithPlaceholder({ email }: LoginInput): Promise<AuthSession> {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  return {
-    token: `mock-token:${email}`,
-    email,
-    mode: "mock",
-  };
+type ApiCurrentUser = {
+  authenticated: boolean;
+  user: {
+    id: number;
+    email: string;
+    name?: string | null;
+    avatar_url?: string | null;
+  } | null;
+};
+
+type ApiLoginResponse = {
+  token: string;
+  email: string;
+  mode: "api";
+};
+
+export async function loginWithBackendFallback({ email, password }: LoginInput): Promise<AuthSession> {
+  try {
+    return await apiRequest<ApiLoginResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return {
+      token: `mock-token:${email}`,
+      email,
+      mode: "mock",
+    };
+  }
 }
 
-// TODO: replace this dev-only placeholder login with real standalone web auth.
+export async function fetchCurrentUser(token?: string): Promise<ApiCurrentUser> {
+  return apiRequest<ApiCurrentUser>("/api/me", {}, token);
+}

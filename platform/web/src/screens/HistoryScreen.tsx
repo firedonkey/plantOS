@@ -13,7 +13,7 @@ export function HistoryScreen() {
           <div className="eyebrow">HISTORY</div>
           <h2>Recent sensor history</h2>
           <p className="subtitle">
-            {usedMock ? "Mock history data. TODO: replace with real charted API history." : "Chart-ready history placeholder."}
+            {usedMock ? "Mock history data shown because the backend is unavailable." : "Backend history data loaded from the standalone API."}
           </p>
         </div>
         <button className="secondary-button" onClick={refresh}>

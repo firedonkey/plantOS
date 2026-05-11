@@ -1,10 +1,57 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
+import { useSession } from "@/hooks/useSession";
 
 export function DeviceDashboardScreen() {
   const { deviceId = "" } = useParams();
-  const { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand } = useDeviceDashboard(deviceId);
+  const { session } = useSession();
+  const { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand, imageAuthHeaders } =
+    useDeviceDashboard(deviceId);
+  const [protectedImageUrl, setProtectedImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dashboard?.device.latestImage) {
+      setProtectedImageUrl(null);
+      return;
+    }
+
+    if (session?.mode !== "api" || !imageAuthHeaders) {
+      setProtectedImageUrl(dashboard.device.latestImage.url);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    fetch(dashboard.device.latestImage.url, { headers: imageAuthHeaders })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Unable to load image: ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (cancelled) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setProtectedImageUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProtectedImageUrl(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [dashboard?.device.latestImage, imageAuthHeaders, session?.mode]);
 
   if (!deviceId) {
     return <p className="error-text">Missing device id.</p>;
@@ -44,9 +91,9 @@ export function DeviceDashboardScreen() {
 
           <div className="card">
             <h3>Latest capture</h3>
-            {dashboard.device.latestImage ? (
+            {dashboard.device.latestImage && protectedImageUrl ? (
               <>
-                <img alt="Latest device capture" className="capture-image" src={dashboard.device.latestImage.url} />
+                <img alt="Latest device capture" className="capture-image" src={protectedImageUrl} />
                 <p className="subtitle">Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</p>
               </>
             ) : (
