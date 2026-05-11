@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 from app.models import CommandAction, CommandStatus, CommandTarget
@@ -47,3 +49,12 @@ class CommandRead(BaseModel):
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class LightCommandRequest(BaseModel):
+    state: Literal["on", "off"]
+
+
+class PumpCommandRequest(BaseModel):
+    action: Literal["run", "off"] = "run"
+    seconds: int | None = Field(default=None, ge=1, le=30)

@@ -14,7 +14,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import User
+from app.models import Image, SensorReading, User
 from app.models.base import Base
 from app.web.routes import _latest_device_activity, _latest_completed_command_state, _reading_chart
 
@@ -91,6 +91,96 @@ def test_create_list_and_get_device_api():
         get_response = client.get(f"/api/devices/{created['id']}")
         assert get_response.status_code == 200
         assert get_response.json()["location"] == "Kitchen window"
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_readings_and_latest_image_api():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+
+        client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 42.5,
+                "temperature": 22.2,
+                "humidity": 51.0,
+                "light_on": True,
+                "pump_on": False,
+                "pump_status": "idle",
+            },
+        )
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add(Image(device_id=device_id, path="device-1/test.jpg"))
+            session.commit()
+
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+        assert summary_response.status_code == 200
+        summary = summary_response.json()
+        assert summary["name"] == "Kitchen Rose"
+        assert summary["latest_reading"]["moisture"] == 42.5
+        assert summary["latest_image"]["content_url"].endswith("/api/images/1/content")
+
+        readings_response = client.get(f"/api/devices/{device_id}/readings")
+        assert readings_response.status_code == 200
+        readings = readings_response.json()
+        assert len(readings) == 1
+        assert readings[0]["temperature"] == 22.2
+
+        latest_image_response = client.get(f"/api/devices/{device_id}/images/latest")
+        assert latest_image_response.status_code == 200
+        assert latest_image_response.json()["id"] == 1
+    finally:
+        teardown_overrides()
+
+
+def test_device_latest_image_api_returns_null_when_missing():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={"name": "Kitchen Rose"},
+        )
+        device_id = create_response.json()["id"]
+
+        latest_image_response = client.get(f"/api/devices/{device_id}/images/latest")
+        assert latest_image_response.status_code == 200
+        assert latest_image_response.json() is None
+    finally:
+        teardown_overrides()
+
+
+def test_device_command_wrapper_apis():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+
+        light_response = client.post(f"/api/devices/{device_id}/commands/light", json={"state": "on"})
+        assert light_response.status_code == 201
+        assert light_response.json()["target"] == "light"
+        assert light_response.json()["action"] == "on"
+
+        pump_response = client.post(f"/api/devices/{device_id}/commands/pump", json={"action": "run", "seconds": 7})
+        assert pump_response.status_code == 201
+        assert pump_response.json()["target"] == "pump"
+        assert pump_response.json()["action"] == "run"
+        assert pump_response.json()["value"] == "7"
+
+        capture_response = client.post(f"/api/devices/{device_id}/commands/capture")
+        assert capture_response.status_code == 501
+        assert "not yet supported" in capture_response.json()["detail"]
     finally:
         teardown_overrides()
 
