@@ -1,1 +1,0 @@
-"""PlantLab platform application package."""
