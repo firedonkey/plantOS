@@ -23,6 +23,7 @@ def test_development_allows_default_session_secret(monkeypatch):
 def test_production_requires_secure_session_secret(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
     monkeypatch.delenv("APP_SECRET_KEY", raising=False)
     monkeypatch.delenv("PLANTLAB_SESSION_SECRET", raising=False)
     clear_settings_cache()
@@ -61,6 +62,7 @@ def test_valid_production_settings(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")
     monkeypatch.setenv("APP_SECRET_KEY", "a-secure-production-session-secret")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
     monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "gcs")
     monkeypatch.setenv("GCS_BUCKET_NAME", "plantlab-images")
     clear_settings_cache()
@@ -170,6 +172,7 @@ def test_database_password_is_required_for_component_config(monkeypatch):
 def test_production_cloud_run_env_builds_default_socket_database_url(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("APP_SECRET_KEY", "a-secure-production-session-secret")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("PLANTLAB_DATABASE_URL", raising=False)
     monkeypatch.delenv("CLOUD_SQL_CONNECTION_NAME", raising=False)
@@ -191,6 +194,7 @@ def test_production_cloud_run_env_builds_default_socket_database_url(monkeypatch
 def test_production_requires_database_password(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("APP_SECRET_KEY", "a-secure-production-session-secret")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("PLANTLAB_DATABASE_URL", raising=False)
     monkeypatch.delenv("DB_PASSWORD", raising=False)
@@ -206,6 +210,7 @@ def test_production_startup_uses_migrations_not_create_all(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")
     monkeypatch.setenv("APP_SECRET_KEY", "a-secure-production-session-secret")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_SHARED_SECRET", "provision-secret")
     clear_settings_cache()
 
     from app.db import session as db_session

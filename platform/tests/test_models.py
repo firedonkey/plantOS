@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models.base import Base
-from app.models import Command, CommandAction, CommandStatus, CommandTarget, Device, Event, EventType, Image, SensorReading, User
+from app.models import Command, CommandAction, CommandStatus, CommandTarget, Device, DeviceNode, Event, EventType, Image, SensorReading, User
 
 
 def test_sqlite_models_create_and_query():
@@ -42,10 +42,19 @@ def test_sqlite_models_create_and_query():
             status=CommandStatus.PENDING,
         )
         image = Image(device_id=device.id, path="data/images/plant.jpg")
+        node = DeviceNode(
+            device_id=device.id,
+            hardware_device_id="pi-001",
+            node_role="single_board",
+            display_name="Raspberry Pi",
+            hardware_model="raspberry_pi",
+            status="online",
+        )
         session.add(reading)
         session.add(event)
         session.add(command)
         session.add(image)
+        session.add(node)
         session.commit()
 
         saved_device = session.scalar(select(Device).where(Device.name == "Kitchen Rose"))
@@ -58,3 +67,5 @@ def test_sqlite_models_create_and_query():
         assert saved_device.commands[0].target == CommandTarget.PUMP
         assert saved_device.events[0].type == EventType.PUMP
         assert saved_device.images[0].path == "data/images/plant.jpg"
+        assert saved_device.nodes[0].hardware_device_id == "pi-001"
+        assert saved_device.nodes[0].node_role == "single_board"

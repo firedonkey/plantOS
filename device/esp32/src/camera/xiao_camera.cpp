@@ -25,7 +25,7 @@ constexpr int kHrefGpio = 47;
 constexpr int kPclkGpio = 13;
 }  // namespace
 
-bool XiaoCamera::begin() {
+bool XiaoCamera::begin(const XiaoCameraOptions& options) {
   camera_config_t config{};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -46,12 +46,12 @@ bool XiaoCamera::begin() {
   config.pin_pwdn = kPwdnGpio;
   config.pin_reset = kResetGpio;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  config.pixel_format = options.pixel_format;
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
-  config.fb_count = 2;
-  config.frame_size = FRAMESIZE_VGA;
+  config.jpeg_quality = options.jpeg_quality;
+  config.fb_count = options.fb_count;
+  config.frame_size = options.frame_size;
 
   const esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {

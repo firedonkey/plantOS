@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
-from app.api.routes import auth, commands, devices, health, images, readings, status
+from app.api.routes import auth, commands, device_nodes, devices, health, images, readings, status
 from app.core.settings import get_settings
 from app.db.session import init_db
 from app.web.routes import router as web_router
@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
     app.add_event_handler("startup", init_db)
     app.include_router(auth.router)
     app.include_router(commands.router)
+    app.include_router(device_nodes.router)
     app.include_router(devices.router)
     app.include_router(images.router)
     app.include_router(readings.router)

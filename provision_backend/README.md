@@ -1,6 +1,6 @@
 # PlantLab Provision Backend
 
-This module implements the onboarding APIs described in [provision_readme.md](/Users/gary/plantOS/provision_readme.md).
+This module implements the onboarding APIs described in [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md).
 
 ## File Structure
 

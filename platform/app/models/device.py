@@ -8,6 +8,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.command import Command
+    from app.models.device_node import DeviceNode
     from app.models.event import Event
     from app.models.image import Image
     from app.models.sensor_reading import SensorReading
@@ -37,3 +38,4 @@ class Device(Base):
     commands: Mapped[list["Command"]] = relationship(back_populates="device")
     events: Mapped[list["Event"]] = relationship(back_populates="device")
     images: Mapped[list["Image"]] = relationship(back_populates="device")
+    nodes: Mapped[list["DeviceNode"]] = relationship(back_populates="device")

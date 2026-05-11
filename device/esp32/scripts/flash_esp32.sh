@@ -10,17 +10,44 @@ ENV_NAME="esp32-s3-devkitc-1"
 PORT="/dev/cu.usbmodem1301"
 OPEN_MONITOR=0
 
+release_port_if_busy() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return
+  fi
+
+  local pids
+  pids="$(lsof -t "${PORT}" 2>/dev/null || true)"
+  pids="$(printf '%s' "${pids}" | tr '\n' ' ')"
+  if [[ -z "${pids// }" ]]; then
+    return
+  fi
+
+  echo "[plantlab] releasing serial port ${PORT} from existing process(es): ${pids}"
+  for pid in ${pids}; do
+    if [[ "${pid}" != "$$" ]]; then
+      kill "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  sleep 1
+}
+
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-touch|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
+  $(basename "$0") [--local|--gcp|--test-dht22|--test-moisture|--test-actuators|--test-camera|--test-camera-platform|--test-wifi|--test-touch|--test-button-led|--test-espnow-master|--test-espnow-camera] [--port <serial_port>] [--monitor]
 
 Options:
+  --local           Flash main firmware with explicit local provisioning profile (env: esp32-local)
+  --gcp             Flash main firmware with explicit GCP provisioning profile (env: esp32-gcp)
   --test-dht22      Flash dedicated DHT22 debug firmware (env: dht22-test)
   --test-moisture   Flash dedicated moisture debug firmware (env: moisture-test)
   --test-actuators  Flash dedicated light/pump debug firmware (env: actuators-test)
   --test-camera     Flash dedicated camera-node debug firmware (env: camera-test)
+  --test-camera-platform  Flash camera-node platform uploader firmware (env: camera-platform-test)
+  --test-wifi       Flash dedicated XIAO Wi-Fi test firmware (env: wifi-test)
   --test-touch      Flash dedicated touch-button debug firmware (env: touch-test)
+  --test-button-led Flash dedicated physical-button + status-led test firmware (env: button-led-test)
   --test-espnow-master  Flash dedicated ESP-NOW master link-test firmware (env: espnow-master-test)
   --test-espnow-camera  Flash dedicated ESP-NOW camera link-test firmware (env: espnow-camera-test)
   --port <port>     Serial port (default: ${PORT})
@@ -30,11 +57,16 @@ Options:
 Examples:
   $(basename "$0")
   $(basename "$0") --monitor
+  $(basename "$0") --local --monitor
+  $(basename "$0") --gcp --monitor
   $(basename "$0") --test-dht22 --monitor
   $(basename "$0") --test-moisture --monitor
   $(basename "$0") --test-actuators --monitor
   $(basename "$0") --test-camera --port /dev/cu.usbmodem12201 --monitor
+  $(basename "$0") --test-camera-platform --port /dev/cu.usbmodem12201 --monitor
+  $(basename "$0") --test-wifi --port /dev/cu.usbmodem12201 --monitor
   $(basename "$0") --test-touch --monitor
+  $(basename "$0") --test-button-led --monitor
   $(basename "$0") --test-espnow-master --port /dev/cu.usbmodem1301 --monitor
   $(basename "$0") --test-espnow-camera --port /dev/cu.usbmodem12201 --monitor
   $(basename "$0") --port /dev/cu.usbmodem1301 --monitor
@@ -43,6 +75,14 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --local)
+      ENV_NAME="esp32-local"
+      shift
+      ;;
+    --gcp)
+      ENV_NAME="esp32-gcp"
+      shift
+      ;;
     --test-dht22)
       ENV_NAME="dht22-test"
       shift
@@ -59,8 +99,20 @@ while [[ $# -gt 0 ]]; do
       ENV_NAME="camera-test"
       shift
       ;;
+    --test-camera-platform)
+      ENV_NAME="camera-platform-test"
+      shift
+      ;;
+    --test-wifi)
+      ENV_NAME="wifi-test"
+      shift
+      ;;
     --test-touch)
       ENV_NAME="touch-test"
+      shift
+      ;;
+    --test-button-led)
+      ENV_NAME="button-led-test"
       shift
       ;;
     --test-espnow-master)
@@ -111,6 +163,8 @@ cd "${PROJECT_DIR}"
 
 echo "[plantlab] building firmware..."
 "${PIO_BIN}" run -e "${ENV_NAME}"
+
+release_port_if_busy
 
 echo "[plantlab] uploading firmware..."
 "${PIO_BIN}" run -e "${ENV_NAME}" -t upload --upload-port "${PORT}"

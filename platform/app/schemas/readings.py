@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class SensorReadingCreate(BaseModel):
     device_id: int
+    hardware_device_id: str | None = Field(default=None, max_length=120)
     moisture: float | None = Field(default=None, ge=0, le=100)
     temperature: float | None = None
     humidity: float | None = Field(default=None, ge=0, le=100)

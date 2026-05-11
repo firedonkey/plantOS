@@ -43,7 +43,12 @@ export const registerDeviceSchema = z.object({
     .trim()
     .min(1, "software_version is required.")
     .max(60, "software_version is too long."),
-  capabilities: z.record(z.string(), z.boolean()).default({})
+  capabilities: z.record(z.string(), z.boolean()).default({}),
+  node_role: z.enum(["single_board", "master", "camera"]).default("single_board"),
+  node_index: z.number().int().positive().optional(),
+  display_name: z.string().trim().max(120, "display_name is too long.").optional(),
+  hardware_model: z.string().trim().max(120, "hardware_model is too long.").optional(),
+  attach_to_platform_device_id: z.number().int().positive().optional()
 });
 
 export const registerDeviceResponseSchema = z.object({
@@ -52,5 +57,7 @@ export const registerDeviceResponseSchema = z.object({
   platform_device_id: z.number().int(),
   device_name: z.string(),
   status: z.string(),
-  device_access_token: z.string()
+  device_access_token: z.string(),
+  node_role: z.enum(["single_board", "master", "camera"]).optional(),
+  node_index: z.number().int().positive().nullable().optional()
 });

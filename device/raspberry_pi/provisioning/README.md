@@ -4,7 +4,7 @@ For the full Raspberry Pi run-command list, use:
 
 - [COMMANDS.md](/Users/gary/plantOS/device/raspberry_pi/COMMANDS.md)
 
-This service implements the Raspberry Pi side of the SoftAP provisioning flow described in `provision_readme.md`.
+This service implements the Raspberry Pi side of the SoftAP provisioning flow described in [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md).
 
 ## File Structure
 

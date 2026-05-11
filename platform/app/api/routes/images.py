@@ -7,6 +7,7 @@ from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import Device, Image, User
 from app.schemas.images import ImageRead
+from app.services.device_nodes import get_node_for_device
 from app.services.devices import get_device_for_user
 from app.services.images import save_uploaded_image
 from app.services.storage import image_response
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/api", tags=["images"])
 def upload_image(
     request: Request,
     device_id: int = Form(...),
+    source_hardware_device_id: str | None = Form(default=None),
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
     current_user: User | None = Depends(get_optional_current_user),
@@ -34,11 +36,21 @@ def upload_image(
         if device.id != device_id:
             raise HTTPException(status_code=403, detail="Device token does not match device_id.")
 
+    if source_hardware_device_id:
+        source_node = get_node_for_device(
+            session,
+            device_id=device.id,
+            hardware_device_id=source_hardware_device_id,
+        )
+        if source_node is None:
+            raise HTTPException(status_code=403, detail="Image source node is not attached to this device.")
+
     try:
         return save_uploaded_image(
             session=session,
             upload_file=file,
             device_id=device.id,
+            source_hardware_device_id=source_hardware_device_id,
             settings=get_settings(),
         )
     except ValueError as exc:

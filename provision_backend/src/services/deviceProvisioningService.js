@@ -17,6 +17,81 @@ function buildDefaultDeviceName(deviceId) {
   return `PlantLab ${deviceId}`;
 }
 
+function buildDefaultNodeDisplayName(nodeRole, nodeIndex) {
+  if (nodeRole === "master") {
+    return "Master";
+  }
+  if (nodeRole === "camera") {
+    return nodeIndex ? `Camera ${nodeIndex}` : "Camera";
+  }
+  return "Raspberry Pi";
+}
+
+async function ensureDeviceAccessTokenRecord(client, deviceId, deviceAccessToken) {
+  const tokenHash = hashToken(deviceAccessToken);
+  await client.query(
+    `
+      INSERT INTO device_access_tokens (
+        device_id,
+        token_hash,
+        created_at,
+        revoked_at
+      )
+      VALUES ($1, $2, NOW(), NULL)
+      ON CONFLICT (token_hash) DO NOTHING
+    `,
+    [deviceId, tokenHash]
+  );
+}
+
+async function upsertDeviceHardwareNode(client, payload) {
+  await client.query(
+    `
+      INSERT INTO device_hardware_ids (
+        hardware_device_id,
+        device_id,
+        node_role,
+        node_index,
+        display_name,
+        hardware_model,
+        hardware_version,
+        software_version,
+        capabilities,
+        status,
+        created_at,
+        updated_at,
+        last_seen_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, NOW(), NOW(), NOW())
+      ON CONFLICT (hardware_device_id) DO UPDATE
+      SET
+        device_id = EXCLUDED.device_id,
+        node_role = EXCLUDED.node_role,
+        node_index = EXCLUDED.node_index,
+        display_name = EXCLUDED.display_name,
+        hardware_model = EXCLUDED.hardware_model,
+        hardware_version = EXCLUDED.hardware_version,
+        software_version = EXCLUDED.software_version,
+        capabilities = EXCLUDED.capabilities,
+        status = EXCLUDED.status,
+        updated_at = NOW(),
+        last_seen_at = NOW()
+    `,
+    [
+      payload.device_id,
+      payload.platform_device_id,
+      payload.node_role,
+      payload.node_index,
+      payload.display_name || buildDefaultNodeDisplayName(payload.node_role, payload.node_index),
+      payload.hardware_model || null,
+      payload.hardware_version,
+      payload.software_version,
+      JSON.stringify(payload.capabilities),
+      "online"
+    ]
+  );
+}
+
 export async function createClaimTokenForUser(userId) {
   return createClaimTokenForUserAndSerial(userId, null);
 }
@@ -165,10 +240,65 @@ export async function registerDeviceFromClaim(payload) {
       );
     }
 
-    const deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
-    const tokenHash = hashToken(deviceAccessToken);
+    const attachDeviceId = payload.attach_to_platform_device_id || null;
     let deviceRow;
-    if (existingDevice) {
+    let deviceAccessToken;
+
+    if (attachDeviceId) {
+      const attachResult = await client.query(
+        `
+          SELECT id, user_id, name, location, api_token
+          FROM devices
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [attachDeviceId]
+      );
+      const attachedDevice = attachResult.rows[0];
+      if (!attachedDevice || attachedDevice.user_id !== claim.user_id) {
+        throw new ApiError(
+          404,
+          "attach_target_not_found",
+          "Target device for node attachment was not found."
+        );
+      }
+      if (existingDevice && existingDevice.id !== attachedDevice.id) {
+        throw new ApiError(
+          409,
+          "hardware_already_attached_elsewhere",
+          "This hardware node is already attached to another device."
+        );
+      }
+
+      deviceAccessToken = attachedDevice.api_token || generateDeviceAccessToken(config.deviceTokenBytes);
+      if (!attachedDevice.api_token) {
+        const { rows } = await client.query(
+          `
+            UPDATE devices
+            SET
+              api_token = $2,
+              status_updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, api_token
+          `,
+          [attachedDevice.id, deviceAccessToken]
+        );
+        deviceRow = rows[0];
+      } else {
+        deviceRow = {
+          id: attachedDevice.id,
+          name: attachedDevice.name,
+          api_token: attachedDevice.api_token
+        };
+      }
+
+      await upsertDeviceHardwareNode(client, {
+        ...payload,
+        platform_device_id: deviceRow.id
+      });
+      await ensureDeviceAccessTokenRecord(client, deviceRow.id, deviceAccessToken);
+    } else if (existingDevice) {
+      deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
       const { rows } = await client.query(
         `
           UPDATE devices
@@ -185,25 +315,13 @@ export async function registerDeviceFromClaim(payload) {
       );
       deviceRow = rows[0];
 
-      await client.query(
-        `
-          UPDATE device_hardware_ids
-          SET
-            hardware_version = $2,
-            software_version = $3,
-            capabilities = $4::jsonb,
-            updated_at = NOW(),
-            last_seen_at = NOW()
-          WHERE hardware_device_id = $1
-        `,
-        [
-          payload.device_id,
-          payload.hardware_version,
-          payload.software_version,
-          JSON.stringify(payload.capabilities)
-        ]
-      );
+      await upsertDeviceHardwareNode(client, {
+        ...payload,
+        platform_device_id: deviceRow.id
+      });
+      await ensureDeviceAccessTokenRecord(client, deviceRow.id, deviceAccessToken);
     } else {
+      deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
       const { rows } = await client.query(
         `
           INSERT INTO devices (
@@ -227,42 +345,12 @@ export async function registerDeviceFromClaim(payload) {
       );
       deviceRow = rows[0];
 
-      await client.query(
-        `
-          INSERT INTO device_hardware_ids (
-            hardware_device_id,
-            device_id,
-            hardware_version,
-            software_version,
-            capabilities,
-            created_at,
-            updated_at,
-            last_seen_at
-          )
-          VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW(), NOW())
-        `,
-        [
-          payload.device_id,
-          deviceRow.id,
-          payload.hardware_version,
-          payload.software_version,
-          JSON.stringify(payload.capabilities)
-        ]
-      );
+      await upsertDeviceHardwareNode(client, {
+        ...payload,
+        platform_device_id: deviceRow.id
+      });
+      await ensureDeviceAccessTokenRecord(client, deviceRow.id, deviceAccessToken);
     }
-
-    await client.query(
-      `
-        INSERT INTO device_access_tokens (
-          device_id,
-          token_hash,
-          created_at,
-          revoked_at
-        )
-        VALUES ($1, $2, NOW(), NULL)
-      `,
-      [deviceRow.id, tokenHash]
-    );
 
     await client.query(
       `
@@ -295,7 +383,9 @@ export async function registerDeviceFromClaim(payload) {
       platform_device_id: deviceRow.id,
       device_name: deviceRow.name,
       status: "online",
-      device_access_token: deviceAccessToken
+      device_access_token: deviceAccessToken,
+      node_role: payload.node_role,
+      node_index: payload.node_index ?? null
     };
   });
 }

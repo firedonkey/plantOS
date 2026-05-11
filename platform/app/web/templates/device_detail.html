@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ device.name }} - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=live-empty-state-20260420">
+    <link rel="stylesheet" href="/static/style.css?v=live-status-polish-20260501">
   </head>
   <body class="device-page">
     <header class="site-header">
@@ -39,31 +39,31 @@
               <p class="eyebrow">Live Status</p>
               <h2>Sensor Readings</h2>
             </div>
+            <div class="reading-meta">
+              <span>Last reading</span>
+              <strong data-field="last_reading">{% if latest_reading_summary %}{{ latest_reading_summary.last_reading }}{% else %}Waiting{% endif %}</strong>
+            </div>
           </div>
-          <div class="metric-grid" aria-label="Latest reading">
-            <article class="metric-card">
-              <span>Moisture</span>
-              <strong data-field="moisture">{% if latest_reading %}{{ latest_reading.moisture if latest_reading.moisture is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.moisture is not none %}%{% endif %}</strong>
+          <div class="metric-grid live-metric-grid" aria-label="Latest reading">
+            <article class="metric-card metric-card-primary">
+              <span>Soil Moisture</span>
+              <strong data-field="moisture">{% if latest_reading_summary %}{{ latest_reading_summary.moisture }}{% else %}n/a{% endif %}</strong>
             </article>
-            <article class="metric-card">
+            <article class="metric-card metric-card-primary">
               <span>Temperature</span>
-              <strong data-field="temperature">{% if latest_reading %}{{ latest_reading.temperature if latest_reading.temperature is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.temperature is not none %} C{% endif %}</strong>
+              <strong data-field="temperature">{% if latest_reading_summary %}{{ latest_reading_summary.temperature }}{% else %}n/a{% endif %}</strong>
             </article>
-            <article class="metric-card">
+            <article class="metric-card metric-card-primary">
               <span>Humidity</span>
-              <strong data-field="humidity">{% if latest_reading %}{{ latest_reading.humidity if latest_reading.humidity is not none else "n/a" }}{% else %}n/a{% endif %}{% if latest_reading and latest_reading.humidity is not none %}%{% endif %}</strong>
+              <strong data-field="humidity">{% if latest_reading_summary %}{{ latest_reading_summary.humidity }}{% else %}n/a{% endif %}</strong>
             </article>
-            <article class="metric-card">
-              <span>Last Reading</span>
-              <strong data-field="last_reading">{% if latest_reading %}{{ latest_reading.timestamp.strftime("%b %-d, %-I:%M %p") }}{% else %}Waiting{% endif %}</strong>
+            <article class="metric-card metric-card-state">
+              <span>Growing light</span>
+              <strong data-field="light">{% if latest_reading_summary %}{{ latest_reading_summary.light }}{% else %}n/a{% endif %}</strong>
             </article>
-            <article class="metric-card">
-              <span>Light</span>
-              <strong data-field="light">{% if latest_reading %}{% if latest_reading.light_on is none %}n/a{% elif latest_reading.light_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
-            </article>
-            <article class="metric-card">
+            <article class="metric-card metric-card-state">
               <span>Pump</span>
-              <strong data-field="pump">{% if latest_reading %}{% if latest_reading.pump_on is none %}n/a{% elif latest_reading.pump_on %}on{% else %}off{% endif %}{% else %}n/a{% endif %}</strong>
+              <strong data-field="pump">{% if latest_reading_summary %}{{ latest_reading_summary.pump }}{% else %}n/a{% endif %}</strong>
             </article>
           </div>
 
@@ -142,6 +142,34 @@
             </div>
             <p class="notice" data-image-grid-notice {% if recent_images %}hidden{% endif %}>No images uploaded yet.</p>
           </div>
+
+          <div class="embedded-section">
+            <div class="section-heading components-heading">
+              <h3>Device Components</h3>
+              <span class="section-note" data-field="node_overall_status">{{ node_summary.overall_status.replace("_", " ") | title }}</span>
+            </div>
+            <div class="node-list" data-node-summary-list {% if not node_summary.primary and not node_summary.cameras %}hidden{% endif %}>
+              {% if node_summary.primary %}
+              <div class="node-item">
+                <div>
+                  <strong>{{ node_summary.primary.display_name or node_summary.primary.node_role.replace("_", " ") | title }}</strong>
+                  <span>{{ node_summary.primary.node_role.replace("_", " ") | title }}</span>
+                </div>
+                <span class="node-status {{ node_summary.primary.status }}">{{ node_summary.primary.status.replace("_", " ") | title }}</span>
+              </div>
+              {% endif %}
+              {% for camera in node_summary.cameras %}
+              <div class="node-item">
+                <div>
+                  <strong>{{ camera.display_name or camera.node_role.replace("_", " ") | title }}</strong>
+                  <span>{{ camera.node_role.replace("_", " ") | title }}</span>
+                </div>
+                <span class="node-status {{ camera.status }}">{{ camera.status.replace("_", " ") | title }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            <p class="notice" data-node-summary-empty {% if node_summary.primary or node_summary.cameras %}hidden{% endif %}>No hardware nodes registered yet.</p>
+          </div>
         </article>
       </section>
 
@@ -173,15 +201,15 @@
             <section class="control-group">
               {% set light_is_on = latest_reading and latest_reading.light_on %}
               <div class="control-group-heading">
-                <h3>Light</h3>
+                <h3>Growing light</h3>
               </div>
-              <p>Switch the grow light during setup or quick checks.</p>
+              <p>Control the growing light from the dashboard or automation schedule.</p>
               <div class="command-actions">
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-light-switch-form data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}">
                   <input type="hidden" name="target" value="light">
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
                   <label class="light-toggle-switch {% if light_is_on %}is-on{% endif %}" data-light-toggle>
-                    <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn light off{% else %}Turn light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
+                    <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn growing light off{% else %}Turn growing light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
                     <span class="light-toggle-slider" aria-hidden="true"><span class="light-toggle-text" data-switch-state>{% if light_is_on %}ON{% else %}OFF{% endif %}</span></span>
                   </label>
                 </form>
@@ -190,7 +218,7 @@
           </div>
         </article>
 
-        <article class="command-history-panel">
+        <article class="command-history-panel" data-command-history-panel>
           <h2>Recent Activity</h2>
           {% if command_activity %}
           <div class="activity-list" data-activity-list>
@@ -208,7 +236,7 @@
             {% endfor %}
           </div>
           {% else %}
-          <p class="notice">No commands queued yet.</p>
+          <p class="notice" data-activity-empty>No commands queued yet.</p>
           {% endif %}
         </article>
       </section>
@@ -287,7 +315,11 @@
       const latestImage = document.querySelector("[data-latest-image]");
       const latestImageNotice = document.querySelector("[data-latest-image-notice]");
       const imageGridNotice = document.querySelector("[data-image-grid-notice]");
-      const activityList = document.querySelector("[data-activity-list]");
+      const nodeSummaryList = document.querySelector("[data-node-summary-list]");
+      const nodeSummaryEmptyNotice = document.querySelector("[data-node-summary-empty]");
+      const activityPanel = document.querySelector("[data-command-history-panel]");
+      let activityList = document.querySelector("[data-activity-list]");
+      let activityEmptyNotice = document.querySelector("[data-activity-empty]");
       let activeCommandKeys = new Set({{ active_command_keys | tojson }});
       let summaryRefreshTimer = null;
       let fastRefreshUntil = 0;
@@ -377,14 +409,92 @@
         });
       }
 
-      function updateActivity(commands) {
-        if (!activityList || !commands) {
+      function updateNodeSummary(summary) {
+        if (!summary) {
           return;
         }
-        const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
+        setField("node_overall_status", titleCase(summary.overall_status || "offline"));
+        if (!nodeSummaryList || !nodeSummaryEmptyNotice) {
+          return;
+        }
+
+        const items = [];
+        if (summary.primary) {
+          items.push(summary.primary);
+        }
+        (summary.cameras || []).forEach((camera) => items.push(camera));
+
+        if (!items.length) {
+          nodeSummaryList.hidden = true;
+          nodeSummaryEmptyNotice.hidden = false;
+          nodeSummaryList.innerHTML = "";
+          return;
+        }
+
+        nodeSummaryList.hidden = false;
+        nodeSummaryEmptyNotice.hidden = true;
+        const signature = items.map((item) => `${item.hardware_device_id}:${item.status}:${item.display_name || ""}`).join("|");
+        if (nodeSummaryList.dataset.signature === signature) {
+          return;
+        }
+        nodeSummaryList.dataset.signature = signature;
+        nodeSummaryList.innerHTML = "";
+
+        items.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "node-item";
+
+          const details = document.createElement("div");
+          const label = document.createElement("strong");
+          label.textContent = item.display_name || titleCase((item.node_role || "node").replaceAll("_", " "));
+          const role = document.createElement("span");
+          role.textContent = titleCase((item.node_role || "node").replaceAll("_", " "));
+          details.append(label, role);
+
+          const status = document.createElement("span");
+          status.className = `node-status ${item.status || "offline"}`;
+          status.textContent = titleCase((item.status || "offline").replaceAll("_", " "));
+
+          row.append(details, status);
+          nodeSummaryList.append(row);
+        });
+      }
+
+      function updateActivity(commands) {
+        if (!commands) {
+          return;
+        }
         activeCommandKeys = new Set(commands.filter((command) => ["Waiting", "Sent"].includes(command.status)).map((command) => command.key));
         reconcilePendingLightCommand(commands);
         updateCommandButtons();
+        if (!activityPanel) {
+          return;
+        }
+        if (!commands.length) {
+          if (activityList) {
+            activityList.remove();
+            activityList = null;
+          }
+          if (!activityEmptyNotice) {
+            activityEmptyNotice = document.createElement("p");
+            activityEmptyNotice.className = "notice";
+            activityEmptyNotice.dataset.activityEmpty = "true";
+            activityEmptyNotice.textContent = "No commands queued yet.";
+            activityPanel.appendChild(activityEmptyNotice);
+          }
+          return;
+        }
+        if (!activityList) {
+          activityList = document.createElement("div");
+          activityList.className = "activity-list";
+          activityList.dataset.activityList = "true";
+          activityPanel.appendChild(activityList);
+        }
+        if (activityEmptyNotice) {
+          activityEmptyNotice.remove();
+          activityEmptyNotice = null;
+        }
+        const signature = commands.map((command) => `${command.label}:${command.status}:${command.time}`).join("|");
         if (activityList.dataset.signature === signature) {
           return;
         }
@@ -509,7 +619,7 @@
           if (input) {
             input.dataset.commandKey = key;
             input.checked = isOn;
-            input.setAttribute("aria-label", isOn ? "Turn light off" : "Turn light on");
+            input.setAttribute("aria-label", isOn ? "Turn growing light off" : "Turn growing light on");
           }
           if (toggle) {
             toggle.classList.toggle("is-on", isOn);
@@ -542,6 +652,7 @@
           updateActivity(payload.command_activity);
           updateReading(payload.latest_reading);
           updateImages(payload);
+          updateNodeSummary(payload.node_summary);
         } catch (error) {
           console.debug("Dashboard summary refresh skipped", error);
         } finally {

@@ -67,9 +67,14 @@ export async function ensureProvisioningSchema(pool) {
     CREATE TABLE IF NOT EXISTS device_hardware_ids (
       hardware_device_id TEXT PRIMARY KEY,
       device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      node_role TEXT NOT NULL DEFAULT 'single_board',
+      node_index INTEGER,
+      display_name TEXT,
+      hardware_model TEXT,
       hardware_version TEXT,
       software_version TEXT,
       capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'provisioning',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ
@@ -77,8 +82,38 @@ export async function ensureProvisioningSchema(pool) {
   `);
 
   await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS node_role TEXT NOT NULL DEFAULT 'single_board'
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS node_index INTEGER
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS display_name TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS hardware_model TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'provisioning'
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_device_id
       ON device_hardware_ids(device_id)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_node_role
+      ON device_hardware_ids(node_role)
   `);
 
   await pool.query(`

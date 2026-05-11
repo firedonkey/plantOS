@@ -1,12 +1,12 @@
 # PlantLab v1 SoftAP Provisioning
 
-This document summarizes the complete v1 implementation aligned with `provision_readme.md`.
+This document summarizes the complete v1 implementation aligned with [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md).
 
 ## Folder Structure
 
 ```text
 plantOS/
-  provision_readme.md
+  docs/design/softap_provisioning_design.md
 
   device/
     provision.py

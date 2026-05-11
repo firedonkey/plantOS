@@ -193,8 +193,24 @@ void on_data_received(const uint8_t* mac_addr, const uint8_t* data, int len) {
       }
       break;
     case EspNowCommandType::kProvisionStart:
-      // Placeholder for provisioning flow wiring later.
-      send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+      {
+        const CameraProvisioningPayload payload = espnow_packet_get_provisioning_payload(packet);
+        if (!espnow_validate_provisioning_payload(payload)) {
+          Serial.println("[espnow-camera] provisioning payload invalid");
+          send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kInvalid);
+          break;
+        }
+        Serial.printf(
+            "[espnow-camera] provisioning payload config_version=%u camera_index=%u platform_device_id=%u ssid=%s platform=%s token_len=%u\n",
+            static_cast<unsigned int>(payload.config_version),
+            static_cast<unsigned int>(payload.camera_node_index),
+            static_cast<unsigned int>(payload.platform_device_id),
+            payload.wifi_ssid,
+            payload.platform_url,
+            static_cast<unsigned int>(strlen(payload.device_token)));
+        // Stage 10: ACK payload receipt only. Stage 11 will persist and apply it.
+        send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
+      }
       break;
     case EspNowCommandType::kHealthCheck:
       send_ack(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);

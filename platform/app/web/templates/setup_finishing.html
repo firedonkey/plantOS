@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Finishing Setup - {{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css?v=setup-finishing-20260429">
+    <link rel="stylesheet" href="/static/style.css?v=setup-finishing-20260502">
     <style>
       .finishing-shell {
         width: min(720px, calc(100% - 32px));
@@ -195,10 +195,14 @@
     </header>
 
     <main class="finishing-shell">
-      <section class="finishing-card" id="setup-finishing-card" data-device-name="{{ pending_device_name }}" data-location="{{ pending_location }}">
+      <section class="finishing-card" id="setup-finishing-card" data-device-name="{{ pending_device_name }}" data-location="{{ pending_location }}" data-expect-image="{{ 'true' if expect_image else 'false' }}">
         <p class="eyebrow">Setup</p>
         <h1>Finishing setup for {{ pending_device_name }}</h1>
+        {% if expect_image %}
         <p>PlantLab is reconnecting, registering your device, and sending its first update. We’ll open the dashboard as soon as everything is ready.</p>
+        {% else %}
+        <p>PlantLab is reconnecting, registering your master node, and sending its first update. We’ll open the dashboard as soon as your device is ready.</p>
+        {% endif %}
 
         <div class="connection-hero" aria-hidden="true">
           <div class="connection-hero-topline">
@@ -207,7 +211,7 @@
           </div>
           <div class="signal-track">
             <div class="signal-node">
-              <div class="signal-node-badge">Pi</div>
+              <div class="signal-node-badge">PL</div>
               <div class="signal-node-label">Device</div>
             </div>
             <div class="signal-wave"></div>
@@ -233,6 +237,7 @@
               <span>Waiting for the first reading from the device.</span>
             </div>
           </li>
+          {% if expect_image %}
           <li class="setup-check" id="setup-check-image">
             <span class="setup-check-dot" aria-hidden="true"></span>
             <div>
@@ -240,9 +245,16 @@
               <span>Waiting for the first camera image.</span>
             </div>
           </li>
+          {% endif %}
         </ul>
 
-        <p class="finishing-note" id="setup-finishing-note">This usually takes a few seconds after the device joins your Wi‑Fi.</p>
+        <p class="finishing-note" id="setup-finishing-note">
+          {% if expect_image %}
+          This usually takes a few seconds after the device joins your Wi‑Fi.
+          {% else %}
+          This usually takes a few seconds after the master node joins your Wi‑Fi and sends its first reading.
+          {% endif %}
+        </p>
       </section>
     </main>
 
@@ -251,10 +263,14 @@
       if (finishingCard) {
         const deviceName = finishingCard.dataset.deviceName;
         const location = finishingCard.dataset.location || "";
+        const expectImage = finishingCard.dataset.expectImage !== "false";
         const statusUrl = new URL("/setup/status.json", window.location.origin);
         statusUrl.searchParams.set("device_name", deviceName);
         if (location) {
           statusUrl.searchParams.set("location", location);
+        }
+        if (!expectImage) {
+          statusUrl.searchParams.set("expect_image", "0");
         }
 
         const note = document.querySelector("#setup-finishing-note");
@@ -284,14 +300,18 @@
             if (response.ok) {
               setCheckReady(deviceCheck, Boolean(payload.device_found));
               setCheckReady(readingCheck, Boolean(payload.has_reading));
-              setCheckReady(imageCheck, Boolean(payload.has_image));
+              if (expectImage) {
+                setCheckReady(imageCheck, Boolean(payload.has_image));
+              }
 
               if (payload.ready && payload.redirect_url) {
                 window.location.replace(payload.redirect_url);
                 return;
               }
 
-              if (payload.device_found && payload.has_reading && !payload.has_image) {
+              if (!expectImage && payload.device_found && payload.has_reading) {
+                note.textContent = "The device is online. Opening the dashboard as soon as PlantLab finishes the handoff.";
+              } else if (payload.device_found && payload.has_reading && !payload.has_image) {
                 note.textContent = "The device is online. Waiting for the first photo to finish uploading.";
               } else if (payload.device_found && !payload.has_reading) {
                 note.textContent = "The device is in your account. Waiting for the first sensor update.";

@@ -19,9 +19,14 @@ CREATE INDEX IF NOT EXISTS idx_device_claim_tokens_expires_at
 CREATE TABLE IF NOT EXISTS device_hardware_ids (
   hardware_device_id TEXT PRIMARY KEY,
   device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  node_role TEXT NOT NULL DEFAULT 'single_board',
+  node_index INTEGER,
+  display_name TEXT,
+  hardware_model TEXT,
   hardware_version TEXT,
   software_version TEXT,
   capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'provisioning',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at TIMESTAMPTZ
@@ -29,6 +34,9 @@ CREATE TABLE IF NOT EXISTS device_hardware_ids (
 
 CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_device_id
   ON device_hardware_ids(device_id);
+
+CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_node_role
+  ON device_hardware_ids(node_role);
 
 CREATE TABLE IF NOT EXISTS device_access_tokens (
   id BIGSERIAL PRIMARY KEY,
