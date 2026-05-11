@@ -3,23 +3,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class DeviceCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    location: str | None = Field(default=None, max_length=120)
-    plant_type: str | None = Field(default=None, max_length=120)
-
-
-class DeviceRead(BaseModel):
-    id: int
-    name: str
-    location: str | None
-    plant_type: str | None
-    api_token: str | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 class DeviceSummaryReadingRead(BaseModel):
     timestamp: datetime
     moisture: float | None
@@ -36,6 +19,26 @@ class DeviceSummaryImageRead(BaseModel):
     timestamp: datetime
     source_hardware_device_id: str | None = None
 
+
+class DeviceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    location: str | None = Field(default=None, max_length=120)
+    plant_type: str | None = Field(default=None, max_length=120)
+
+
+class DeviceRead(BaseModel):
+    id: int
+    name: str
+    location: str | None
+    plant_type: str | None
+    api_token: str | None
+    created_at: datetime
+    status: str | None = None
+    latest_reading: DeviceSummaryReadingRead | None = None
+    latest_image: DeviceSummaryImageRead | None = None
+    node_summary: dict | None = None
+
+    model_config = {"from_attributes": True}
 
 class DeviceSummaryRead(BaseModel):
     id: int

@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import (
     http_exception_handler as default_http_exception_handler,
     request_validation_exception_handler as default_validation_exception_handler,
@@ -86,7 +87,7 @@ async def api_validation_exception_handler(request: Request, exc: RequestValidat
                 "code": "validation_error",
                 "message": "Request validation failed.",
                 "details": {
-                    "errors": exc.errors(),
+                    "errors": jsonable_encoder(exc.errors()),
                 },
             }
         },

@@ -4,11 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.api.errors import api_error
 from app.api.deps import get_current_user, get_device_from_token
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import User
-from app.schemas.commands import CommandCreate, CommandRead, LightCommandRequest, PumpCommandRequest
+from app.schemas.commands import (
+    CommandCreate,
+    CommandRead,
+    DeviceCommandEnvelopeRead,
+    LightCommandRequest,
+    PumpCommandRequest,
+)
 from app.schemas.devices import (
     DeviceCreate,
     DeviceRead,
@@ -35,10 +42,12 @@ logger = logging.getLogger(__name__)
 
 @router.get("", response_model=list[DeviceRead])
 def list_devices(
+    request: Request,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    return list_devices_for_user(session, current_user)
+    devices = list_devices_for_user(session, current_user)
+    return [_build_device_read(request, session, device) for device in devices]
 
 
 @router.post("", response_model=DeviceRead, status_code=201)
@@ -53,13 +62,14 @@ def create_device(
 @router.get("/{device_id}", response_model=DeviceRead)
 def get_device(
     device_id: int,
+    request: Request,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
-    return device
+    return _build_device_read(request, session, device)
 
 
 @router.get("/{device_id}/summary", response_model=DeviceSummaryRead)
@@ -139,7 +149,7 @@ def get_device_latest_image(
     )
 
 
-@router.post("/{device_id}/commands/light", response_model=CommandRead, status_code=201)
+@router.post("/{device_id}/commands/light", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_light_command(
     device_id: int,
     payload: LightCommandRequest,
@@ -150,14 +160,21 @@ def create_light_command(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
-    return create_command(
+    command = create_command(
         session,
         device.id,
         CommandCreate(target="light", action=payload.state),
     )
+    return _queued_command_response(
+        device_id=device.id,
+        command_name="light",
+        action=payload.state,
+        command=command,
+        message=f"Light command queued: turn {payload.state}.",
+    )
 
 
-@router.post("/{device_id}/commands/pump", response_model=CommandRead, status_code=201)
+@router.post("/{device_id}/commands/pump", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_pump_command(
     device_id: int,
     payload: PumpCommandRequest,
@@ -168,7 +185,7 @@ def create_pump_command(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
-    return create_command(
+    command = create_command(
         session,
         device.id,
         CommandCreate(
@@ -177,9 +194,20 @@ def create_pump_command(
             value=str(payload.seconds) if payload.action == "run" and payload.seconds is not None else None,
         ),
     )
+    return _queued_command_response(
+        device_id=device.id,
+        command_name="pump",
+        action=payload.action,
+        command=command,
+        message=(
+            f"Pump command queued: run for {payload.seconds} seconds."
+            if payload.action == "run" and payload.seconds is not None
+            else "Pump command queued: turn off."
+        ),
+    )
 
 
-@router.post("/{device_id}/commands/capture", status_code=501)
+@router.post("/{device_id}/commands/capture", response_model=DeviceCommandEnvelopeRead, status_code=501)
 def create_capture_command(
     device_id: int,
     session: Session = Depends(get_session),
@@ -188,9 +216,23 @@ def create_capture_command(
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
-    raise HTTPException(
-        status_code=501,
-        detail="Capture commands are not yet supported through the shared backend command queue.",
+    raise api_error(
+        501,
+        "capture_not_supported",
+        "Capture commands are not yet supported through the shared backend command queue.",
+        details={
+            "device_id": device.id,
+            "command": "capture",
+            "action": "capture",
+            "future_response": {
+                "status": "accepted",
+                "device_id": device.id,
+                "command": "capture",
+                "action": "capture",
+                "message": "Capture command queued.",
+                "queued": True,
+            },
+        },
     )
 
 
@@ -241,3 +283,69 @@ async def register_provisioned_device_proxy(request: Request):
         )
 
     return JSONResponse(response_payload, status_code=response.status_code)
+
+
+def _build_device_read(request: Request, session: Session, device) -> DeviceRead:
+    latest_reading = get_latest_reading_for_device(session, device.id)
+    latest_images = list_recent_images_for_device(session, device.id, limit=1)
+    latest_image = latest_images[0] if latest_images else None
+    node_summary = build_node_summary(list_nodes_for_device(session, device.id))
+    return DeviceRead(
+        id=device.id,
+        name=device.name,
+        location=device.location,
+        plant_type=device.plant_type,
+        api_token=device.api_token,
+        created_at=device.created_at,
+        status=_device_status(node_summary, latest_reading),
+        latest_reading=(
+            DeviceSummaryReadingRead.model_validate(latest_reading, from_attributes=True)
+            if latest_reading is not None
+            else None
+        ),
+        latest_image=(
+            DeviceSummaryImageRead(
+                id=latest_image.id,
+                content_url=str(request.url_for("image_content", image_id=latest_image.id)),
+                timestamp=latest_image.timestamp,
+                source_hardware_device_id=latest_image.source_hardware_device_id,
+            )
+            if latest_image is not None
+            else None
+        ),
+        node_summary=node_summary,
+    )
+
+
+def _device_status(node_summary: dict, latest_reading) -> str:
+    primary = node_summary.get("primary") or {}
+    primary_status = str(primary.get("status") or "").lower()
+    if primary_status == "online":
+        return "online"
+    if primary_status in {"offline", "error"}:
+        return "offline"
+    if latest_reading is not None:
+        return "online"
+    return "unknown"
+
+
+def _queued_command_response(
+    *,
+    device_id: int,
+    command_name: str,
+    action: str,
+    command,
+    message: str,
+) -> DeviceCommandEnvelopeRead:
+    return DeviceCommandEnvelopeRead(
+        status="accepted",
+        device_id=device_id,
+        command=command_name,
+        action=action,
+        queued=True,
+        message=message,
+        command_id=command.id,
+        command_status=command.status,
+        created_at=command.created_at,
+        value=command.value,
+    )

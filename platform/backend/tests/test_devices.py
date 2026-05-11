@@ -86,11 +86,20 @@ def test_create_list_and_get_device_api():
 
         list_response = client.get("/api/devices")
         assert list_response.status_code == 200
-        assert len(list_response.json()) == 1
+        listed = list_response.json()
+        assert len(listed) == 1
+        assert listed[0]["status"] == "unknown"
+        assert listed[0]["latest_reading"] is None
+        assert listed[0]["latest_image"] is None
+        assert listed[0]["node_summary"]["overall_status"] == "offline"
+        assert listed[0]["node_summary"]["primary"] is None
+        assert listed[0]["node_summary"]["cameras"] == []
 
         get_response = client.get(f"/api/devices/{created['id']}")
         assert get_response.status_code == 200
-        assert get_response.json()["location"] == "Kitchen window"
+        payload = get_response.json()
+        assert payload["location"] == "Kitchen window"
+        assert payload["status"] == "unknown"
     finally:
         teardown_overrides()
 
@@ -141,6 +150,13 @@ def test_device_summary_readings_and_latest_image_api():
         latest_image_response = client.get(f"/api/devices/{device_id}/images/latest")
         assert latest_image_response.status_code == 200
         assert latest_image_response.json()["id"] == 1
+
+        list_response = client.get("/api/devices")
+        assert list_response.status_code == 200
+        listed = list_response.json()
+        assert listed[0]["latest_reading"]["temperature"] == 22.2
+        assert listed[0]["latest_image"]["content_url"].endswith("/api/images/1/content")
+        assert listed[0]["status"] == "online"
     finally:
         teardown_overrides()
 
@@ -169,18 +185,29 @@ def test_device_command_wrapper_apis():
 
         light_response = client.post(f"/api/devices/{device_id}/commands/light", json={"state": "on"})
         assert light_response.status_code == 201
-        assert light_response.json()["target"] == "light"
-        assert light_response.json()["action"] == "on"
+        light_payload = light_response.json()
+        assert light_payload["status"] == "accepted"
+        assert light_payload["device_id"] == device_id
+        assert light_payload["command"] == "light"
+        assert light_payload["action"] == "on"
+        assert light_payload["queued"] is True
+        assert light_payload["command_status"] == "pending"
 
         pump_response = client.post(f"/api/devices/{device_id}/commands/pump", json={"action": "run", "seconds": 7})
         assert pump_response.status_code == 201
-        assert pump_response.json()["target"] == "pump"
-        assert pump_response.json()["action"] == "run"
-        assert pump_response.json()["value"] == "7"
+        pump_payload = pump_response.json()
+        assert pump_payload["status"] == "accepted"
+        assert pump_payload["command"] == "pump"
+        assert pump_payload["action"] == "run"
+        assert pump_payload["queued"] is True
+        assert pump_payload["value"] == "7"
 
         capture_response = client.post(f"/api/devices/{device_id}/commands/capture")
         assert capture_response.status_code == 501
-        assert "not yet supported" in capture_response.json()["detail"]
+        capture_payload = capture_response.json()
+        assert capture_payload["error"]["code"] == "capture_not_supported"
+        assert "not yet supported" in capture_payload["error"]["message"]
+        assert capture_payload["error"]["details"]["future_response"]["status"] == "accepted"
     finally:
         teardown_overrides()
 

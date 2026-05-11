@@ -58,3 +58,16 @@ class LightCommandRequest(BaseModel):
 class PumpCommandRequest(BaseModel):
     action: Literal["run", "off"] = "run"
     seconds: int | None = Field(default=None, ge=1, le=30)
+
+
+class DeviceCommandEnvelopeRead(BaseModel):
+    status: Literal["accepted", "unsupported", "error"]
+    device_id: int
+    command: Literal["light", "pump", "capture"]
+    action: str
+    queued: bool
+    message: str
+    command_id: int | None = None
+    command_status: CommandStatus | None = None
+    created_at: datetime | None = None
+    value: str | None = None
