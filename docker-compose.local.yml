@@ -40,7 +40,7 @@ services:
     ports:
       - "8000:8080"
     volumes:
-      - plantlab_platform_uploads:/app/platform/data/uploads
+      - plantlab_platform_uploads:/app/platform/backend/data/uploads
 
   provision-backend:
     build:

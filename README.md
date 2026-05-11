@@ -209,7 +209,7 @@ pip install -r requirements-pi.txt
 
 For platform development:
 ```bash
-cd platform
+cd platform/backend
 pip install -r requirements.txt
 ```
 
@@ -297,8 +297,8 @@ python main.py --once
 Start the platform first. Use `0.0.0.0` when another device, such as the Raspberry Pi, needs to connect:
 
 ```bash
-cd platform
-source ../.venv/bin/activate
+cd platform/backend
+source ../../.venv/bin/activate
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -446,16 +446,16 @@ The web app includes:
 Run the FastAPI platform locally:
 
 ```bash
-cd platform
-source ../.venv/bin/activate
+cd platform/backend
+source ../../.venv/bin/activate
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
 Run platform tests:
 
 ```bash
-cd platform
-source ../.venv/bin/activate
+cd platform/backend
+source ../../.venv/bin/activate
 python -m pytest tests
 ```
 

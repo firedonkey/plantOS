@@ -1,0 +1,303 @@
+from collections.abc import Generator
+from datetime import datetime, timezone
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.api.deps import get_current_user, get_optional_current_user
+from app.db.session import get_session
+from app.main import app
+from app.models import Device, SensorReading, User
+from app.models.base import Base
+from app.services.device_nodes import upsert_device_node
+from app.services.readings import get_latest_reading_for_device, list_recent_readings_for_device
+
+
+def build_client_with_data() -> tuple[TestClient, int, int]:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    with TestingSessionLocal() as session:
+        user = User(email="owner@example.com", google_sub="owner-google")
+        other_user = User(email="other@example.com", google_sub="other-google")
+        session.add_all([user, other_user])
+        session.commit()
+        session.refresh(user)
+        session.refresh(other_user)
+
+        device = Device(user_id=user.id, name="Kitchen Rose", api_token="token-owner")
+        other_device = Device(user_id=other_user.id, name="Other Rose", api_token="token-other")
+        session.add_all([device, other_device])
+        session.commit()
+        session.refresh(device)
+        session.refresh(other_device)
+        user_id = user.id
+        device_id = device.id
+        other_device_id = other_device.id
+
+    def override_session() -> Generator[Session, None, None]:
+        with TestingSessionLocal() as session:
+            yield session
+
+    def override_current_user() -> User:
+        with TestingSessionLocal() as session:
+            return session.get(User, user_id)
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_optional_current_user] = override_current_user
+    return TestClient(app), device_id, other_device_id
+
+
+def teardown_overrides() -> None:
+    app.dependency_overrides.clear()
+
+
+def test_ingest_sensor_data_requires_auth():
+    client = TestClient(app)
+    response = client.post(
+        "/api/data",
+        json={"device_id": 1, "moisture": 42.0},
+    )
+
+    assert response.status_code == 401
+
+
+def test_ingest_sensor_data_for_owned_device():
+    client, device_id, _ = build_client_with_data()
+    try:
+        timestamp = datetime(2026, 4, 12, 12, 0, tzinfo=timezone.utc)
+        response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 42.5,
+                "temperature": 22.2,
+                "humidity": 51.0,
+                "light_on": True,
+                "pump_on": False,
+                "pump_status": "not_needed",
+                "timestamp": timestamp.isoformat(),
+            },
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["device_id"] == device_id
+        assert payload["moisture"] == 42.5
+        assert payload["temperature"] == 22.2
+        assert payload["humidity"] == 51.0
+        assert payload["light_on"] is True
+        assert payload["pump_on"] is False
+        assert payload["pump_status"] == "not_needed"
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_rejects_other_users_device():
+    client, _, other_device_id = build_client_with_data()
+    try:
+        response = client.post(
+            "/api/data",
+            json={"device_id": other_device_id, "moisture": 42.0},
+        )
+
+        assert response.status_code == 404
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_accepts_device_token():
+    client, device_id, _ = build_client_with_data()
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        response = client.post(
+            "/api/data",
+            json={"device_id": device_id, "moisture": 43.0},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["moisture"] == 43.0
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_accepts_master_origin_for_grouped_device():
+    client, device_id, _ = build_client_with_data()
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "hardware_device_id": "master-01",
+                "moisture": 43.0,
+            },
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["moisture"] == 43.0
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_rejects_camera_origin_for_grouped_device():
+    client, device_id, _ = build_client_with_data()
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "hardware_device_id": "cam-01",
+                "moisture": 43.0,
+            },
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Camera nodes cannot post device-level sensor readings."
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_requires_hardware_id_for_grouped_device():
+    client, device_id, _ = build_client_with_data()
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/data",
+            json={"device_id": device_id, "moisture": 43.0},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 400
+        assert "hardware_device_id is required" in response.json()["detail"]
+    finally:
+        teardown_overrides()
+
+
+def test_ingest_sensor_data_rejects_wrong_device_token():
+    client, device_id, _ = build_client_with_data()
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        response = client.post(
+            "/api/data",
+            json={"device_id": device_id, "moisture": 43.0},
+            headers={"X-Device-Token": "token-other"},
+        )
+
+        assert response.status_code == 403
+    finally:
+        teardown_overrides()
+
+
+def test_latest_reading_uses_newest_row_when_timestamps_match():
+    client, device_id, _ = build_client_with_data()
+    try:
+        timestamp = datetime(2026, 4, 13, 19, 54, 20, tzinfo=timezone.utc)
+        first_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "light_on": True,
+                "pump_on": True,
+                "timestamp": timestamp.isoformat(),
+            },
+        )
+        second_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "light_on": False,
+                "pump_on": False,
+                "timestamp": timestamp.isoformat(),
+            },
+        )
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            latest = get_latest_reading_for_device(session, device_id)
+            recent = list_recent_readings_for_device(session, device_id, limit=2)
+
+        assert latest is not None
+        assert latest.light_on is False
+        assert latest.pump_on is False
+        assert [reading.id for reading in recent] == [
+            second_response.json()["id"],
+            first_response.json()["id"],
+        ]
+    finally:
+        teardown_overrides()

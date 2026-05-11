@@ -6,12 +6,12 @@ ENV PORT=8080
 
 WORKDIR /app
 
-COPY platform/requirements.txt ./requirements.txt
+COPY platform/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY platform ./platform
 
-WORKDIR /app/platform
+WORKDIR /app/platform/backend
 RUN mkdir -p data/uploads
 
 EXPOSE 8080

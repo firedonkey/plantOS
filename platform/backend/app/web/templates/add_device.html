@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Add Device - {{ app_name }}</title>
+    <link rel="stylesheet" href="/static/style.css?v=provision-add-20260428b">
+    <style>
+      .setup-flow {
+        display: grid;
+        gap: 22px;
+        max-width: 980px;
+      }
+
+      .setup-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 24px;
+        background: #fff;
+      }
+
+      .setup-step {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+
+      .setup-step h2 {
+        margin: 0;
+      }
+
+      .step-number {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: #e7f2e9;
+        color: #2f7d4b;
+        font-weight: 900;
+      }
+
+      .step-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .step-pill {
+        border: 1px solid #d9e1d8;
+        border-radius: 999px;
+        padding: 6px 10px;
+        color: #566259;
+        font-size: 0.86rem;
+        font-weight: 800;
+      }
+
+      .step-pill.ready {
+        border-color: #b8d8c0;
+        background: #eff9f1;
+        color: #2f7d4b;
+      }
+
+      .step-pill.error {
+        border-color: #e0b0aa;
+        background: #fff2f1;
+        color: #9b332b;
+      }
+
+      .setup-card p {
+        margin: 0;
+      }
+
+      .setup-card p + p {
+        margin-top: 10px;
+      }
+
+      .device-form {
+        display: grid;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .device-form label {
+        display: grid;
+        gap: 8px;
+        font-weight: 800;
+      }
+
+      .device-form input {
+        min-height: 42px;
+        border: 1px solid #cfd8cf;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #17201a;
+        font: inherit;
+      }
+
+      .device-form input:focus,
+      .sn-entry input:focus {
+        outline: 2px solid rgba(47, 125, 75, 0.22);
+        border-color: #2f7d4b;
+      }
+
+      .inline-actions,
+      .scan-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .secondary-button {
+        min-height: 42px;
+        border: 1px solid #cfd8cf;
+        border-radius: 8px;
+        padding: 10px 14px;
+        background: #fff;
+        color: #17201a;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .scanner-panel,
+      .manual-panel,
+      .ready-panel {
+        margin-top: 18px;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        padding: 18px;
+        background: #f7faf6;
+      }
+
+      .ready-panel {
+        display: grid;
+        gap: 16px;
+        border-color: #b8d8c0;
+        background: #f3faf4;
+      }
+
+      .scanner-panel {
+        display: grid;
+        gap: 14px;
+      }
+
+      .scanner-preview {
+        overflow: hidden;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        background: #17201a;
+      }
+
+      .scanner-preview video {
+        display: block;
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+      }
+
+      .scanner-help {
+        color: #566259;
+      }
+
+      .scanner-panel[hidden],
+      .manual-panel[hidden],
+      .ready-panel[hidden],
+      .setup-status[hidden],
+      #sn-file-input {
+        display: none;
+      }
+
+      .sn-entry {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .sn-entry input {
+        min-height: 42px;
+        border: 1px solid #cfd8cf;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      .sn-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        border: 1px solid #b8d8c0;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: #fff;
+        color: #2f7d4b;
+        font-weight: 900;
+      }
+
+      .ready-panel-header {
+        display: grid;
+        gap: 6px;
+      }
+
+      .ready-panel-title {
+        color: #2f7d4b;
+        font-size: 1.05rem;
+        font-weight: 900;
+      }
+
+      .ready-panel-copy {
+        color: #566259;
+      }
+
+      .wifi-handoff {
+        display: grid;
+        gap: 12px;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        padding: 16px;
+        background: #ffffff;
+      }
+
+      .wifi-handoff strong {
+        color: #17201a;
+      }
+
+      .wifi-confirm {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+      }
+
+      .wifi-confirm input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+      }
+
+      .disabled-link,
+      [aria-disabled="true"] {
+        pointer-events: none;
+        opacity: 0.45;
+      }
+
+      .setup-status {
+        margin-top: 16px;
+        border: 1px solid #d9e1d8;
+        border-radius: 8px;
+        padding: 12px;
+        background: #f7faf6;
+        color: #566259;
+        font-weight: 700;
+      }
+
+      .setup-status.success {
+        border-color: #b8d8c0;
+        background: #eff9f1;
+        color: #2f7d4b;
+      }
+
+      .setup-status.error {
+        border-color: #e0b0aa;
+        background: #fff2f1;
+        color: #9b332b;
+      }
+
+      .continue-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .setup-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .setup-item {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .setup-item p {
+        margin-top: 4px;
+      }
+
+      @media (max-width: 720px) {
+        .setup-card {
+          padding: 18px;
+        }
+
+        .setup-step {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .inline-actions,
+        .scan-actions,
+        .continue-actions {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-logo" href="/">PlantLab</a>
+      <nav class="site-nav" aria-label="Account">
+        <a class="button" href="/devices">Devices</a>
+        <span class="account-label">{{ current_user.name or current_user.email }}</span>
+      </nav>
+    </header>
+
+    <main>
+      <p class="eyebrow">Setup</p>
+      <h1>Add Device</h1>
+      <p>Name the device, confirm its serial number, then connect to the PlantLab device Wi-Fi to finish setup.</p>
+
+      <section class="setup-flow">
+        <section class="setup-card" aria-labelledby="step-1-title">
+          <div class="setup-step">
+            <div class="step-title">
+              <span class="step-number">1</span>
+              <h2 id="step-1-title">Name the device</h2>
+            </div>
+            <span class="step-pill" id="step-1-pill">Required</span>
+          </div>
+
+          <p>Choose the name that will appear in your PlantLab dashboard. You can change it later.</p>
+
+          <form class="device-form" id="device-setup-form">
+            <label>
+              Device name
+              <input id="device-name" name="device_name" required maxlength="120" value="{{ suggested_device_name }}">
+            </label>
+            <label>
+              Location <span class="optional-label">optional</span>
+              <input id="device-location" name="location" maxlength="120" value="{{ suggested_location }}">
+            </label>
+            <div class="inline-actions">
+              <button id="prepare-button" type="submit">Next</button>
+            </div>
+          </form>
+          <p class="setup-status" id="step-1-status" hidden></p>
+        </section>
+
+        <section class="setup-card" aria-labelledby="step-2-title">
+          <div class="setup-step">
+            <div class="step-title">
+              <span class="step-number">2</span>
+              <h2 id="step-2-title">Enter provisioning mode</h2>
+            </div>
+            <span class="step-pill" id="step-2-pill">Pending</span>
+          </div>
+
+          <p>On the PlantLab device, press and hold the provisioning button until the status LED starts blinking.</p>
+          <p>The blinking LED confirms the device has entered provisioning mode and is ready for setup.</p>
+
+          <div class="inline-actions">
+            <button class="secondary-button" id="provisioning-ready-button" type="button" disabled>I see the blinking LED</button>
+          </div>
+          <p class="setup-status" id="step-2-status" hidden></p>
+        </section>
+
+        <section class="setup-card" aria-labelledby="step-3-title">
+          <div class="setup-step">
+            <div class="step-title">
+              <span class="step-number">3</span>
+              <h2 id="step-3-title">Scan or enter the device SN</h2>
+            </div>
+            <span class="step-pill" id="step-3-pill">Pending</span>
+          </div>
+
+          <p>Use your phone camera to scan the QR label, or type the SN manually if scanning is unavailable.</p>
+
+          <div class="scan-actions">
+            <button class="secondary-button" id="scan-qr-button" type="button" disabled>Scan QR from camera or photo</button>
+            <button class="secondary-button" id="manual-sn-button" type="button" disabled>Enter SN manually</button>
+            <input id="sn-file-input" type="file" accept="image/*" capture="environment">
+          </div>
+
+          <div class="scanner-panel" id="scanner-panel" hidden>
+            <p>Hold the QR label in front of your camera. PlantLab will read the serial number automatically.</p>
+            <div class="scanner-preview">
+              <video id="qr-video" autoplay playsinline muted></video>
+            </div>
+            <canvas id="qr-canvas" hidden></canvas>
+            <p class="scanner-help">If camera access is blocked or the scan does not work well, upload a photo of the QR label instead.</p>
+            <div class="inline-actions">
+              <button class="secondary-button" id="upload-qr-photo-button" type="button">Upload QR photo</button>
+              <button class="secondary-button" id="stop-scan-button" type="button">Stop camera</button>
+            </div>
+          </div>
+
+          <div class="manual-panel" id="manual-panel" hidden>
+            <label class="sn-entry">
+              Device SN
+              <input id="serial-number" autocomplete="off" placeholder="SN-20260428-016521">
+            </label>
+            <div class="inline-actions">
+              <button id="verify-sn-button" type="button">Verify SN</button>
+            </div>
+          </div>
+
+          <div class="ready-panel" id="ready-panel" hidden>
+            <div class="ready-panel-header">
+              <div class="ready-panel-title">Device verified</div>
+              <p class="ready-panel-copy">This serial number is ready. Next, connect your phone or laptop to the device Wi-Fi network to finish setup.</p>
+            </div>
+            <div class="sn-chip" id="verified-sn-chip"></div>
+            <div class="wifi-handoff">
+              <p>Connect to <strong>PlantLab-Setup</strong> in your Wi-Fi settings.</p>
+              <label class="wifi-confirm">
+                <input id="wifi-connected-checkbox" type="checkbox">
+                <span>I’m connected to PlantLab-Setup</span>
+              </label>
+            </div>
+            <div class="continue-actions">
+              <a class="secondary-button disabled-link" id="continue-setup-link" href="#" aria-disabled="true">Open device Wi-Fi setup</a>
+              <button class="secondary-button" id="use-different-sn-button" type="button">Use a different SN</button>
+            </div>
+          </div>
+
+          <p class="setup-status" id="step-3-status" hidden></p>
+        </section>
+
+        <section class="setup-card" aria-labelledby="step-4-title">
+          <div class="setup-step">
+            <div class="step-title">
+              <span class="step-number">4</span>
+              <h2 id="step-4-title">Connect the device to your home Wi-Fi</h2>
+            </div>
+          </div>
+
+          <p>After you switch to the PlantLab device Wi-Fi, open the device setup page and enter your home Wi-Fi details.</p>
+
+          <div class="setup-list">
+            <div class="setup-item">
+              <span class="step-number">1</span>
+              <p>Connect your phone or laptop to the <strong>PlantLab-Setup</strong> Wi-Fi network.</p>
+            </div>
+            <div class="setup-item">
+              <span class="step-number">2</span>
+              <p>Open the device setup page from the button above. PlantLab will carry the verified device authorization automatically.</p>
+            </div>
+            <div class="setup-item">
+              <span class="step-number">3</span>
+              <p>Enter your home Wi-Fi name and password, then let the device finish joining your account.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#device-setup-form");
+      const nameInput = document.querySelector("#device-name");
+      const locationInput = document.querySelector("#device-location");
+      const prepareButton = document.querySelector("#prepare-button");
+      const provisioningReadyButton = document.querySelector("#provisioning-ready-button");
+      const scanQrButton = document.querySelector("#scan-qr-button");
+      const manualSnButton = document.querySelector("#manual-sn-button");
+      const verifySnButton = document.querySelector("#verify-sn-button");
+      const serialNumberInput = document.querySelector("#serial-number");
+      const snFileInput = document.querySelector("#sn-file-input");
+      const scannerPanel = document.querySelector("#scanner-panel");
+      const qrVideo = document.querySelector("#qr-video");
+      const qrCanvas = document.querySelector("#qr-canvas");
+      const uploadQrPhotoButton = document.querySelector("#upload-qr-photo-button");
+      const stopScanButton = document.querySelector("#stop-scan-button");
+      const manualPanel = document.querySelector("#manual-panel");
+      const readyPanel = document.querySelector("#ready-panel");
+      const continueSetupLink = document.querySelector("#continue-setup-link");
+      const verifiedSnChip = document.querySelector("#verified-sn-chip");
+      const useDifferentSnButton = document.querySelector("#use-different-sn-button");
+      const wifiConnectedCheckbox = document.querySelector("#wifi-connected-checkbox");
+      const step1Status = document.querySelector("#step-1-status");
+      const step2Status = document.querySelector("#step-2-status");
+      const step3Status = document.querySelector("#step-3-status");
+      const step1Pill = document.querySelector("#step-1-pill");
+      const step2Pill = document.querySelector("#step-2-pill");
+      const step3Pill = document.querySelector("#step-3-pill");
+
+      const localSetupBaseUrl = "{{ local_setup_url }}";
+      const provisioningApiUrl = "{{ provisioning_api_url }}";
+      const devicePlatformUrl = "{{ device_platform_url }}";
+
+      let deviceName = "";
+      let deviceLocation = "";
+      let verifiedSerialNumber = "";
+      let verifiedSetupCode = "";
+      let qrVideoStream = null;
+      let qrScanTimer = null;
+      let qrDetector = null;
+      let qrFallbackLoader = null;
+
+      function supportsBarcodeDetector() {
+        return "BarcodeDetector" in window;
+      }
+
+      function loadJsQr() {
+        if (window.jsQR) {
+          return Promise.resolve(window.jsQR);
+        }
+        if (qrFallbackLoader) {
+          return qrFallbackLoader;
+        }
+
+        qrFallbackLoader = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+          script.async = true;
+          script.onload = () => {
+            if (window.jsQR) {
+              resolve(window.jsQR);
+            } else {
+              reject(new Error("QR scanning could not be loaded in this browser."));
+            }
+          };
+          script.onerror = () => reject(new Error("QR scanning could not be loaded in this browser."));
+          document.head.appendChild(script);
+        });
+
+        return qrFallbackLoader;
+      }
+
+      async function detectQrFromImageSource(source, width, height) {
+        if (supportsBarcodeDetector()) {
+          if (!qrDetector) {
+            qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+          }
+          const barcodes = await qrDetector.detect(source);
+          if (barcodes.length && barcodes[0].rawValue) {
+            return barcodes[0].rawValue.trim();
+          }
+          return "";
+        }
+
+        const jsQR = await loadJsQr();
+        const context = qrCanvas.getContext("2d", { willReadFrequently: true });
+        qrCanvas.width = width;
+        qrCanvas.height = height;
+        context.drawImage(source, 0, 0, width, height);
+        const imageData = context.getImageData(0, 0, width, height);
+        const result = jsQR(imageData.data, imageData.width, imageData.height);
+        return result?.data?.trim() || "";
+      }
+
+      function setContinueSetupEnabled(enabled) {
+        continueSetupLink.classList.toggle("disabled-link", !enabled);
+        continueSetupLink.setAttribute("aria-disabled", enabled ? "false" : "true");
+      }
+
+      function stopQrScanner() {
+        if (qrScanTimer !== null) {
+          window.clearTimeout(qrScanTimer);
+          qrScanTimer = null;
+        }
+        if (qrVideoStream) {
+          qrVideoStream.getTracks().forEach((track) => track.stop());
+          qrVideoStream = null;
+        }
+        qrVideo.srcObject = null;
+      }
+
+      async function scanVideoFrame() {
+        if (!qrVideoStream || qrVideo.readyState < 2 || !qrVideo.videoWidth || !qrVideo.videoHeight) {
+          qrScanTimer = window.setTimeout(scanVideoFrame, 350);
+          return;
+        }
+
+        try {
+          const serialNumber = await detectQrFromImageSource(qrVideo, qrVideo.videoWidth, qrVideo.videoHeight);
+          if (serialNumber) {
+            stopQrScanner();
+            serialNumberInput.value = serialNumber;
+            await verifySerialNumber(serialNumber);
+            return;
+          }
+        } catch (_error) {
+          // Keep scanning; camera permission and browser support are handled up front.
+        }
+
+        qrScanTimer = window.setTimeout(scanVideoFrame, 350);
+      }
+
+      async function startQrScanner() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera access is not available in this browser. Upload a QR photo or enter the SN manually.");
+        }
+
+        if (supportsBarcodeDetector()) {
+          qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+        } else {
+          await loadJsQr();
+        }
+        stopQrScanner();
+        qrVideoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+        qrVideo.srcObject = qrVideoStream;
+        await qrVideo.play();
+        qrScanTimer = window.setTimeout(scanVideoFrame, 400);
+      }
+
+      function setStatus(element, message, tone = "info") {
+        element.textContent = message;
+        element.className = `setup-status ${tone}`;
+        element.hidden = false;
+      }
+
+      function clearStatus(element) {
+        element.hidden = true;
+        element.textContent = "";
+        element.className = "setup-status";
+      }
+
+      function setPill(pill, label, tone = "") {
+        pill.textContent = label;
+        pill.className = tone ? `step-pill ${tone}` : "step-pill";
+      }
+
+      function buildContinueSetupUrl(setupCode, serialNumber) {
+        const url = new URL(localSetupBaseUrl);
+        url.searchParams.set("setup_code", setupCode);
+        url.searchParams.set("sn", serialNumber);
+        url.searchParams.set("device_name", deviceName);
+        if (deviceLocation) {
+          url.searchParams.set("location", deviceLocation);
+        }
+        const returnUrl = new URL(`${window.location.origin}/devices/setup-finishing`);
+        returnUrl.searchParams.set("device_name", deviceName);
+        if (deviceLocation) {
+          returnUrl.searchParams.set("location", deviceLocation);
+        }
+        url.searchParams.set("backend_url", provisioningApiUrl);
+        url.searchParams.set("platform_url", devicePlatformUrl);
+        url.searchParams.set("return_url", returnUrl.toString());
+        return url.toString();
+      }
+
+      async function verifySerialNumber(serialNumber) {
+        const normalizedSerialNumber = serialNumber.trim();
+        if (!normalizedSerialNumber) {
+          setStatus(step3Status, "Enter the SN from the label or QR code.", "error");
+          setPill(step3Pill, "Missing SN", "error");
+          return;
+        }
+
+        clearStatus(step3Status);
+        setPill(step3Pill, "Verifying");
+        verifySnButton.disabled = true;
+        scanQrButton.disabled = true;
+        manualSnButton.disabled = true;
+
+        try {
+          const response = await fetch("/devices/setup-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              serial_number: normalizedSerialNumber,
+              device_name: deviceName,
+              location: deviceLocation,
+            }),
+          });
+
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.detail || payload.message || "Could not verify this SN.");
+          }
+
+          verifiedSerialNumber = payload.serial_number || normalizedSerialNumber;
+          verifiedSetupCode = payload.setup_code || payload.claim_token;
+          verifiedSnChip.textContent = verifiedSerialNumber;
+          continueSetupLink.href = buildContinueSetupUrl(verifiedSetupCode, verifiedSerialNumber);
+          wifiConnectedCheckbox.checked = false;
+          setContinueSetupEnabled(false);
+          readyPanel.hidden = false;
+          stopQrScanner();
+          scannerPanel.hidden = true;
+          manualPanel.hidden = true;
+          setStatus(step3Status, "Device verified. Connect to PlantLab-Setup, then open device Wi-Fi setup.", "success");
+          setPill(step3Pill, "Ready", "ready");
+        } catch (error) {
+          setStatus(step3Status, error.message || "Could not verify this SN.", "error");
+          setPill(step3Pill, "Error", "error");
+        } finally {
+          verifySnButton.disabled = false;
+          scanQrButton.disabled = false;
+          manualSnButton.disabled = false;
+        }
+      }
+
+      async function decodeQrFromFile(file) {
+        let imageBitmap = null;
+        try {
+          imageBitmap = await createImageBitmap(file);
+        } catch (_error) {
+          throw new Error("This photo could not be opened. Try another photo or enter the SN manually.");
+        }
+        try {
+          const serialNumber = await detectQrFromImageSource(imageBitmap, imageBitmap.width, imageBitmap.height);
+          if (!serialNumber) {
+            throw new Error("No QR code was found. Try another photo or enter the SN manually.");
+          }
+          return serialNumber;
+        } finally {
+          imageBitmap.close();
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        clearStatus(step1Status);
+
+        const nextDeviceName = nameInput.value.trim();
+        if (!nextDeviceName) {
+          setStatus(step1Status, "Enter a device name.", "error");
+          setPill(step1Pill, "Missing name", "error");
+          return;
+        }
+
+        deviceName = nextDeviceName;
+        deviceLocation = locationInput.value.trim();
+        setStatus(step1Status, "Device details saved for this setup flow.", "success");
+        setPill(step1Pill, "Ready", "ready");
+        provisioningReadyButton.disabled = false;
+      });
+
+      provisioningReadyButton.addEventListener("click", () => {
+        clearStatus(step2Status);
+        setStatus(step2Status, "Provisioning mode confirmed. Scan the QR code or enter the SN.", "success");
+        setPill(step2Pill, "Ready", "ready");
+        scanQrButton.disabled = false;
+        manualSnButton.disabled = false;
+      });
+
+      scanQrButton.addEventListener("click", () => {
+        clearStatus(step3Status);
+        scannerPanel.hidden = false;
+        manualPanel.hidden = true;
+        readyPanel.hidden = true;
+        setStatus(step3Status, "Starting camera...", "info");
+        setPill(step3Pill, "Scanning");
+        startQrScanner()
+          .then(() => {
+            setStatus(step3Status, "Camera is ready. Hold the QR label in view.", "info");
+          })
+          .catch((error) => {
+            setStatus(step3Status, error.message || "Could not start the camera.", "error");
+            setPill(step3Pill, "Error", "error");
+          });
+      });
+
+      manualSnButton.addEventListener("click", () => {
+        stopQrScanner();
+        clearStatus(step3Status);
+        scannerPanel.hidden = true;
+        manualPanel.hidden = false;
+        readyPanel.hidden = true;
+        serialNumberInput.focus();
+      });
+
+      verifySnButton.addEventListener("click", () => {
+        verifySerialNumber(serialNumberInput.value);
+      });
+
+      serialNumberInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          verifySerialNumber(serialNumberInput.value);
+        }
+      });
+
+      snFileInput.addEventListener("change", async (event) => {
+        const [file] = event.target.files || [];
+        if (!file) {
+          return;
+        }
+
+        setStatus(step3Status, "Reading QR code...", "info");
+        setPill(step3Pill, "Scanning");
+
+        try {
+          const serialNumber = await decodeQrFromFile(file);
+          serialNumberInput.value = serialNumber;
+          await verifySerialNumber(serialNumber);
+        } catch (error) {
+          setStatus(step3Status, error.message || "Could not read the QR code.", "error");
+          setPill(step3Pill, "Error", "error");
+          manualPanel.hidden = false;
+          scannerPanel.hidden = false;
+        }
+      });
+
+      uploadQrPhotoButton.addEventListener("click", () => {
+        snFileInput.value = "";
+        snFileInput.click();
+      });
+
+      stopScanButton.addEventListener("click", () => {
+        stopQrScanner();
+        setStatus(step3Status, "Camera stopped. Upload a QR photo or enter the SN manually.", "info");
+      });
+
+      useDifferentSnButton.addEventListener("click", () => {
+        stopQrScanner();
+        verifiedSerialNumber = "";
+        verifiedSetupCode = "";
+        serialNumberInput.value = "";
+        readyPanel.hidden = true;
+        wifiConnectedCheckbox.checked = false;
+        setContinueSetupEnabled(false);
+        manualPanel.hidden = false;
+        clearStatus(step3Status);
+        setPill(step3Pill, "Pending");
+        serialNumberInput.focus();
+      });
+
+      wifiConnectedCheckbox.addEventListener("change", () => {
+        const isConnected = wifiConnectedCheckbox.checked;
+        setContinueSetupEnabled(isConnected);
+        if (isConnected) {
+          setStatus(step3Status, "You’re ready. Open device Wi-Fi setup to finish connecting the device.", "success");
+        } else if (verifiedSetupCode) {
+          setStatus(step3Status, "Connect to PlantLab-Setup before opening device Wi-Fi setup.", "info");
+        }
+      });
+
+      continueSetupLink.addEventListener("click", (event) => {
+        if (continueSetupLink.getAttribute("aria-disabled") === "true") {
+          event.preventDefault();
+          setStatus(step3Status, "Connect to PlantLab-Setup first, then open device Wi-Fi setup.", "error");
+        }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        stopQrScanner();
+      });
+
+      setContinueSetupEnabled(false);
+    </script>
+  </body>
+</html>

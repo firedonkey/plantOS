@@ -27,6 +27,11 @@ platform/data/*.sqlite
 platform/data/*.sqlite3
 platform/data/uploads/*
 !platform/data/uploads/.gitkeep
+platform/backend/data/*.db
+platform/backend/data/*.sqlite
+platform/backend/data/*.sqlite3
+platform/backend/data/uploads/*
+!platform/backend/data/uploads/.gitkeep
 platform/gcp_debug.txt
 platform/gcp_setup_dump.sh
 
