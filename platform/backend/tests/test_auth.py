@@ -131,6 +131,74 @@ def test_dev_login_rejected_when_disabled(monkeypatch):
         auth_routes.get_settings.cache_clear()
 
 
+def test_dev_bearer_token_can_access_device_endpoints(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_DEV_TOKEN_AUTH_ENABLED", "true")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_session():
+        with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+
+    client = TestClient(app)
+    try:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"email": "dev@plantlab.local", "password": "password"},
+        )
+        token = login_response.json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        create_response = client.post(
+            "/api/devices",
+            json={"name": "Mobile Rose", "location": "Desk"},
+            headers=headers,
+        )
+        assert create_response.status_code == 201
+        device_id = create_response.json()["id"]
+
+        reading_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 41.0,
+                "temperature": 21.5,
+                "humidity": 49.5,
+                "light_on": False,
+                "pump_on": False,
+            },
+            headers=headers,
+        )
+        assert reading_response.status_code == 201
+
+        list_response = client.get("/api/devices", headers=headers)
+        assert list_response.status_code == 200
+        assert len(list_response.json()) == 1
+
+        summary_response = client.get(f"/api/devices/{device_id}/summary", headers=headers)
+        assert summary_response.status_code == 200
+        assert summary_response.json()["latest_reading"]["temperature"] == 21.5
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
 def test_upsert_google_user_creates_and_updates_user():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

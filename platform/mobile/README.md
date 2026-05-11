@@ -12,7 +12,15 @@ Plan:
 
 - [Mobile App Plan](/Users/gary/plantOS/platform/mobile/MOBILE_APP_PLAN.md)
 
+Local dev:
+
+- Set `EXPO_PUBLIC_API_BASE_URL` to your backend base URL.
+- Use [`.env.example`](/Users/gary/plantOS/platform/mobile/.env.example) as the starting point.
+- iOS simulator can use `http://127.0.0.1:8000`
+- physical devices should use your Mac's LAN IP, for example `http://192.168.x.x:8000`
+
 Status:
 
-- folder scaffold only
-- no runtime app code moved here yet
+- Expo app scaffold is in place
+- tries the local backend first
+- falls back to mock mode when the backend is unavailable

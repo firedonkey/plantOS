@@ -7,6 +7,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
+import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
 
 type DeviceDashboardScreenProps = {
@@ -15,6 +16,7 @@ type DeviceDashboardScreenProps = {
 
 export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) {
   const { dashboard, usedMock, isLoading, error, commandMessage, refresh, runCommand } = useDeviceDashboard(deviceId);
+  const { token, session } = useSession();
 
   if (!deviceId) {
     return (
@@ -57,7 +59,16 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             <Text style={styles.sectionTitle}>Latest capture</Text>
             {dashboard.device.latestImage ? (
               <>
-                <Image source={{ uri: dashboard.device.latestImage.url }} style={styles.image} />
+                <Image
+                  source={{
+                    uri: dashboard.device.latestImage.url,
+                    headers:
+                      session?.mode === "api" && token
+                        ? { Authorization: `Bearer ${token}` }
+                        : undefined,
+                  }}
+                  style={styles.image}
+                />
                 <Text style={styles.meta}>Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</Text>
               </>
             ) : (

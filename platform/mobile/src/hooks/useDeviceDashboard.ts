@@ -35,12 +35,18 @@ export function useDeviceDashboard(deviceId: string) {
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {
-      const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
-      setCommandMessage(
-        result.usedMock
-          ? `Command simulated in mock mode: ${action}`
-          : `Command sent: ${action}`,
-      );
+      try {
+        setError(null);
+        const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
+        setCommandMessage(
+          result.usedMock
+            ? `Command simulated in mock mode: ${action}`
+            : `Command sent: ${action}`,
+        );
+      } catch (err) {
+        setCommandMessage(null);
+        setError(err instanceof Error ? err.message : "Unable to send command.");
+      }
     },
     [deviceId, token],
   );

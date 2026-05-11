@@ -2,7 +2,7 @@ import { useState } from "react";
 import { router } from "expo-router";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { loginWithPlaceholder } from "@/api/auth";
+import { loginWithBackendFallback } from "@/api/auth";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useSession } from "@/hooks/useSession";
@@ -17,8 +17,11 @@ export function LoginScreen() {
   const onSubmit = async () => {
     try {
       setIsSubmitting(true);
-      const session = await loginWithPlaceholder({ email, password });
+      const session = await loginWithBackendFallback({ email, password });
       await signIn(session);
+      if (session.mode === "mock") {
+        Alert.alert("Mock mode", "Backend is unavailable, so the app is using bundled mock data.");
+      }
       router.replace("/(app)/devices");
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unknown error.");
@@ -33,7 +36,7 @@ export function LoginScreen() {
         <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>
-          Dev-only placeholder login for the first local mobile build. TODO: replace with real mobile auth.
+          Dev-only login uses the local backend when available and falls back to mock mode when it is not.
         </Text>
       </View>
 

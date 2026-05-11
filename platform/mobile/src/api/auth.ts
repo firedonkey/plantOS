@@ -1,3 +1,4 @@
+import { apiRequest, shouldUseMockFallback } from "./client";
 import { AuthSession } from "@/types";
 
 type LoginInput = {
@@ -5,13 +6,28 @@ type LoginInput = {
   password: string;
 };
 
-export async function loginWithPlaceholder({ email }: LoginInput): Promise<AuthSession> {
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  return {
-    token: `mock-token:${email}`,
-    email,
-    mode: "mock",
-  };
-}
+type ApiLoginResponse = {
+  token: string;
+  email: string;
+  mode: "api";
+};
 
-// TODO: replace this dev-only placeholder flow with real mobile-ready auth.
+export async function loginWithBackendFallback({ email, password }: LoginInput): Promise<AuthSession> {
+  try {
+    const session = await apiRequest<ApiLoginResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    return session;
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return {
+      token: `mock-token:${email}`,
+      email,
+      mode: "mock",
+    };
+  }
+}
