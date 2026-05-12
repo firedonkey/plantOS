@@ -73,6 +73,40 @@ bool PlatformClient::send_reading(const PlatformReading& reading, String* error)
   return true;
 }
 
+bool PlatformClient::send_hardware_reading(const PlatformReading& reading, String* error) {
+  StaticJsonDocument<384> doc;
+  if (reading.hardware_device_id.length() > 0) {
+    doc["hardware_device_id"] = reading.hardware_device_id;
+  }
+  if (reading.temperature_valid) {
+    doc["temperature"] = reading.temperature_c;
+  }
+  if (reading.humidity_valid) {
+    doc["humidity"] = reading.humidity_percent;
+  }
+  if (reading.moisture_valid) {
+    doc["moisture"] = reading.moisture_percent;
+  }
+  doc["light_on"] = reading.light_on;
+  doc["pump_on"] = reading.pump_on;
+  doc["pump_status"] = reading.pump_status;
+
+  String body;
+  serializeJson(doc, body);
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post("/api/hardware/readings", body, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "hardware reading upload failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
 bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
   StaticJsonDocument<192> doc;
   doc["light_on"] = status.light_on;
@@ -95,6 +129,35 @@ bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
   return true;
 }
 
+bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, String* error) {
+  StaticJsonDocument<256> doc;
+  if (status.hardware_device_id.length() > 0) {
+    doc["hardware_device_id"] = status.hardware_device_id;
+  }
+  if (status.node_role.length() > 0) {
+    doc["node_role"] = status.node_role;
+  }
+  doc["status"] = status.status.length() > 0 ? status.status : "online";
+  doc["light_on"] = status.light_on;
+  doc["pump_on"] = status.pump_on;
+  doc["message"] = status.message;
+
+  String body;
+  serializeJson(doc, body);
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post("/api/hardware/heartbeat", body, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "hardware heartbeat failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
 int PlatformClient::poll_pending_commands(PlatformCommand* commands, size_t max_commands, String* error) {
   int status_code = 0;
   String response_body;
@@ -111,6 +174,44 @@ int PlatformClient::poll_pending_commands(PlatformCommand* commands, size_t max_
   DeserializationError json_error = deserializeJson(doc, response_body);
   if (json_error) {
     set_error(error, "command poll JSON parse failed");
+    return -1;
+  }
+
+  JsonArray array = doc.as<JsonArray>();
+  size_t count = 0;
+  for (JsonVariant item : array) {
+    if (count >= max_commands) {
+      break;
+    }
+    const char* target = item["target"] | "";
+    const char* action = item["action"] | "";
+    const char* value = item["value"] | "";
+    commands[count].id = item["id"] | 0;
+    commands[count].target = String(target);
+    commands[count].action = String(action);
+    commands[count].value = String(value);
+    commands[count].valid = commands[count].id > 0;
+    ++count;
+  }
+  return static_cast<int>(count);
+}
+
+int PlatformClient::poll_hardware_pending_commands(PlatformCommand* commands, size_t max_commands, String* error) {
+  int status_code = 0;
+  String response_body;
+  if (!json_get("/api/hardware/commands/pending", &status_code, &response_body)) {
+    set_error(error, response_body);
+    return -1;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "hardware command poll failed with HTTP " + String(status_code) + ": " + response_body);
+    return -1;
+  }
+
+  DynamicJsonDocument doc(4096);
+  DeserializationError json_error = deserializeJson(doc, response_body);
+  if (json_error) {
+    set_error(error, "hardware command poll JSON parse failed");
     return -1;
   }
 
@@ -161,6 +262,41 @@ bool PlatformClient::acknowledge_command(
   }
   if (status_code < 200 || status_code >= 300) {
     set_error(error, "command ack failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
+bool PlatformClient::report_hardware_command_result(
+    int command_id,
+    const char* status,
+    const char* message,
+    bool light_on,
+    bool pump_on,
+    String* error) {
+  StaticJsonDocument<256> doc;
+  doc["status"] = status == nullptr ? "failed" : status;
+  doc["message"] = message == nullptr ? "" : message;
+  doc["light_on"] = light_on;
+  doc["pump_on"] = pump_on;
+
+  String body;
+  serializeJson(doc, body);
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post(
+          "/api/hardware/commands/" + String(command_id) + "/result",
+          body,
+          &status_code,
+          &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(
+        error,
+        "hardware command result failed with HTTP " + String(status_code) + ": " + response_body);
     return false;
   }
   return true;

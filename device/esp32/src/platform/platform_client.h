@@ -24,6 +24,9 @@ struct PlatformReading {
 };
 
 struct PlatformStatus {
+  String hardware_device_id;
+  String node_role;
+  String status;
   bool light_on;
   bool pump_on;
   String message;
@@ -38,9 +41,19 @@ class PlatformClient {
   int device_id() const;
 
   bool send_reading(const PlatformReading& reading, String* error = nullptr);
+  bool send_hardware_reading(const PlatformReading& reading, String* error = nullptr);
   bool send_status(const PlatformStatus& status, String* error = nullptr);
+  bool send_hardware_heartbeat(const PlatformStatus& status, String* error = nullptr);
   int poll_pending_commands(PlatformCommand* commands, size_t max_commands, String* error = nullptr);
+  int poll_hardware_pending_commands(PlatformCommand* commands, size_t max_commands, String* error = nullptr);
   bool acknowledge_command(
+      int command_id,
+      const char* status,
+      const char* message,
+      bool light_on,
+      bool pump_on,
+      String* error = nullptr);
+  bool report_hardware_command_result(
       int command_id,
       const char* status,
       const char* message,
