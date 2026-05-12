@@ -36,6 +36,19 @@ Current state:
 - `POST /api/auth/login` is now available as a **dev-only** bearer-token login for local standalone clients
 - `GET /api/me` works for either browser session auth or bearer auth from the dev-only login path
 
+Documented next production auth contract:
+
+- `GET /api/auth/google/start`
+- `GET /api/auth/google/callback`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/me`
+
+Current note:
+
+- these production standalone auth endpoints are documented, not implemented yet
+- the backend remains the intended auth owner for both standalone web and mobile
+
 ### Devices
 
 - `GET /api/devices`
@@ -191,7 +204,10 @@ Current state:
 
 Needed later:
 
-- a production-ready token or equivalent standalone auth contract
+- standalone Google-start and callback endpoints for standalone clients
+- backend-issued short-lived access tokens
+- backend-owned refresh-token/session contract
+- clear logout and token-rotation behavior
 - clear rollout rules for web/mobile auth beyond local dev
 
 ### 2. Full image-list endpoint for clients
@@ -210,18 +226,7 @@ Suggested direction:
 
 - `GET /api/devices/{device_id}/images`
 
-### 3. Production-ready standalone auth contract
-
-Current state:
-
-- standalone onboarding and device removal now work through API endpoints
-- but the standalone web still authenticates with the dev-only bearer login
-
-Needed later:
-
-- production-ready standalone auth before old `/login` can retire
-
-### 4. Capture command device support
+### 3. Capture command device support
 
 Current state:
 
@@ -318,6 +323,7 @@ For the immediate next steps:
 - treat web-route JSON endpoints as transitional
 - standalone mobile can use the dev-only bearer login for local development
 - do not treat the dev-only login as the final production auth design
+- treat the documented production auth endpoints as the next implementation target, not as live endpoints yet
 
 ## Migration rule
 

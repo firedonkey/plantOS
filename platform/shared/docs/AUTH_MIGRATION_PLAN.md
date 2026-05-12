@@ -50,38 +50,207 @@ That gives us:
 - standalone web: Google sign-in + backend token/session exchange
 - mobile: backend token after browser-based or app-based Google sign-in handoff
 
+## Proposed production auth contract
+
+Backend remains the single auth owner.
+
+### Identity source
+
+- Google remains the primary identity provider.
+- Backend validates Google identity and issues PlantLab-controlled standalone credentials.
+
+### Proposed standalone auth endpoints
+
+These are the recommended production endpoints to implement next:
+
+- `GET /api/auth/google/start`
+- `GET /api/auth/google/callback`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/me`
+
+### Endpoint responsibilities
+
+#### `GET /api/auth/google/start`
+
+Purpose:
+
+- start Google sign-in for standalone clients
+- support web directly
+- support mobile via browser/session handoff
+
+Recommended request inputs:
+
+- optional `return_to`
+- optional `client` with values like `web` or `mobile`
+
+Recommended behavior:
+
+- create OAuth state under backend control
+- redirect to Google
+
+#### `GET /api/auth/google/callback`
+
+Purpose:
+
+- receive Google callback
+- resolve or create the user in PlantLab
+- issue backend-owned standalone credentials
+
+Recommended behavior for standalone web:
+
+- set a secure refresh cookie
+- redirect to the standalone frontend with a short-lived access token exchange path or a completed session state
+
+Recommended behavior for mobile:
+
+- return or redirect into a mobile-safe handoff URL that can be exchanged for backend credentials
+
+#### `POST /api/auth/refresh`
+
+Purpose:
+
+- mint a fresh access token from a valid refresh token/session
+
+Recommended behavior:
+
+- for web: use an HTTP-only refresh cookie
+- for mobile: accept a mobile refresh token in the request body or authorization scheme
+- return a fresh access token and expiry metadata
+
+#### `POST /api/auth/logout`
+
+Purpose:
+
+- invalidate standalone auth state
+- keep this separate from the old session logout path if needed during migration
+
+Recommended behavior:
+
+- revoke or invalidate the refresh token/session
+- clear refresh cookies if present
+- make repeated logout safe and idempotent
+
+#### `GET /api/me`
+
+Purpose:
+
+- return current authenticated user for:
+  - old session auth
+  - dev-only bearer auth
+  - future production standalone auth
+
+Recommended direction:
+
+- keep `/api/me` as the stable current-user endpoint across all auth modes
+
+## Token and session strategy
+
+### Access token
+
+Recommended:
+
+- short-lived backend-issued access token
+- bearer token for standalone API calls
+- target lifetime: about 10 to 15 minutes
+
+Required properties:
+
+- signed by backend
+- includes user id and auth mode claims
+- no long-lived sensitive session state inside the access token
+
+### Refresh token
+
+Recommended:
+
+- long-lived backend-owned refresh credential
+- target lifetime: about 30 days, revocable
+
+Storage:
+
+- web: secure, HTTP-only, same-site cookie
+- mobile: OS-backed secure storage
+
+### Expiry and rotation
+
+Recommended:
+
+- access token expires frequently
+- refresh token rotates on refresh
+- old refresh token becomes invalid after successful rotation when practical
+
+This gives us:
+
+- limited blast radius for access-token leakage
+- backend control over logout and revocation
+- one auth model for both standalone web and mobile
+
+## Secure storage expectations
+
+### Standalone web
+
+Production recommendation:
+
+- do **not** keep production refresh credentials in local storage
+- prefer HTTP-only cookies for refresh state
+- keep access token in memory when possible
+- if persistence is required, keep it minimal and avoid storing long-lived secrets in script-readable storage
+
+### Mobile
+
+Production recommendation:
+
+- store refresh token in secure OS-backed storage
+- keep access token in memory or short-lived local state
+- refresh silently when the app resumes or receives a `401`
+
 ## Web auth migration path
 
 Recommended path:
 
 1. Keep old `/login` and old Google session auth working.
-2. Add a standalone-web production sign-in entry that starts real Google auth.
-3. After Google callback, issue a standalone-compatible auth credential for `platform/web`.
-4. Update standalone web to stop depending on dev-only login.
-5. Verify all protected standalone routes with the production auth path.
-6. Only then mark old `/login` as removable.
+2. Add `GET /api/auth/google/start` for standalone web.
+3. Add `GET /api/auth/google/callback` that finishes backend-owned auth.
+4. Add `POST /api/auth/refresh` and keep `GET /api/me` as the stable current-user probe.
+5. Update standalone web to stop depending on dev-only login and local-storage bearer-only auth.
+6. Verify all protected standalone routes with the production auth path.
+7. Only then mark old `/login` as removable.
 
 ### Acceptable implementation shapes later
 
-Any of these can work, as long as the contract is clear:
+Chosen direction:
 
-- secure HTTP-only cookie for standalone web
-- short-lived bearer token + refresh mechanism
-- session exchange endpoint that converts Google callback state into a standalone-web auth state
+- secure HTTP-only refresh cookie for standalone web
+- short-lived bearer access token for API calls
+- backend refresh endpoint for renewal
 
-We should choose the safest option that preserves backend ownership of auth.
+That is the safest fit for the browser client while keeping backend ownership intact.
 
 ## Mobile auth migration path
 
 Recommended path:
 
 1. Reuse the same backend identity model as standalone web.
-2. Support a mobile-friendly Google sign-in entry.
+2. Support a mobile-friendly Google sign-in entry that still starts with backend-owned Google auth.
 3. Exchange the verified identity for backend-issued API credentials.
-4. Store those credentials in mobile storage.
-5. Use the same protected API surface as standalone web.
+4. Store refresh credentials in secure mobile storage.
+5. Use `POST /api/auth/refresh` for silent renewal.
+6. Use `GET /api/me` as the stable authenticated-user check.
+7. Use the same protected API surface as standalone web.
 
 The important point is that mobile should not get a separate business logic auth stack. It should share the same backend auth contract.
+
+### Mobile handoff recommendation
+
+For mobile, the most practical next design is:
+
+1. open Google auth in a system browser or in-app browser
+2. let backend complete Google callback handling
+3. redirect into a mobile-specific callback/handoff URL
+4. exchange that handoff for backend access + refresh credentials
+
+That keeps Google secrets and identity verification on the backend.
 
 ## Old `/login` retirement gate
 
@@ -113,7 +282,7 @@ Do **not** replace auth during structure cleanup.
 
 The safest next auth milestone is:
 
-1. choose the production standalone-web auth shape
-2. document the callback/token exchange contract
-3. implement standalone web production auth behind the existing backend
-4. then bring mobile onto the same contract
+1. add the production auth endpoints listed above
+2. implement standalone web first using the cookie + refresh-token design
+3. keep dev-only `/api/auth/login` for local development
+4. then bring mobile onto the same refresh/access-token contract
