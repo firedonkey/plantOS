@@ -19,6 +19,32 @@ Local dev:
 - iOS simulator can use `http://127.0.0.1:8000`
 - physical devices should use your Mac's LAN IP, for example `http://192.168.x.x:8000`
 
+Mobile local QA setup:
+
+- Use Node LTS before starting Expo:
+
+```bash
+nvm use 22
+```
+
+- Expected:
+  - `node -v` -> `v22.22.2` or another Node 22 LTS version
+
+- Start mobile:
+
+```bash
+cd platform/mobile
+npx expo start --clear --host lan
+```
+
+- Expected Metro URL:
+  - `exp://192.168.0.55:8081`
+
+- Backend API for iPhone:
+  - `EXPO_PUBLIC_API_BASE_URL=http://192.168.0.55:8000`
+
+- Do not use Node v25 for Expo local QA.
+
 Status:
 
 - Expo app scaffold is in place
