@@ -34,6 +34,7 @@ class Settings:
     local_setup_url: str = "http://10.42.0.1:8080/"
     device_platform_url: str | None = None
     dev_token_auth_enabled: bool = True
+    standalone_web_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     @property
     def google_auth_configured(self) -> bool:
@@ -80,6 +81,15 @@ def get_settings() -> Settings:
         dev_token_auth_enabled=_env_bool(
             "PLANTLAB_DEV_TOKEN_AUTH_ENABLED",
             default=os.getenv("APP_ENV", Settings.app_env).lower() != "production",
+        ),
+        standalone_web_origin_regex=_optional_env(
+            "PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX"
+        )
+        if os.getenv("PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX") is not None
+        else (
+            None
+            if os.getenv("APP_ENV", Settings.app_env).lower() == "production"
+            else Settings.standalone_web_origin_regex
         ),
     )
     settings.validate()

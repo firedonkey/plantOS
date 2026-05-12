@@ -32,3 +32,18 @@ def test_login_page():
     assert "Legacy web:" in response.text
     assert "Welcome Back" in response.text
     assert "Sign in with Google" in response.text or "Google sign-in is not configured" in response.text
+
+
+def test_standalone_web_cors_preflight():
+    client = TestClient(app)
+    response = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
@@ -18,6 +19,14 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version=settings.version)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+    if settings.standalone_web_origin_regex:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=settings.standalone_web_origin_regex,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.add_exception_handler(HTTPException, api_http_exception_handler)
     app.add_exception_handler(RequestValidationError, api_validation_exception_handler)
     app.mount("/static", StaticFiles(directory=APP_DIR / "web/static"), name="static")
