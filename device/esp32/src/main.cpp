@@ -1241,6 +1241,9 @@ PlatformReading read_platform_reading() {
 
 PlatformStatus platform_status(const String& message) {
   PlatformStatus status{};
+  status.hardware_device_id = stableHardwareDeviceId();
+  status.node_role = "master";
+  status.status = "online";
   status.light_on = g_growing_light.is_on();
   status.pump_on = g_pump.is_on();
   status.message = message;
@@ -1255,9 +1258,9 @@ void send_platform_reading(unsigned long now) {
 
   const PlatformReading reading = read_platform_reading();
   String error;
-  if (g_platform_client->send_reading(reading, &error)) {
+  if (g_platform_client->send_hardware_reading(reading, &error)) {
     Serial.printf(
-        "[platform] reading sent to %s/api/data (device_id=%d)\n",
+        "[platform] reading sent to %s/api/hardware/readings (device_id=%d)\n",
         g_platform_client->base_url().c_str(),
         g_platform_client->device_id());
   } else {
@@ -1272,8 +1275,8 @@ void send_platform_status(unsigned long now, const String& message = "online") {
   g_last_platform_status_ms = now;
 
   String error;
-  if (!g_platform_client->send_status(platform_status(message), &error)) {
-    Serial.printf("[platform] status upload failed: %s\n", error.c_str());
+  if (!g_platform_client->send_hardware_heartbeat(platform_status(message), &error)) {
+    Serial.printf("[platform] heartbeat upload failed: %s\n", error.c_str());
   }
 }
 
@@ -1311,9 +1314,9 @@ void execute_platform_command(const PlatformCommand& command) {
   }
 
   String status_error;
-  g_platform_client->send_status(platform_status(message), &status_error);
+  g_platform_client->send_hardware_heartbeat(platform_status(message), &status_error);
   String ack_error;
-  if (!g_platform_client->acknowledge_command(
+  if (!g_platform_client->report_hardware_command_result(
           command.id,
           success ? "completed" : "failed",
           message.c_str(),
@@ -1334,7 +1337,7 @@ void poll_platform_commands(unsigned long now) {
 
   PlatformCommand commands[4]{};
   String error;
-  const int count = g_platform_client->poll_pending_commands(commands, 4, &error);
+  const int count = g_platform_client->poll_hardware_pending_commands(commands, 4, &error);
   if (count < 0) {
     Serial.printf("[platform] command poll failed: %s\n", error.c_str());
     return;

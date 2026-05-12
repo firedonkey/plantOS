@@ -34,13 +34,18 @@ Current status:
 
 ## Local platform smoke test
 
-The ESP32 branch now mirrors the Raspberry Pi device contract for:
+The ESP32 master firmware now uses the dedicated hardware contract with device-token auth:
 
-- `POST /api/data`
-- `POST /api/devices/{device_id}/status`
-- `GET /api/devices/{device_id}/commands/pending`
-- `POST /api/devices/{device_id}/commands/{command_id}/ack`
+- `POST /api/hardware/readings`
+- `POST /api/hardware/heartbeat`
+- `GET /api/hardware/commands/pending`
+- `POST /api/hardware/commands/{command_id}/result`
+
+The camera-node flow stays unchanged for now:
+
 - `POST /api/image`
+- `POST /api/device-nodes/register`
+- `POST /api/device-nodes/heartbeat`
 
 Start the local stack first:
 
@@ -66,6 +71,9 @@ Then edit `platform_secrets.h` with:
 
 - fallback Wi-Fi / platform values for direct smoke tests
 - local or cloud defaults if you want a backup when not using Add Device
+- `PLANTLAB_PLATFORM_URL`
+- `PLANTLAB_DEVICE_ID`
+- `PLANTLAB_DEVICE_TOKEN`
 
 For the normal Add Device provisioning flow, the website now supplies:
 
@@ -114,9 +122,10 @@ Use that `id` as `PLANTLAB_DEVICE_ID` and the `api_token` as `PLANTLAB_DEVICE_TO
 Main firmware (`esp32-s3-devkitc-1`) now:
 
 - connects to Wi-Fi
-- sends sensor readings to the platform
-- sends status heartbeats
-- polls and acknowledges light/pump commands
+- sends sensor readings to `POST /api/hardware/readings`
+- sends status heartbeats to `POST /api/hardware/heartbeat`
+- polls `GET /api/hardware/commands/pending`
+- reports command results to `POST /api/hardware/commands/{command_id}/result`
 
 Camera uploader firmware (`camera-platform-test`) now:
 
@@ -143,10 +152,17 @@ That gives us a local end-to-end split matching the current ESP32 hardware split
 Suggested smoke-test order:
 
 1. Flash the master board with the default firmware.
-2. Confirm sensor readings begin showing on the device page.
-3. Use the web dashboard to send a light or pump command.
-4. Flash the XIAO camera board with `camera-platform-test`.
-5. Confirm images begin appearing for the same device.
+2. Confirm serial logs show:
+   - Wi-Fi connected
+   - reading upload success
+   - heartbeat success
+3. Confirm sensor readings begin showing on the standalone web or mobile dashboard.
+4. Use the web dashboard to send a light or pump command and confirm:
+   - the command appears in serial output
+   - the actuator runs
+   - the command activity panel updates to completed
+5. Flash the XIAO camera board with `camera-platform-test`.
+6. Confirm images begin appearing for the same device.
 
 ## Build/Flash (PlatformIO)
 
