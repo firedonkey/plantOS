@@ -1,5 +1,5 @@
-import logging
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -18,16 +18,19 @@ from app.schemas.commands import (
 )
 from app.schemas.devices import (
     DeviceCreate,
+    DeviceDeleteRead,
     DeviceRead,
     DeviceSummaryImageRead,
     DeviceSummaryRead,
     DeviceSummaryReadingRead,
 )
+from app.schemas.setup import DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
 from app.services.commands import create_command
 from app.services.device_nodes import build_node_summary, list_nodes_for_device
 from app.services.devices import (
     create_device_for_user,
+    delete_device_for_user,
     factory_reset_device,
     get_device_for_user,
     list_devices_for_user,
@@ -59,6 +62,78 @@ def create_device(
     return create_device_for_user(session, current_user, payload)
 
 
+@router.post("/setup-code", response_model=DeviceSetupCodeRead)
+async def create_device_setup_code(
+    request: Request,
+    payload: DeviceSetupCodeRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    settings = get_settings()
+    serial_number = payload.serial_number.strip()
+    if not serial_number:
+        raise api_error(422, "validation_error", "SN is required.")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{settings.provisioning_api_url}/api/devices/setup-code",
+                json={
+                    "serial_number": serial_number,
+                    "device_name": payload.device_name.strip() if payload.device_name else None,
+                    "location": payload.location.strip() if payload.location else None,
+                },
+                headers={
+                    "x-plantlab-service-secret": settings.provisioning_service_secret or "",
+                    "x-plantlab-user-id": str(current_user.id),
+                    "x-plantlab-user-email": current_user.email or "",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise api_error(502, "provisioning_service_unavailable", f"Provisioning service unavailable: {exc}") from exc
+
+    try:
+        upstream_payload = response.json()
+    except ValueError as exc:
+        raise api_error(502, "invalid_upstream_response", "Provisioning service returned an invalid response.") from exc
+
+    if response.status_code >= 400:
+        raise api_error(
+            response.status_code,
+            "setup_code_request_failed",
+            upstream_payload.get("message") or upstream_payload.get("error") or "Could not verify this SN.",
+        )
+
+    setup_token = upstream_payload.get("setup_code") or upstream_payload.get("claim_token")
+    frontend_origin = (request.headers.get("origin") or str(request.base_url).rstrip("/")).rstrip("/")
+    setup_finishing_url = _build_setup_finishing_url(
+        frontend_origin=frontend_origin,
+        device_name=payload.device_name or "",
+        location=payload.location or "",
+        expect_image=True,
+    )
+    continue_setup_url = _build_continue_setup_url(
+        settings=settings,
+        setup_token=setup_token,
+        serial_number=upstream_payload.get("serial_number") or serial_number,
+        device_name=payload.device_name or "",
+        location=payload.location or "",
+        setup_finishing_url=setup_finishing_url,
+    )
+    return DeviceSetupCodeRead(
+        serial_number=upstream_payload.get("serial_number") or serial_number,
+        setup_code=upstream_payload.get("setup_code"),
+        claim_token=upstream_payload.get("claim_token"),
+        setup_token=setup_token,
+        local_setup_url=settings.local_setup_url,
+        provisioning_api_url=settings.provisioning_api_url,
+        platform_url=settings.device_platform_url,
+        setup_finishing_url=setup_finishing_url,
+        continue_setup_url=continue_setup_url,
+        expect_image=True,
+    )
+
+
 @router.get("/{device_id}", response_model=DeviceRead)
 def get_device(
     device_id: int,
@@ -70,6 +145,22 @@ def get_device(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
     return _build_device_read(request, session, device)
+
+
+@router.delete("/{device_id}", response_model=DeviceDeleteRead)
+def delete_device(
+    device_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = delete_device_for_user(session, current_user, device_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return DeviceDeleteRead(
+        status="deleted",
+        device_id=device_id,
+        message="Device removed.",
+    )
 
 
 @router.get("/{device_id}/summary", response_model=DeviceSummaryRead)
@@ -349,3 +440,35 @@ def _queued_command_response(
         created_at=command.created_at,
         value=command.value,
     )
+
+
+def _build_setup_finishing_url(*, frontend_origin: str, device_name: str, location: str, expect_image: bool) -> str:
+    from urllib.parse import urlencode
+
+    query = urlencode(
+        {
+            "device_name": device_name,
+            "location": location,
+            "expect_image": "1" if expect_image else "0",
+        }
+    )
+    return f"{frontend_origin}/devices/setup-finishing?{query}"
+
+
+def _build_continue_setup_url(*, settings, setup_token: str | None, serial_number: str, device_name: str, location: str, setup_finishing_url: str) -> str:
+    from urllib.parse import urlencode, urlparse, urlunparse
+
+    parsed = urlparse(settings.local_setup_url)
+    query_params = {
+        "sn": serial_number,
+        "device_name": device_name,
+        "backend_url": settings.provisioning_api_url,
+        "return_url": setup_finishing_url,
+    }
+    if setup_token:
+        query_params["setup_code"] = setup_token
+    if location:
+        query_params["location"] = location
+    if settings.device_platform_url:
+        query_params["platform_url"] = settings.device_platform_url
+    return urlunparse(parsed._replace(query=urlencode(query_params)))

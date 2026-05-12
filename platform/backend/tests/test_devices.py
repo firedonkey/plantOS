@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.routes import devices as device_routes
 from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
@@ -208,6 +209,174 @@ def test_device_command_wrapper_apis():
         assert capture_payload["error"]["code"] == "capture_not_supported"
         assert "not yet supported" in capture_payload["error"]["message"]
         assert capture_payload["error"]["details"]["future_response"]["status"] == "accepted"
+    finally:
+        teardown_overrides()
+
+
+def test_device_setup_code_api_returns_handoff_urls(monkeypatch):
+    client, _ = build_client_with_user()
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "serial_number": "SN-ESP32-001",
+                "claim_token": "claim-esp32-001",
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json, headers):
+            assert url.endswith("/api/devices/setup-code")
+            assert json["serial_number"] == "SN-ESP32-001"
+            assert json["device_name"] == "Kitchen Rose"
+            assert json["location"] == "Kitchen"
+            assert headers["x-plantlab-user-id"] == "1"
+            return FakeResponse()
+
+    monkeypatch.setattr(device_routes.httpx, "AsyncClient", FakeAsyncClient)
+
+    try:
+        response = client.post(
+            "/api/devices/setup-code",
+            headers={"Origin": "http://localhost:5173"},
+            json={
+                "serial_number": "SN-ESP32-001",
+                "device_name": "Kitchen Rose",
+                "location": "Kitchen",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["serial_number"] == "SN-ESP32-001"
+        assert payload["claim_token"] == "claim-esp32-001"
+        assert payload["setup_token"] == "claim-esp32-001"
+        assert payload["setup_finishing_url"].startswith("http://localhost:5173/devices/setup-finishing?")
+        assert "device_name=Kitchen+Rose" in payload["setup_finishing_url"]
+        assert payload["continue_setup_url"].startswith("http://10.42.0.1:8080/?")
+        assert "setup_code=claim-esp32-001" in payload["continue_setup_url"]
+        assert "return_url=http%3A%2F%2Flocalhost%3A5173%2Fdevices%2Fsetup-finishing" in payload["continue_setup_url"]
+    finally:
+        teardown_overrides()
+
+
+def test_device_setup_code_api_surfaces_upstream_error(monkeypatch):
+    client, _ = build_client_with_user()
+
+    class FakeResponse:
+        status_code = 404
+
+        @staticmethod
+        def json():
+            return {"message": "Could not verify this SN."}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json, headers):
+            return FakeResponse()
+
+    monkeypatch.setattr(device_routes.httpx, "AsyncClient", FakeAsyncClient)
+
+    try:
+        response = client.post(
+            "/api/devices/setup-code",
+            json={
+                "serial_number": "missing",
+                "device_name": "Kitchen Rose",
+            },
+        )
+
+        assert response.status_code == 404
+        payload = response.json()
+        assert payload["error"]["code"] == "setup_code_request_failed"
+        assert payload["error"]["message"] == "Could not verify this SN."
+    finally:
+        teardown_overrides()
+
+
+def test_delete_device_api_removes_device():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+
+        delete_response = client.delete(f"/api/devices/{device_id}")
+
+        assert delete_response.status_code == 200
+        assert delete_response.json() == {
+            "status": "deleted",
+            "device_id": device_id,
+            "message": "Device removed.",
+        }
+
+        list_response = client.get("/api/devices")
+        assert list_response.status_code == 200
+        assert list_response.json() == []
+    finally:
+        teardown_overrides()
+
+
+def test_setup_status_api_reports_readiness():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={"name": "Device 1", "location": "Location 1"},
+        )
+        device_id = create_response.json()["id"]
+
+        pending_response = client.get("/api/setup/status", params={"device_name": "Device 1", "location": "Location 1"})
+        assert pending_response.status_code == 200
+        pending_payload = pending_response.json()
+        assert pending_payload["ready"] is False
+        assert pending_payload["device_found"] is True
+        assert pending_payload["has_reading"] is False
+        assert pending_payload["has_image"] is False
+
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "moisture": 41.0,
+                "temperature": 23.4,
+                "humidity": 52.5,
+                "light_on": False,
+                "pump_on": False,
+                "pump_status": "idle",
+            },
+        )
+        assert data_response.status_code == 201
+
+        ready_response = client.get(
+            "/api/setup/status",
+            params={"device_name": "Device 1", "location": "Location 1", "expect_image": "0"},
+        )
+        assert ready_response.status_code == 200
+        ready_payload = ready_response.json()
+        assert ready_payload["ready"] is True
+        assert ready_payload["device_id"] == device_id
+        assert ready_payload["redirect_path"] == f"/devices/{device_id}?setup=complete"
     finally:
         teardown_overrides()
 

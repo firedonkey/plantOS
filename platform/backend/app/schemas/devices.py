@@ -48,3 +48,9 @@ class DeviceSummaryRead(BaseModel):
     latest_reading: DeviceSummaryReadingRead | None
     latest_image: DeviceSummaryImageRead | None
     node_summary: dict
+
+
+class DeviceDeleteRead(BaseModel):
+    status: str
+    device_id: int
+    message: str
