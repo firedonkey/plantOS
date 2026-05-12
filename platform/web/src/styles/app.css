@@ -92,6 +92,13 @@ input {
   align-items: center;
 }
 
+.section-header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
 .eyebrow {
   color: #2f855a;
   font-size: 13px;
@@ -380,6 +387,121 @@ input {
   gap: 12px;
 }
 
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.trend-card {
+  border: 1px solid #d7dee3;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f8fafb;
+}
+
+.trend-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trend-card-header span {
+  color: #55635d;
+}
+
+.trend-card-header strong {
+  font-size: 24px;
+}
+
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 92px;
+}
+
+.trend-bar {
+  flex: 1;
+  min-width: 6px;
+  background: #2f855a;
+  border-radius: 4px 4px 0 0;
+}
+
+.range-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.range-tab {
+  border: 1px solid #d7dee3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #55635d;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.range-tab-active {
+  border-color: #2f855a;
+  background: #e7f3ec;
+  color: #2f855a;
+  font-weight: 700;
+}
+
+.state-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.state-metrics strong {
+  display: block;
+  font-size: 24px;
+}
+
+.image-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.image-gallery-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gallery-image {
+  height: 220px;
+  object-fit: cover;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #e7ecef;
+}
+
+.activity-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
 .status-step {
   display: flex;
   flex-direction: column;
@@ -439,5 +561,9 @@ input {
 
   .landing-copy h1 {
     max-width: none;
+  }
+
+  .section-header {
+    flex-direction: column;
   }
 }

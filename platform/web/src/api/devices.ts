@@ -47,6 +47,19 @@ type ApiSensorReading = {
   pump_on?: boolean | null;
 };
 
+type ApiCommandRead = {
+  id: number;
+  device_id: number;
+  target: "light" | "pump" | "camera";
+  action: "on" | "off" | "run" | "capture";
+  value?: string | null;
+  status: "pending" | "sent" | "completed" | "failed" | "timed_out";
+  message?: string | null;
+  created_at: string;
+  sent_at?: string | null;
+  completed_at?: string | null;
+};
+
 type ApiCommandEnvelope = {
   status: "accepted" | "unsupported" | "error";
   device_id: number;
@@ -111,8 +124,10 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
   switch (status) {
     case "pending":
     case "sent":
-    case "failed":
       return status;
+    case "failed":
+    case "timed_out":
+      return "failed";
     case "completed":
       return "acknowledged";
     default:
@@ -150,6 +165,29 @@ function mapReading(reading?: ApiDeviceSummary["latest_reading"] | ApiSensorRead
     lightOn: reading.light_on ?? undefined,
     pumpOn: reading.pump_on ?? undefined,
   };
+}
+
+function mapCommand(command: ApiCommandRead): DeviceCommand {
+  return {
+    id: String(command.id),
+    deviceId: String(command.device_id),
+    action: mapCommandAction(command.target, command.action),
+    createdAt: command.completed_at ?? command.sent_at ?? command.created_at,
+    status: mapCommandStatus(command.status),
+  };
+}
+
+function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRead["action"]): DeviceCommand["action"] {
+  if (target === "light" && action === "on") {
+    return "light_on";
+  }
+  if (target === "light" && action === "off") {
+    return "light_off";
+  }
+  if (target === "pump" && action === "run") {
+    return "pump_run";
+  }
+  return "capture_image";
 }
 
 export async function listDevices(token?: string): Promise<{ devices: Device[]; usedMock: boolean }> {
@@ -193,10 +231,18 @@ export async function getDeviceDashboard(
   token?: string,
 ): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
   try {
-    const [summary, history] = await Promise.all([
+    const [summary, history, commands] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
       apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?limit=50`, {}, token),
+      apiRequest<ApiCommandRead[]>(`/api/devices/${deviceId}/commands`, {}, token),
     ]);
+    const latestImage = summary.latest_image
+      ? {
+          id: String(summary.latest_image.id),
+          url: summary.latest_image.content_url,
+          capturedAt: summary.latest_image.timestamp,
+        }
+      : undefined;
     return {
       usedMock: false,
       dashboard: {
@@ -207,15 +253,10 @@ export async function getDeviceDashboard(
           plantType: summary.plant_type ?? undefined,
           status: mapStatus(summary),
           latestReading: mapReading(summary.latest_reading),
-          latestImage: summary.latest_image
-            ? {
-                id: String(summary.latest_image.id),
-                url: summary.latest_image.content_url,
-                capturedAt: summary.latest_image.timestamp,
-              }
-            : undefined,
+          latestImage,
         },
-        recentCommands: [],
+        recentImages: latestImage ? [latestImage] : [],
+        recentCommands: commands.slice(0, 6).map(mapCommand),
         history: history.map((reading) => mapReading(reading)!),
       },
     };

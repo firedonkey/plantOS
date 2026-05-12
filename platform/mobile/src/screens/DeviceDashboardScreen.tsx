@@ -1,9 +1,12 @@
 import { Link } from "expo-router";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { CommandActivityPanel } from "@/components/CommandActivityPanel";
 import { MetricCard } from "@/components/MetricCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { ReadingTrendSection } from "@/components/ReadingTrendSection";
+import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
@@ -78,28 +81,18 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             </View>
           </Card>
 
-          <Card>
-            <Text style={styles.sectionTitle}>Latest capture</Text>
-            {dashboard.device.latestImage ? (
-              <>
-                <Image
-                  source={{
-                    uri: dashboard.device.latestImage.url,
-                    headers:
-                      session?.mode === "api" && token
-                        ? { Authorization: `Bearer ${token}` }
-                        : undefined,
-                  }}
-                  style={styles.image}
-                />
-                <Text style={styles.meta}>Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</Text>
-              </>
-            ) : (
-              <Text style={styles.meta}>
-                No image available yet. Manual capture is coming later, so this card updates when the device uploads a new image on its own.
-              </Text>
-            )}
-          </Card>
+          <ReadingTrendSection
+            history={dashboard.history}
+            title="Sensor trends"
+            subtitle="Use the range tabs to compare temperature, humidity, and soil moisture trends from the readings currently loaded."
+          />
+
+          <RecentImageGallery
+            images={dashboard.recentImages}
+            imageHeaders={session?.mode === "api" && token ? { Authorization: `Bearer ${token}` } : undefined}
+          />
+
+          <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <Card>
             <Text style={styles.sectionTitle}>Manual controls</Text>
@@ -133,7 +126,6 @@ const styles = StyleSheet.create({
   meta: { fontSize: 14, color: theme.colors.textSecondary },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  image: { width: "100%", height: 220, borderRadius: 8, backgroundColor: "#dfe5e9" },
   error: { color: "#b42318" },
   feedback: { fontWeight: "600", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
   feedbackSuccess: { color: theme.colors.accent, backgroundColor: "#dff7e8" },

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { CommandActivityPanel } from "@/components/CommandActivityPanel";
+import { ReadingTrendSection } from "@/components/ReadingTrendSection";
+import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 
@@ -108,17 +111,23 @@ export function DeviceDashboardScreen() {
             <div className="metric-card"><span>Pump</span><strong>{dashboard.device.latestReading?.pumpOn ? "On" : "Off"}</strong></div>
           </div>
 
-          <div className="card">
-            <h3>Latest capture</h3>
-            {dashboard.device.latestImage && protectedImageUrl ? (
-              <>
-                <img alt="Latest device capture" className="capture-image" src={protectedImageUrl} />
-                <p className="subtitle">Captured {new Date(dashboard.device.latestImage.capturedAt).toLocaleString()}</p>
-              </>
-            ) : (
-              <p className="subtitle">No image available yet. Manual capture is coming later, so this card updates when the device uploads a new image on its own.</p>
-            )}
-          </div>
+          <ReadingTrendSection
+            history={dashboard.history}
+            title="Sensor trends"
+            subtitle="Use the range tabs to compare temperature, humidity, and soil moisture trends from the readings currently loaded."
+          />
+
+          <RecentImageGallery
+            images={
+              dashboard.recentImages.map((image) =>
+                image.id === dashboard.device.latestImage?.id && protectedImageUrl
+                  ? { ...image, url: protectedImageUrl }
+                  : image,
+              )
+            }
+          />
+
+          <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <div className="card">
             <h3>Manual controls</h3>

@@ -54,6 +54,7 @@ export const mockDevices: Device[] = [
 export const mockDashboards: Record<string, DeviceDashboard> = {
   "1": {
     device: mockDevices[0],
+    recentImages: [latestImage],
     recentCommands,
     history,
   },

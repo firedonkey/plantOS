@@ -39,6 +39,7 @@ export type LatestImage = {
 
 export type DeviceDashboard = {
   device: Device;
+  recentImages: LatestImage[];
   recentCommands: DeviceCommand[];
   history: SensorReading[];
 };

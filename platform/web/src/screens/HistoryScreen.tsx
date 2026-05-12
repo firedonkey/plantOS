@@ -1,5 +1,6 @@
 import { useParams } from "react-router-dom";
 
+import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 
 export function HistoryScreen() {
@@ -31,6 +32,14 @@ export function HistoryScreen() {
           <h3>No readings yet</h3>
           <p className="subtitle">Once the device reports sensor data, the recent history will appear here.</p>
         </div>
+      ) : null}
+
+      {dashboard?.history.length ? (
+        <ReadingTrendSection
+          history={dashboard.history}
+          title="Trend charts"
+          subtitle="The backend currently returns the latest 50 readings, so longer ranges reflect the data available in that window."
+        />
       ) : null}
 
       <div className="history-list">

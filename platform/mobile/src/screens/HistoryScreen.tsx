@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { Screen } from "@/components/Screen";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { theme } from "@/styles/theme";
@@ -32,6 +33,14 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
           <Text style={styles.timestamp}>No readings yet</Text>
           <Text style={styles.row}>Once the device reports sensor data, the recent history will appear here.</Text>
         </Card>
+      ) : null}
+
+      {dashboard?.history.length ? (
+        <ReadingTrendSection
+          history={dashboard.history}
+          title="Trend charts"
+          subtitle="The backend currently returns the latest 50 readings, so longer ranges reflect the data available in that window."
+        />
       ) : null}
 
       {dashboard?.history.map((reading) => (

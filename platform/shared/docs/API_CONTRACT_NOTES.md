@@ -226,6 +226,11 @@ Suggested direction:
 
 - `GET /api/devices/{device_id}/images`
 
+Current standalone client behavior:
+
+- standalone web and mobile now render a recent-image gallery section
+- until a true image-list endpoint exists, that gallery is powered by the latest-image contract and therefore shows only the newest uploaded image
+
 ### 3. Capture command device support
 
 Current state:
