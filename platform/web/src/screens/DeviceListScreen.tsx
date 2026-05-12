@@ -1,9 +1,20 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useDevices } from "@/hooks/useDevices";
 
 export function DeviceListScreen() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { devices, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDevices();
+  const flashState = location.state && typeof location.state === "object" ? (location.state as { flashMessage?: string; flashTone?: "success" | "info" }) : null;
+
+  useEffect(() => {
+    if (!flashState?.flashMessage) {
+      return;
+    }
+    navigate(location.pathname, { replace: true });
+  }, [flashState?.flashMessage, location.pathname, navigate]);
 
   return (
     <section className="page-section">
@@ -20,18 +31,31 @@ export function DeviceListScreen() {
             {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
           </p>
         </div>
-        <button className="secondary-button" disabled={isLoading} onClick={refresh}>
-          {isLoading ? "Refreshing..." : "Refresh"}
-        </button>
+        <div className="header-actions">
+          <Link className="primary-button" to="/devices/add">
+            Add device
+          </Link>
+          <button className="secondary-button" disabled={isLoading} onClick={refresh}>
+            {isLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {usedMock ? <p className="chip chip-mock">Mock data mode</p> : null}
+      {flashState?.flashMessage ? (
+        <p className={`status-banner ${flashState.flashTone === "info" ? "status-banner-info" : "status-banner-success"}`}>
+          {flashState.flashMessage}
+        </p>
+      ) : null}
       {error ? <p className="status-banner status-banner-error">{error}</p> : null}
       {isLoading && devices.length === 0 ? <p className="status-banner">Loading your devices…</p> : null}
       {!isLoading && devices.length === 0 ? (
         <div className="empty-state">
           <h3>No devices yet</h3>
-          <p className="subtitle">Add a PlantLab from the existing backend-rendered flow, then come back here to monitor it.</p>
+          <p className="subtitle">Start onboarding here, then come back to monitor the device once setup finishes.</p>
+          <Link className="text-link" to="/devices/add">
+            Open add-device flow
+          </Link>
         </div>
       ) : null}
 

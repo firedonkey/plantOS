@@ -137,6 +137,9 @@ export function DeviceDashboardScreen() {
           <Link className="text-link" to={`/devices/${deviceId}/history`}>
             View history
           </Link>
+          <Link className="text-link" to={`/devices/${deviceId}/remove`}>
+            Remove device
+          </Link>
         </>
       ) : (
         <p className="status-banner">Loading dashboard…</p>

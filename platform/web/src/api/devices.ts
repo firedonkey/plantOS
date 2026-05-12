@@ -60,6 +60,53 @@ type ApiCommandEnvelope = {
   value?: string | null;
 };
 
+type ApiSetupCodeResponse = {
+  serial_number: string;
+  setup_code?: string | null;
+  claim_token?: string | null;
+  setup_token?: string | null;
+  local_setup_url: string;
+  provisioning_api_url: string;
+  platform_url?: string | null;
+  setup_finishing_url: string;
+  continue_setup_url: string;
+  expect_image: boolean;
+};
+
+type ApiSetupStatus = {
+  ready: boolean;
+  device_found: boolean;
+  device_id?: number | null;
+  has_reading: boolean;
+  has_image: boolean;
+  expect_image: boolean;
+  redirect_path?: string | null;
+};
+
+type ApiDeleteResponse = {
+  status: "deleted";
+  device_id: number;
+  message: string;
+};
+
+export type DeviceSetupHandoff = {
+  serialNumber: string;
+  setupToken?: string;
+  continueSetupUrl: string;
+  setupFinishingUrl: string;
+  expectImage: boolean;
+};
+
+export type SetupStatus = {
+  ready: boolean;
+  deviceFound: boolean;
+  deviceId?: string;
+  hasReading: boolean;
+  hasImage: boolean;
+  expectImage: boolean;
+  redirectPath?: string;
+};
+
 function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
   switch (status) {
     case "pending":
@@ -251,5 +298,129 @@ function commandRequestForAction(action: DeviceCommand["action"]) {
           method: "POST",
         },
       };
+  }
+}
+
+export async function requestDeviceSetupCode(
+  input: {
+    serialNumber: string;
+    deviceName: string;
+    location?: string;
+  },
+  token?: string,
+): Promise<{ handoff: DeviceSetupHandoff; usedMock: boolean }> {
+  try {
+    const created = await apiRequest<ApiSetupCodeResponse>(
+      "/api/devices/setup-code",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          serial_number: input.serialNumber,
+          device_name: input.deviceName,
+          location: input.location ?? null,
+        }),
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      handoff: {
+        serialNumber: created.serial_number,
+        setupToken: created.setup_token ?? created.setup_code ?? created.claim_token ?? undefined,
+        continueSetupUrl: created.continue_setup_url,
+        setupFinishingUrl: created.setup_finishing_url,
+        expectImage: created.expect_image,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    const query = new URLSearchParams({
+      device_name: input.deviceName,
+      location: input.location ?? "",
+      expect_image: "1",
+    }).toString();
+    return {
+      usedMock: true,
+      handoff: {
+        serialNumber: input.serialNumber,
+        setupToken: "mock-claim-token",
+        continueSetupUrl: `http://10.42.0.1:8080/?setup_code=mock-claim-token&sn=${encodeURIComponent(input.serialNumber)}`,
+        setupFinishingUrl: `/devices/setup-finishing?${query}`,
+        expectImage: true,
+      },
+    };
+  }
+}
+
+export async function getSetupStatus(
+  input: { deviceName: string; location?: string; expectImage?: boolean },
+  token?: string,
+): Promise<{ status: SetupStatus; usedMock: boolean }> {
+  try {
+    const params = new URLSearchParams({
+      device_name: input.deviceName,
+      location: input.location ?? "",
+      expect_image: input.expectImage === false ? "0" : "1",
+    });
+    const payload = await apiRequest<ApiSetupStatus>(`/api/setup/status?${params.toString()}`, {}, token);
+    return {
+      usedMock: false,
+      status: {
+        ready: payload.ready,
+        deviceFound: payload.device_found,
+        deviceId: payload.device_id ? String(payload.device_id) : undefined,
+        hasReading: payload.has_reading,
+        hasImage: payload.has_image,
+        expectImage: payload.expect_image,
+        redirectPath: payload.redirect_path ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      status: {
+        ready: true,
+        deviceFound: true,
+        deviceId: mockDevices[0]?.id ?? "1",
+        hasReading: true,
+        hasImage: true,
+        expectImage: true,
+        redirectPath: `/devices/${mockDevices[0]?.id ?? "1"}?setup=complete`,
+      },
+    };
+  }
+}
+
+export async function deleteDevice(
+  deviceId: string,
+  token?: string,
+): Promise<{ deviceId: string; usedMock: boolean; message: string }> {
+  try {
+    const response = await apiRequest<ApiDeleteResponse>(
+      `/api/devices/${deviceId}`,
+      {
+        method: "DELETE",
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      deviceId: String(response.device_id),
+      message: response.message,
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      deviceId,
+      message: "Mock mode does not persist device removal, but the flow is available for layout testing.",
+    };
   }
 }

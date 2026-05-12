@@ -175,15 +175,20 @@ input {
 }
 
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   border: 0;
   border-radius: 8px;
   padding: 12px 14px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.danger-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -197,6 +202,12 @@ input {
 .secondary-button {
   background: #edf2f4;
   color: #1f2a24;
+}
+
+.danger-button {
+  background: #b42318;
+  color: white;
+  font-weight: 700;
 }
 
 .chip {
@@ -243,10 +254,30 @@ input {
   gap: 14px;
 }
 
-.auth-card input {
+.auth-card input,
+.field input,
+.field textarea,
+.field select {
   border: 1px solid #d7dee3;
   border-radius: 8px;
   padding: 12px 14px;
+}
+
+.stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field span {
+  font-weight: 600;
+  color: #394640;
 }
 
 .error-text {
@@ -287,6 +318,29 @@ input {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.status-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #d7dee3;
+  background: #f8fafb;
+}
+
+.status-step strong {
+  font-size: 16px;
+}
+
+.status-step span {
+  color: #55635d;
+}
+
+.status-step-complete {
+  border-color: #b7e4c7;
+  background: #edf9f1;
 }
 
 .empty-state {
