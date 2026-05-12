@@ -10,7 +10,7 @@ export function RecentImageGallery({ images }: RecentImageGalleryProps) {
       <div className="section-header">
         <div>
           <h3>Recent image gallery</h3>
-          <p className="subtitle">Showing the latest uploaded image today. A multi-image API is still a backend gap, so this section expands when that contract lands.</p>
+          <p className="subtitle">Recent uploads from the device appear here newest first. Manual capture is still coming later, so this gallery reflects images the device already sent.</p>
         </div>
       </div>
 

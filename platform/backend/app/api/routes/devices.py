@@ -240,6 +240,30 @@ def get_device_latest_image(
     )
 
 
+@router.get("/{device_id}/images", response_model=list[DeviceSummaryImageRead])
+def get_device_images(
+    device_id: int,
+    request: Request,
+    limit: int = Query(default=12, ge=1, le=50),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+
+    images = list_recent_images_for_device(session, device.id, limit=limit)
+    return [
+        DeviceSummaryImageRead(
+            id=image.id,
+            content_url=str(request.url_for("image_content", image_id=image.id)),
+            timestamp=image.timestamp,
+            source_hardware_device_id=image.source_hardware_device_id,
+        )
+        for image in images
+    ]
+
+
 @router.post("/{device_id}/commands/light", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_light_command(
     device_id: int,

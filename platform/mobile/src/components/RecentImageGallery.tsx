@@ -14,7 +14,7 @@ export function RecentImageGallery({ images, imageHeaders }: RecentImageGalleryP
     <Card>
       <Text style={styles.title}>Recent image gallery</Text>
       <Text style={styles.subtitle}>
-        Showing the latest uploaded image today. A multi-image API is still a backend gap, so this section expands when that contract lands.
+        Recent uploads from the device appear here newest first. Manual capture is still coming later, so this gallery reflects images the device already sent.
       </Text>
 
       {!images.length ? (

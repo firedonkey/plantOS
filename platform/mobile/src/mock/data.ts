@@ -8,6 +8,20 @@ const latestImage: LatestImage = {
   capturedAt: now.toISOString(),
 };
 
+const recentImages: LatestImage[] = [
+  latestImage,
+  {
+    id: "mock-image-2",
+    url: "https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=1200&q=80",
+    capturedAt: new Date(now.getTime() - 45 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "mock-image-3",
+    url: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80",
+    capturedAt: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 const latestReading: SensorReading = {
   timestamp: now.toISOString(),
   temperatureC: 23.1,
@@ -61,7 +75,7 @@ export const mockDevices: Device[] = [
 export const mockDashboards: Record<string, DeviceDashboard> = {
   "1": {
     device: mockDevices[0],
-    recentImages: [latestImage],
+    recentImages,
     recentCommands,
     history,
   },

@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from base64 import b64encode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from types import SimpleNamespace
 
@@ -174,6 +174,73 @@ def test_device_latest_image_api_returns_null_when_missing():
         latest_image_response = client.get(f"/api/devices/{device_id}/images/latest")
         assert latest_image_response.status_code == 200
         assert latest_image_response.json() is None
+    finally:
+        teardown_overrides()
+
+
+def test_device_images_api_requires_auth():
+    client = TestClient(app)
+
+    response = client.get("/api/devices/1/images")
+
+    assert response.status_code == 401
+
+
+def test_device_images_api_returns_recent_images_with_limit():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+        base_time = datetime.now(timezone.utc)
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/one.jpg",
+                    source_hardware_device_id="cam-1",
+                    timestamp=base_time,
+                )
+            )
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/two.jpg",
+                    source_hardware_device_id="cam-2",
+                    timestamp=base_time + timedelta(minutes=1),
+                )
+            )
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/three.jpg",
+                    source_hardware_device_id="cam-3",
+                    timestamp=base_time + timedelta(minutes=2),
+                )
+            )
+            session.commit()
+
+        response = client.get(f"/api/devices/{device_id}/images?limit=2")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 2
+        assert payload[0]["content_url"].endswith("/api/images/3/content")
+        assert payload[0]["source_hardware_device_id"] == "cam-3"
+        assert payload[1]["content_url"].endswith("/api/images/2/content")
+        assert payload[1]["source_hardware_device_id"] == "cam-2"
+    finally:
+        teardown_overrides()
+
+
+def test_device_images_api_returns_404_when_device_missing():
+    client, _ = build_client_with_user()
+    try:
+        response = client.get("/api/devices/999/images")
+
+        assert response.status_code == 404
+        payload = response.json()
+        assert payload["error"]["code"] == "not_found"
     finally:
         teardown_overrides()
 

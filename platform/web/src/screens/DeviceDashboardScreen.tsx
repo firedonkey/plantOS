@@ -24,49 +24,52 @@ export function DeviceDashboardScreen() {
     imageAuthHeaders,
   } =
     useDeviceDashboard(deviceId);
-  const [protectedImageUrl, setProtectedImageUrl] = useState<string | null>(null);
+  const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!dashboard?.device.latestImage) {
-      setProtectedImageUrl(null);
+    if (!dashboard?.recentImages.length) {
+      setProtectedImageUrls({});
       return;
     }
 
     if (session?.mode !== "api" || !imageAuthHeaders) {
-      setProtectedImageUrl(dashboard.device.latestImage.url);
+      setProtectedImageUrls(
+        Object.fromEntries(dashboard.recentImages.map((image) => [image.id, image.url])),
+      );
       return;
     }
 
     let cancelled = false;
-    let objectUrl: string | null = null;
+    const objectUrls: string[] = [];
 
-    fetch(dashboard.device.latestImage.url, { headers: imageAuthHeaders })
-      .then(async (response) => {
+    Promise.all(
+      dashboard.recentImages.map(async (image) => {
+        const response = await fetch(image.url, { headers: imageAuthHeaders });
         if (!response.ok) {
           throw new Error(`Unable to load image: ${response.status}`);
         }
-        return response.blob();
-      })
-      .then((blob) => {
-        if (cancelled) {
-          return;
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrls.push(objectUrl);
+        return [image.id, objectUrl] as const;
+      }),
+    )
+      .then((entries) => {
+        if (!cancelled) {
+          setProtectedImageUrls(Object.fromEntries(entries));
         }
-        objectUrl = URL.createObjectURL(blob);
-        setProtectedImageUrl(objectUrl);
       })
       .catch(() => {
         if (!cancelled) {
-          setProtectedImageUrl(null);
+          setProtectedImageUrls({});
         }
       });
 
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [dashboard?.device.latestImage, imageAuthHeaders, session?.mode]);
+  }, [dashboard?.recentImages, imageAuthHeaders, session?.mode]);
 
   if (!deviceId) {
     return <p className="error-text">Missing device id.</p>;
@@ -118,13 +121,10 @@ export function DeviceDashboardScreen() {
           />
 
           <RecentImageGallery
-            images={
-              dashboard.recentImages.map((image) =>
-                image.id === dashboard.device.latestImage?.id && protectedImageUrl
-                  ? { ...image, url: protectedImageUrl }
-                  : image,
-              )
-            }
+            images={dashboard.recentImages.map((image) => ({
+              ...image,
+              url: protectedImageUrls[image.id] ?? image.url,
+            }))}
           />
 
           <CommandActivityPanel commands={dashboard.recentCommands} />

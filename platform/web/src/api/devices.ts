@@ -1,6 +1,7 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
 import { Device, DeviceCommand, DeviceDashboard } from "@/types";
+import { ApiError } from "./client";
 
 type ApiDevice = {
   id: number;
@@ -71,6 +72,12 @@ type ApiCommandEnvelope = {
   command_status?: string | null;
   created_at?: string | null;
   value?: string | null;
+};
+
+type ApiDeviceImage = {
+  id: number;
+  content_url: string;
+  timestamp: string;
 };
 
 type ApiSetupCodeResponse = {
@@ -231,10 +238,16 @@ export async function getDeviceDashboard(
   token?: string,
 ): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
   try {
-    const [summary, history, commands] = await Promise.all([
+    const [summary, history, commands, recentImages] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
       apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?limit=50`, {}, token),
       apiRequest<ApiCommandRead[]>(`/api/devices/${deviceId}/commands`, {}, token),
+      apiRequest<ApiDeviceImage[]>(`/api/devices/${deviceId}/images?limit=6`, {}, token).catch((error) => {
+        if (error instanceof ApiError && error.status === 404) {
+          return [];
+        }
+        throw error;
+      }),
     ]);
     const latestImage = summary.latest_image
       ? {
@@ -243,6 +256,16 @@ export async function getDeviceDashboard(
           capturedAt: summary.latest_image.timestamp,
         }
       : undefined;
+    const galleryImages =
+      recentImages.length > 0
+        ? recentImages.map((image) => ({
+            id: String(image.id),
+            url: image.content_url,
+            capturedAt: image.timestamp,
+          }))
+        : latestImage
+          ? [latestImage]
+          : [];
     return {
       usedMock: false,
       dashboard: {
@@ -255,7 +278,7 @@ export async function getDeviceDashboard(
           latestReading: mapReading(summary.latest_reading),
           latestImage,
         },
-        recentImages: latestImage ? [latestImage] : [],
+        recentImages: galleryImages,
         recentCommands: commands.slice(0, 6).map(mapCommand),
         history: history.map((reading) => mapReading(reading)!),
       },

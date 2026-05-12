@@ -148,15 +148,21 @@ Current note:
 
 - `POST /api/image`
 - `GET /api/images/{image_id}/content`
+- `GET /api/devices/{device_id}/images/latest`
+- `GET /api/devices/{device_id}/images`
 
 Current purpose:
 
 - image upload from device or node
 - image content fetch for signed-in browser users
+- recent image gallery fetch for standalone web and mobile
 
 Current note:
 
 - image upload accepts optional `source_hardware_device_id`
+- `GET /api/devices/{device_id}/images` returns recent images newest first
+- `limit` is optional, defaults to `12`, and is capped at `50`
+- standalone web and mobile should prefer the image-list endpoint for gallery UI, and keep `images/latest` as a compatibility fallback for older local backends
 
 ### Device nodes
 
@@ -210,28 +216,7 @@ Needed later:
 - clear logout and token-rotation behavior
 - clear rollout rules for web/mobile auth beyond local dev
 
-### 2. Full image-list endpoint for clients
-
-Current state:
-
-- image upload exists
-- image content retrieval exists
-- latest-image retrieval now exists at `GET /api/devices/{device_id}/images/latest`
-
-Needed later:
-
-- stable image-list endpoint if standalone clients need more than the latest image
-
-Suggested direction:
-
-- `GET /api/devices/{device_id}/images`
-
-Current standalone client behavior:
-
-- standalone web and mobile now render a recent-image gallery section
-- until a true image-list endpoint exists, that gallery is powered by the latest-image contract and therefore shows only the newest uploaded image
-
-### 3. Capture command device support
+### 2. Capture command device support
 
 Current state:
 
