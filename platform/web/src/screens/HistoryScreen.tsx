@@ -5,7 +5,8 @@ import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 
 export function HistoryScreen() {
   const { deviceId = "" } = useParams();
-  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDeviceDashboard(deviceId);
+  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt, selectedRange, setSelectedRange } = useDeviceDashboard(deviceId);
+  const displayHistory = dashboard?.history ? [...dashboard.history].reverse() : [];
 
   return (
     <section className="page-section">
@@ -38,12 +39,15 @@ export function HistoryScreen() {
         <ReadingTrendSection
           history={dashboard.history}
           title="Trend charts"
-          subtitle="The backend currently returns the latest 50 readings, so longer ranges reflect the data available in that window."
+          subtitle="Range tabs now request matching backend history windows when the API is available."
+          selectedRange={selectedRange}
+          onRangeChange={setSelectedRange}
+          loading={isLoading}
         />
       ) : null}
 
       <div className="history-list">
-        {dashboard?.history.map((reading) => (
+        {displayHistory.map((reading) => (
           <div className="card" key={reading.timestamp}>
             <strong>{new Date(reading.timestamp).toLocaleString()}</strong>
             <p className="subtitle">

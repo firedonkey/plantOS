@@ -1,16 +1,18 @@
-import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { SensorReading } from "@/types";
 import { theme } from "@/styles/theme";
 
-type RangeKey = "24h" | "7d" | "30d" | "all";
+export type RangeKey = "24h" | "7d" | "30d" | "all";
 
 type ReadingTrendSectionProps = {
   history: SensorReading[];
   title?: string;
   subtitle?: string;
+  selectedRange: RangeKey;
+  onRangeChange: (range: RangeKey) => void;
+  loading?: boolean;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -20,9 +22,14 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
   { key: "all", label: "All" },
 ];
 
-export function ReadingTrendSection({ history, title = "Trends", subtitle }: ReadingTrendSectionProps) {
-  const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
-  const filtered = useMemo(() => filterReadingsByRange(history, selectedRange), [history, selectedRange]);
+export function ReadingTrendSection({
+  history,
+  title = "Trends",
+  subtitle,
+  selectedRange,
+  onRangeChange,
+  loading = false,
+}: ReadingTrendSectionProps) {
 
   return (
     <Card>
@@ -35,7 +42,8 @@ export function ReadingTrendSection({ history, title = "Trends", subtitle }: Rea
           {RANGE_OPTIONS.map((option) => (
             <Pressable
               key={option.key}
-              onPress={() => setSelectedRange(option.key)}
+              disabled={loading}
+              onPress={() => onRangeChange(option.key)}
               style={[styles.tab, selectedRange === option.key ? styles.tabActive : null]}
             >
               <Text style={[styles.tabLabel, selectedRange === option.key ? styles.tabLabelActive : null]}>{option.label}</Text>
@@ -44,14 +52,14 @@ export function ReadingTrendSection({ history, title = "Trends", subtitle }: Rea
         </View>
       </View>
 
-      {!filtered.length ? (
+      {!history.length ? (
         <Text style={styles.subtitle}>No readings are available in this range yet.</Text>
       ) : (
         <View style={styles.grid}>
-          <TrendCard label="Temperature" unit="C" values={filtered.map((reading) => reading.temperatureC)} latest={filtered.at(-1)?.temperatureC} />
-          <TrendCard label="Humidity" unit="%" values={filtered.map((reading) => reading.humidityPercent)} latest={filtered.at(-1)?.humidityPercent} />
-          <TrendCard label="Soil moisture" unit="%" values={filtered.map((reading) => reading.soilMoisturePercent)} latest={filtered.at(-1)?.soilMoisturePercent} />
-          <StateCard readings={filtered} />
+          <TrendCard label="Temperature" unit="C" values={history.map((reading) => reading.temperatureC)} latest={history.at(-1)?.temperatureC} />
+          <TrendCard label="Humidity" unit="%" values={history.map((reading) => reading.humidityPercent)} latest={history.at(-1)?.humidityPercent} />
+          <TrendCard label="Soil moisture" unit="%" values={history.map((reading) => reading.soilMoisturePercent)} latest={history.at(-1)?.soilMoisturePercent} />
+          <StateCard readings={history} />
         </View>
       )}
     </Card>
@@ -112,26 +120,6 @@ function StateCard({ readings }: { readings: SensorReading[] }) {
       <Text style={styles.meta}>Counts are based on the readings currently loaded in this range.</Text>
     </View>
   );
-}
-
-function filterReadingsByRange(readings: SensorReading[], range: RangeKey): SensorReading[] {
-  if (range === "all" || !readings.length) {
-    return readings;
-  }
-  const latestTimestamp = new Date(readings.at(-1)!.timestamp).getTime();
-  const cutoff = latestTimestamp - rangeToMilliseconds(range);
-  return readings.filter((reading) => new Date(reading.timestamp).getTime() >= cutoff);
-}
-
-function rangeToMilliseconds(range: Exclude<RangeKey, "all">): number {
-  switch (range) {
-    case "24h":
-      return 24 * 60 * 60 * 1000;
-    case "7d":
-      return 7 * 24 * 60 * 60 * 1000;
-    case "30d":
-      return 30 * 24 * 60 * 60 * 1000;
-  }
 }
 
 function normalizeValue(value: number | undefined, minimum: number | undefined, maximum: number | undefined): number {

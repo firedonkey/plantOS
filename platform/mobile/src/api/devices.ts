@@ -1,6 +1,7 @@
 import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
 import { Device, DeviceCommand, DeviceDashboard } from "@/types";
+import type { RangeKey } from "@/components/ReadingTrendSection";
 
 type ApiDevice = {
   id: number;
@@ -187,12 +188,14 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
 
 export async function getDeviceDashboard(
   deviceId: string,
+  range: RangeKey = "24h",
   token?: string,
 ): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
   try {
+    const readingsQuery = buildReadingsQuery(range);
     const [summary, history, commands, recentImages] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
-      apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?limit=50`, {}, token),
+      apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?${readingsQuery}`, {}, token),
       apiRequest<ApiCommandRead[]>(`/api/devices/${deviceId}/commands`, {}, token),
       apiRequest<ApiDeviceImage[]>(`/api/devices/${deviceId}/images?limit=6`, {}, token).catch((error) => {
         if (error instanceof ApiError && error.status === 404) {
@@ -239,11 +242,51 @@ export async function getDeviceDashboard(
     if (!shouldUseMockFallback(error)) {
       throw error;
     }
+    const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
     return {
       usedMock: true,
-      dashboard: mockDashboards[deviceId] ?? mockDashboards["1"],
+      dashboard: {
+        ...mockDashboard,
+        history: filterMockHistory(mockDashboard.history, range),
+      },
     };
   }
+}
+
+function buildReadingsQuery(range: RangeKey): string {
+  const params = new URLSearchParams({ limit: "500", order: "oldest" });
+  const end = new Date();
+  params.set("end", end.toISOString());
+  const start = rangeStart(range, end);
+  if (start) {
+    params.set("start", start.toISOString());
+  }
+  return params.toString();
+}
+
+function rangeStart(range: RangeKey, end: Date): Date | null {
+  const start = new Date(end);
+  switch (range) {
+    case "24h":
+      start.setHours(start.getHours() - 24);
+      return start;
+    case "7d":
+      start.setDate(start.getDate() - 7);
+      return start;
+    case "30d":
+      start.setDate(start.getDate() - 30);
+      return start;
+    case "all":
+      return null;
+  }
+}
+
+function filterMockHistory(history: DeviceDashboard["history"], range: RangeKey) {
+  const start = rangeStart(range, new Date());
+  if (!start) {
+    return history;
+  }
+  return history.filter((reading) => new Date(reading.timestamp).getTime() >= start.getTime());
 }
 
 export async function sendDeviceCommand(

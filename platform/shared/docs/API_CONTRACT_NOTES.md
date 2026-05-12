@@ -81,6 +81,17 @@ Current shape note:
   - `latest_image`
   - `node_summary`
 
+Readings history note:
+
+- `GET /api/devices/{device_id}/readings` remains backward-compatible by default:
+  - `limit=50`
+  - newest-first ordering
+- it now also supports standalone-client history queries with:
+  - `start=<ISO timestamp>`
+  - `end=<ISO timestamp>`
+  - `order=newest|oldest`
+- standalone web and mobile should prefer `order=oldest` when rendering trend charts so the history array is already aligned left-to-right for the UI
+
 Standalone onboarding note:
 
 - `POST /api/devices/setup-code` is the API replacement for the old backend-rendered `/devices/setup-code` form action

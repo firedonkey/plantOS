@@ -245,6 +245,92 @@ def test_device_images_api_returns_404_when_device_missing():
         teardown_overrides()
 
 
+def test_device_readings_api_requires_auth():
+    client = TestClient(app)
+
+    response = client.get("/api/devices/1/readings")
+
+    assert response.status_code == 401
+
+
+def test_device_readings_api_uses_default_newest_order_and_limit():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+        base_time = datetime.now(timezone.utc)
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            for offset in range(3):
+                session.add(
+                    SensorReading(
+                        device_id=device_id,
+                        temperature=20 + offset,
+                        timestamp=base_time + timedelta(hours=offset),
+                    )
+                )
+            session.commit()
+
+        response = client.get(f"/api/devices/{device_id}/readings")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 3
+        assert payload[0]["temperature"] == 22
+        assert payload[-1]["temperature"] == 20
+    finally:
+        teardown_overrides()
+
+
+def test_device_readings_api_supports_limit_date_range_and_oldest_order():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+        base_time = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            for offset in range(5):
+                session.add(
+                    SensorReading(
+                        device_id=device_id,
+                        temperature=20 + offset,
+                        timestamp=base_time + timedelta(days=offset),
+                    )
+                )
+            session.commit()
+
+        response = client.get(
+            f"/api/devices/{device_id}/readings",
+            params={
+                "start": (base_time + timedelta(days=1)).isoformat(),
+                "end": (base_time + timedelta(days=3)).isoformat(),
+                "limit": 2,
+                "order": "oldest",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 2
+        assert payload[0]["temperature"] == 21
+        assert payload[1]["temperature"] == 22
+    finally:
+        teardown_overrides()
+
+
+def test_device_readings_api_returns_404_when_device_missing():
+    client, _ = build_client_with_user()
+    try:
+        response = client.get("/api/devices/999/readings")
+
+        assert response.status_code == 404
+        payload = response.json()
+        assert payload["error"]["code"] == "not_found"
+    finally:
+        teardown_overrides()
+
+
 def test_device_command_wrapper_apis():
     client, _ = build_client_with_user()
     try:

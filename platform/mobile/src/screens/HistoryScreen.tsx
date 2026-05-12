@@ -11,7 +11,8 @@ type HistoryScreenProps = {
 };
 
 export function HistoryScreen({ deviceId }: HistoryScreenProps) {
-  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDeviceDashboard(deviceId);
+  const { dashboard, usedMock, isLoading, error, refresh, lastUpdatedAt, selectedRange, setSelectedRange } = useDeviceDashboard(deviceId);
+  const displayHistory = dashboard?.history ? [...dashboard.history].reverse() : [];
 
   return (
     <Screen onRefresh={refresh} refreshing={isLoading}>
@@ -39,11 +40,14 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
         <ReadingTrendSection
           history={dashboard.history}
           title="Trend charts"
-          subtitle="The backend currently returns the latest 50 readings, so longer ranges reflect the data available in that window."
+          subtitle="Range tabs now request matching backend history windows when the API is available."
+          selectedRange={selectedRange}
+          onRangeChange={setSelectedRange}
+          loading={isLoading}
         />
       ) : null}
 
-      {dashboard?.history.map((reading) => (
+      {displayHistory.map((reading) => (
         <Card key={reading.timestamp}>
           <Text style={styles.timestamp}>{new Date(reading.timestamp).toLocaleString()}</Text>
           <Text style={styles.row}>

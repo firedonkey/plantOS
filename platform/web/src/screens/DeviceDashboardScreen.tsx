@@ -22,6 +22,8 @@ export function DeviceDashboardScreen() {
     refresh,
     runCommand,
     imageAuthHeaders,
+    selectedRange,
+    setSelectedRange,
   } =
     useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
@@ -117,7 +119,10 @@ export function DeviceDashboardScreen() {
           <ReadingTrendSection
             history={dashboard.history}
             title="Sensor trends"
-            subtitle="Use the range tabs to compare temperature, humidity, and soil moisture trends from the readings currently loaded."
+            subtitle="Use the range tabs to request matching backend history windows for temperature, humidity, and soil moisture."
+            selectedRange={selectedRange}
+            onRangeChange={setSelectedRange}
+            loading={isLoading}
           />
 
           <RecentImageGallery

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { RangeKey } from "@/components/ReadingTrendSection";
 import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
@@ -14,12 +15,13 @@ export function useDeviceDashboard(deviceId: string) {
   const [commandTone, setCommandTone] = useState<"success" | "error" | "info" | null>(null);
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getDeviceDashboard(deviceId, token ?? undefined);
+      const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
@@ -29,7 +31,7 @@ export function useDeviceDashboard(deviceId: string) {
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, token]);
+  }, [deviceId, selectedRange, token]);
 
   useEffect(() => {
     if (!deviceId) {
@@ -87,6 +89,8 @@ export function useDeviceDashboard(deviceId: string) {
     refresh,
     runCommand,
     imageAuthHeaders,
+    selectedRange,
+    setSelectedRange,
   };
 }
 

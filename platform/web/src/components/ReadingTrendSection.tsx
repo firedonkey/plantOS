@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
-
 import { SensorReading } from "@/types";
 
-type RangeKey = "24h" | "7d" | "30d" | "all";
+export type RangeKey = "24h" | "7d" | "30d" | "all";
 
 type ReadingTrendSectionProps = {
   history: SensorReading[];
   title?: string;
   subtitle?: string;
+  selectedRange: RangeKey;
+  onRangeChange: (range: RangeKey) => void;
+  loading?: boolean;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -17,11 +18,15 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
   { key: "all", label: "All" },
 ];
 
-export function ReadingTrendSection({ history, title = "Trends", subtitle }: ReadingTrendSectionProps) {
-  const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
-
-  const filtered = useMemo(() => filterReadingsByRange(history, selectedRange), [history, selectedRange]);
-  const latestReading = filtered.length ? filtered[filtered.length - 1] : undefined;
+export function ReadingTrendSection({
+  history,
+  title = "Trends",
+  subtitle,
+  selectedRange,
+  onRangeChange,
+  loading = false,
+}: ReadingTrendSectionProps) {
+  const latestReading = history.length ? history[history.length - 1] : undefined;
 
   return (
     <div className="card stack-form">
@@ -35,7 +40,8 @@ export function ReadingTrendSection({ history, title = "Trends", subtitle }: Rea
             <button
               key={option.key}
               className={`range-tab ${selectedRange === option.key ? "range-tab-active" : ""}`}
-              onClick={() => setSelectedRange(option.key)}
+              disabled={loading}
+              onClick={() => onRangeChange(option.key)}
               type="button"
             >
               {option.label}
@@ -44,29 +50,29 @@ export function ReadingTrendSection({ history, title = "Trends", subtitle }: Rea
         </div>
       </div>
 
-      {!filtered.length ? (
+      {!history.length ? (
         <p className="subtitle">No readings are available in this range yet.</p>
       ) : (
         <div className="trend-grid">
           <TrendCard
             label="Temperature"
             unit="C"
-            values={filtered.map((reading) => reading.temperatureC)}
+            values={history.map((reading) => reading.temperatureC)}
             latest={latestReading?.temperatureC}
           />
           <TrendCard
             label="Humidity"
             unit="%"
-            values={filtered.map((reading) => reading.humidityPercent)}
+            values={history.map((reading) => reading.humidityPercent)}
             latest={latestReading?.humidityPercent}
           />
           <TrendCard
             label="Soil moisture"
             unit="%"
-            values={filtered.map((reading) => reading.soilMoisturePercent)}
+            values={history.map((reading) => reading.soilMoisturePercent)}
             latest={latestReading?.soilMoisturePercent}
           />
-          <StateCard label="Light / pump state" readings={filtered} />
+          <StateCard label="Light / pump state" readings={history} />
         </div>
       )}
     </div>
@@ -131,27 +137,6 @@ function StateCard({ label, readings }: { label: string; readings: SensorReading
       <p className="meta-text">Counts are based on the readings currently loaded in this range.</p>
     </div>
   );
-}
-
-function filterReadingsByRange(readings: SensorReading[], range: RangeKey): SensorReading[] {
-  if (range === "all" || !readings.length) {
-    return readings;
-  }
-
-  const latestTimestamp = new Date(readings[readings.length - 1].timestamp).getTime();
-  const cutoff = latestTimestamp - rangeToMilliseconds(range);
-  return readings.filter((reading) => new Date(reading.timestamp).getTime() >= cutoff);
-}
-
-function rangeToMilliseconds(range: Exclude<RangeKey, "all">): number {
-  switch (range) {
-    case "24h":
-      return 24 * 60 * 60 * 1000;
-    case "7d":
-      return 7 * 24 * 60 * 60 * 1000;
-    case "30d":
-      return 30 * 24 * 60 * 60 * 1000;
-  }
 }
 
 function normalizeValue(value: number | undefined, minimum: number | undefined, maximum: number | undefined): number {

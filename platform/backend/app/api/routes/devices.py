@@ -1,5 +1,7 @@
-import httpx
 import logging
+from datetime import datetime
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -207,13 +209,23 @@ def get_device_summary(
 def get_device_readings(
     device_id: int,
     limit: int = Query(default=50, ge=1, le=500),
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
+    order: str = Query(default="newest", pattern="^(newest|oldest)$"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
-    return list_recent_readings_for_device(session, device.id, limit=limit)
+    return list_recent_readings_for_device(
+        session,
+        device.id,
+        limit=limit,
+        since=start,
+        until=end,
+        order=order,
+    )
 
 
 @router.get("/{device_id}/images/latest", response_model=DeviceSummaryImageRead | None)
