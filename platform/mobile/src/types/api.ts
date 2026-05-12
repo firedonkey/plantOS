@@ -28,7 +28,7 @@ export type DeviceCommand = {
   deviceId: string;
   action: DeviceCommandAction;
   createdAt: string;
-  status: "pending" | "sent" | "acknowledged" | "failed";
+  status: "pending" | "sent" | "in_progress" | "acknowledged" | "failed";
 };
 
 export type LatestImage = {

@@ -56,6 +56,8 @@ function formatStatus(status: DeviceCommand["status"]): string {
       return "Pending";
     case "sent":
       return "Sent";
+    case "in_progress":
+      return "Running";
     case "failed":
       return "Failed";
   }

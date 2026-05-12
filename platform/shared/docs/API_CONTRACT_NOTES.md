@@ -109,6 +109,8 @@ Standalone onboarding note:
 - `POST /api/devices/{device_id}/commands/capture`
 - `GET /api/devices/{device_id}/commands/pending`
 - `POST /api/devices/{device_id}/commands/{command_id}/ack`
+- `GET /api/hardware/commands/pending`
+- `POST /api/hardware/commands/{command_id}/result`
 
 Current purpose:
 
@@ -116,6 +118,7 @@ Current purpose:
 - convenience wrappers for light and pump commands used by standalone clients
 - device command polling
 - device command acknowledgement
+- dedicated hardware polling/result reporting using device-token auth
 
 Current wrapper response note:
 
@@ -143,17 +146,30 @@ Current capture note:
 - the `501` response now uses the standard API error envelope and includes a `future_response` example in `error.details`
 - web and mobile should currently present manual capture as postponed or coming later, rather than as a broken action
 
+Current hardware polling note:
+
+- `GET /api/hardware/commands/pending` returns only commands for the authenticated device token
+- hardware polling claims commands by moving them from `pending` to `in_progress`
+- hardware completion is reported with `POST /api/hardware/commands/{command_id}/result`
+- result statuses currently supported there are:
+  - `in_progress`
+  - `completed`
+  - `failed`
+
 ### Sensor readings
 
 - `POST /api/data`
+- `POST /api/hardware/readings`
 
 Current purpose:
 
 - ingest device readings
+- dedicated hardware-ingest path for device-token clients
 
 Current note:
 
 - grouped devices that include camera nodes require `hardware_device_id` on reading ingest
+- `POST /api/hardware/readings` infers `device_id` from the device token, so hardware clients do not need to include it in the payload
 
 ### Images
 
@@ -188,10 +204,126 @@ Current purpose:
 ### Device status
 
 - `POST /api/status`
+- `POST /api/hardware/heartbeat`
 
 Current purpose:
 
 - device-level status heartbeat path
+- dedicated hardware heartbeat path using device-token auth
+
+Current heartbeat note:
+
+- `POST /api/hardware/heartbeat` can update device status fields
+- if `hardware_device_id` is provided for a registered node, it also updates the node `last_seen_at`
+
+## Hardware command polling contract
+
+### Device token auth
+
+Hardware endpoints use:
+
+- `X-Device-Token: <device api token>`
+
+They do not use:
+
+- user bearer auth
+- browser session auth
+
+### Hardware endpoints
+
+- `POST /api/hardware/readings`
+- `GET /api/hardware/commands/pending`
+- `POST /api/hardware/commands/{command_id}/result`
+- `POST /api/hardware/heartbeat`
+
+### Command lifecycle
+
+- `pending`
+  - created by web/mobile/backend user APIs
+- `in_progress`
+  - claimed by `/api/hardware/commands/pending`
+  - may also be re-reported explicitly by `/api/hardware/commands/{command_id}/result`
+- `completed`
+  - reported by hardware after successful execution
+- `failed`
+  - reported by hardware when execution fails
+- `timed_out`
+  - backend fallback for stale commands
+
+### Example curl commands
+
+Upload a reading:
+
+```bash
+curl -X POST http://localhost:8000/api/hardware/readings \
+  -H 'Content-Type: application/json' \
+  -H 'X-Device-Token: DEVICE_TOKEN' \
+  -d '{
+    "moisture": 42.1,
+    "temperature": 22.5,
+    "humidity": 51.0,
+    "light_on": false,
+    "pump_on": false
+  }'
+```
+
+Poll pending commands:
+
+```bash
+curl http://localhost:8000/api/hardware/commands/pending \
+  -H 'X-Device-Token: DEVICE_TOKEN'
+```
+
+Report a completed command:
+
+```bash
+curl -X POST http://localhost:8000/api/hardware/commands/123/result \
+  -H 'Content-Type: application/json' \
+  -H 'X-Device-Token: DEVICE_TOKEN' \
+  -d '{
+    "status": "completed",
+    "message": "light on",
+    "light_on": true,
+    "pump_on": false
+  }'
+```
+
+Send a heartbeat:
+
+```bash
+curl -X POST http://localhost:8000/api/hardware/heartbeat \
+  -H 'Content-Type: application/json' \
+  -H 'X-Device-Token: DEVICE_TOKEN' \
+  -d '{
+    "status": "online",
+    "message": "hardware loop healthy"
+  }'
+```
+
+### Example hardware payloads
+
+ESP32-style reading payload:
+
+```json
+{
+  "hardware_device_id": "master-01",
+  "moisture": 39.8,
+  "temperature": 23.0,
+  "humidity": 53.1,
+  "light_on": false,
+  "pump_on": false,
+  "pump_status": "idle"
+}
+```
+
+Python command result payload:
+
+```json
+{
+  "status": "failed",
+  "error": "pump jam detected"
+}
+```
 
 ## Current backend-rendered JSON endpoints still living under web routes
 

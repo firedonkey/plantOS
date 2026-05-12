@@ -32,7 +32,7 @@ export type DeviceCommand = {
   deviceId: string;
   action: "light_on" | "light_off" | "pump_run" | "capture_image";
   createdAt: string;
-  status: "pending" | "sent" | "acknowledged" | "failed";
+  status: "pending" | "sent" | "in_progress" | "acknowledged" | "failed";
 };
 
 export type DeviceDashboard = {

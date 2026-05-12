@@ -84,6 +84,7 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
   switch (status) {
     case "pending":
     case "sent":
+    case "in_progress":
       return status;
     case "failed":
     case "timed_out":

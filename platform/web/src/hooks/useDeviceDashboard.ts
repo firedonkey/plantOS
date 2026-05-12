@@ -59,6 +59,12 @@ export function useDeviceDashboard(deviceId: string) {
             ? `Simulated ${friendlyCommandLabel(action)} in mock mode.`
             : `${friendlyCommandLabel(action)} queued for the device.`,
         );
+        if (!result.usedMock) {
+          const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
+          setDashboard(refreshed.dashboard);
+          setUsedMock(refreshed.usedMock);
+          setLastUpdatedAt(new Date().toISOString());
+        }
       } catch (err) {
         setCommandTone("error");
         setError(err instanceof Error ? err.message : "Unable to send command.");
@@ -67,7 +73,7 @@ export function useDeviceDashboard(deviceId: string) {
         setIsCommandRunning(false);
       }
     },
-    [deviceId, token],
+    [deviceId, selectedRange, token],
   );
 
   const imageAuthHeaders = useMemo(() => {

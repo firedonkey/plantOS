@@ -25,6 +25,7 @@ class CommandAction(str, Enum):
 class CommandStatus(str, Enum):
     PENDING = "pending"
     SENT = "sent"
+    IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
     TIMED_OUT = "timed_out"
