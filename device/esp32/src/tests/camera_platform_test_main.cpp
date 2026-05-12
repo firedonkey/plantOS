@@ -417,31 +417,23 @@ bool sendHeartbeat() {
   }
 
   if (camera_node_runtime_config_complete(g_runtime_config)) {
-    HTTPClient http;
-    http.setTimeout(kHeartbeatHttpTimeoutMs);
-    const String url = g_platform_client->base_url() + "/api/device-nodes/heartbeat";
-    if (!http.begin(url)) {
-      Serial.println("[camera-node] heartbeat failed: request setup failed");
-      return false;
-    }
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-Device-Token", runtimeDeviceToken());
+    PlatformStatus heartbeat{};
+    heartbeat.hardware_device_id = stableHardwareDeviceId();
+    heartbeat.node_role = kNodeRoleCamera;
+    heartbeat.status = "online";
+    heartbeat.message = "camera online";
 
-    String body =
-        "{\"device_id\":" + String(g_platform_client->device_id()) +
-        ",\"hardware_device_id\":\"" + stableHardwareDeviceId() +
-        "\",\"node_role\":\"camera\",\"status\":\"online\"}";
-    const int code = http.POST(body);
-    const String response = code > 0 ? http.getString() : http.errorToString(code);
-    http.end();
-    if (code >= 200 && code < 300) {
-      Serial.printf("[camera-node] heartbeat sent to %s (%d)\n", url.c_str(), code);
+    String error;
+    if (g_platform_client->send_hardware_heartbeat(heartbeat, &error)) {
+      Serial.printf(
+          "[camera-node] heartbeat sent to %s/api/hardware/heartbeat\n",
+          g_platform_client->base_url().c_str());
       if (g_last_provision_sender_known) {
         sendHealthReport(g_last_provision_sender_mac, g_last_provision_request_id);
       }
       return true;
     }
-    Serial.printf("[camera-node] heartbeat failed HTTP %d: %s\n", code, response.c_str());
+    Serial.printf("[camera-node] heartbeat failed: %s\n", error.c_str());
     return false;
   }
 

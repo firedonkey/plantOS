@@ -201,6 +201,12 @@ Current purpose:
 - register grouped hardware nodes such as camera nodes
 - track node heartbeat and status
 
+Current migration note:
+
+- camera-style secondary nodes still register through `POST /api/device-nodes/register`
+- new ESP32 camera heartbeat/status traffic should prefer `POST /api/hardware/heartbeat`
+- the older `/api/device-nodes/heartbeat` route remains available for backward compatibility during migration
+
 ### Device status
 
 - `POST /api/status`
@@ -215,6 +221,7 @@ Current heartbeat note:
 
 - `POST /api/hardware/heartbeat` can update device status fields
 - if `hardware_device_id` is provided for a registered node, it also updates the node `last_seen_at`
+- ESP32 camera-node firmware now uses `POST /api/hardware/heartbeat` after registration while keeping image upload and node registration on their existing routes
 
 ## Hardware command polling contract
 

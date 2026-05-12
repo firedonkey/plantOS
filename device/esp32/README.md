@@ -41,11 +41,11 @@ The ESP32 master firmware now uses the dedicated hardware contract with device-t
 - `GET /api/hardware/commands/pending`
 - `POST /api/hardware/commands/{command_id}/result`
 
-The camera-node flow stays unchanged for now:
+The camera-node flow keeps its existing registration and image upload paths:
 
 - `POST /api/image`
 - `POST /api/device-nodes/register`
-- `POST /api/device-nodes/heartbeat`
+- `POST /api/hardware/heartbeat`
 
 Start the local stack first:
 
