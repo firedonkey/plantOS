@@ -518,6 +518,7 @@ def test_devices_page_renders_for_signed_in_user():
     try:
         response = client.get("/devices")
         assert response.status_code == 200
+        assert "Legacy web:" in response.text
         assert "Your Plant Devices" in response.text
     finally:
         teardown_overrides()

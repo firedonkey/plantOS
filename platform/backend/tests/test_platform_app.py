@@ -21,6 +21,7 @@ def test_index_page():
 
     assert response.status_code == 200
     assert "PlantLab Platform" in response.text
+    assert "Legacy web:" in response.text
 
 
 def test_login_page():
@@ -28,5 +29,6 @@ def test_login_page():
     response = client.get("/login")
 
     assert response.status_code == 200
+    assert "Legacy web:" in response.text
     assert "Welcome Back" in response.text
     assert "Sign in with Google" in response.text or "Google sign-in is not configured" in response.text

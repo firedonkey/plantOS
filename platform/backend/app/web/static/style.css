@@ -117,6 +117,28 @@ button {
   color: var(--muted);
 }
 
+.legacy-web-note {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto 12px;
+  border: 1px solid #d8e0f2;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #f3f6fc;
+  color: #385075;
+  font-size: 0.95rem;
+}
+
+.legacy-web-note strong {
+  color: #21324d;
+}
+
+.auth-card .legacy-web-note,
+.finishing-card .legacy-web-note,
+.setup-card .legacy-web-note {
+  width: 100%;
+  margin: 0 0 12px;
+}
+
 .landing-page {
   background: #f6f8f4;
 }
