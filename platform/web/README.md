@@ -30,7 +30,10 @@ Manual test checklist:
 - Standalone web loads at the Vite dev URL
 - Dev login works against `POST /api/auth/login`
 - Device list loads from the backend when the backend is running
+- Add-device flow verifies an SN and shows the Wi-Fi/setup-finishing handoff
+- Setup-finishing flow polls until the device is ready, then opens the standalone dashboard
 - Dashboard loads summary, readings, and latest image from the backend
 - Light and pump commands return success feedback
+- Remove-device flow shows confirmation and removes a device through the standalone API
 - Capture command shows the expected friendly unsupported message
 - Mock mode still works when `VITE_API_BASE_URL` is missing or the backend is unavailable

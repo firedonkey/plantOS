@@ -40,7 +40,9 @@ Current state:
 
 - `GET /api/devices`
 - `POST /api/devices`
+- `POST /api/devices/setup-code`
 - `GET /api/devices/{device_id}`
+- `DELETE /api/devices/{device_id}`
 - `GET /api/devices/{device_id}/summary`
 - `GET /api/devices/{device_id}/readings`
 - `GET /api/devices/{device_id}/images/latest`
@@ -50,6 +52,8 @@ Current state:
 Current purpose:
 
 - user device listing and creation
+- onboarding setup-code handoff for standalone clients
+- standalone device removal
 - client-friendly device summary and latest-image retrieval
 - client-friendly reading history retrieval
 - device-level provisioning registration proxy
@@ -63,6 +67,14 @@ Current shape note:
   - `latest_reading`
   - `latest_image`
   - `node_summary`
+
+Standalone onboarding note:
+
+- `POST /api/devices/setup-code` is the API replacement for the old backend-rendered `/devices/setup-code` form action
+- it returns the verified serial/setup token plus:
+  - `continue_setup_url`
+  - `setup_finishing_url`
+- standalone web uses those URLs to hand off into local device Wi-Fi setup, then return to its own setup-finishing page
 
 ### Commands
 
@@ -163,6 +175,11 @@ Why they matter:
 - they already provide browser-facing data for the current dashboard and setup flow
 - they are implemented under backend web routes, not under a standalone API namespace
 
+Standalone replacements now available:
+
+- `GET /api/setup/status`
+- `GET /api/devices/{device_id}/summary`
+
 ## Remaining contract gaps for standalone web and mobile
 
 ### 1. Production-ready standalone auth contract
@@ -193,15 +210,16 @@ Suggested direction:
 
 - `GET /api/devices/{device_id}/images`
 
-### 3. Setup flow status endpoint
+### 3. Production-ready standalone auth contract
 
-Current gap:
+Current state:
 
-- setup-finishing currently relies on backend web flow
+- standalone onboarding and device removal now work through API endpoints
+- but the standalone web still authenticates with the dev-only bearer login
 
 Needed later:
 
-- API contract for setup or onboarding progress if standalone web reproduces the current flow
+- production-ready standalone auth before old `/login` can retire
 
 ### 4. Capture command device support
 
@@ -214,6 +232,43 @@ Current state:
 Needed later:
 
 - implement device-side support for a queued `capture` command so the backend can move from `unsupported` to `accepted`
+
+## Setup/onboarding API responses
+
+### `POST /api/devices/setup-code`
+
+Current standalone response shape:
+
+```json
+{
+  "serial_number": "SN-ESP32-001",
+  "setup_code": null,
+  "claim_token": "claim-esp32-001",
+  "setup_token": "claim-esp32-001",
+  "local_setup_url": "http://10.42.0.1:8080/",
+  "provisioning_api_url": "http://localhost:3000",
+  "platform_url": "http://localhost:8000",
+  "setup_finishing_url": "http://localhost:5173/devices/setup-finishing?device_name=Device+1&location=Kitchen&expect_image=1",
+  "continue_setup_url": "http://10.42.0.1:8080/?setup_code=claim-esp32-001&sn=SN-ESP32-001&device_name=Device+1&location=Kitchen&backend_url=http%3A%2F%2Flocalhost%3A3000&platform_url=http%3A%2F%2Flocalhost%3A8000&return_url=http%3A%2F%2Flocalhost%3A5173%2Fdevices%2Fsetup-finishing%3Fdevice_name%3DDevice%2B1%26location%3DKitchen%26expect_image%3D1",
+  "expect_image": true
+}
+```
+
+### `GET /api/setup/status`
+
+Current standalone response shape:
+
+```json
+{
+  "ready": true,
+  "device_found": true,
+  "device_id": 30,
+  "has_reading": true,
+  "has_image": true,
+  "expect_image": true,
+  "redirect_path": "/devices/30?setup=complete"
+}
+```
 
 ## Standard API error envelope
 

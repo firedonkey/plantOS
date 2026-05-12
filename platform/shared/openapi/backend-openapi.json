@@ -473,6 +473,47 @@
         }
       }
     },
+    "/api/devices/setup-code": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Create Device Setup Code",
+        "operationId": "create_device_setup_code_api_devices_setup_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceSetupCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSetupCodeRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{device_id}": {
       "get": {
         "tags": [
@@ -498,6 +539,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeviceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Delete Device",
+        "operationId": "delete_device_api_devices__device_id__delete",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDeleteRead"
                 }
               }
             }
@@ -975,6 +1056,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SensorReadingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/status": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Get Setup Status",
+        "operationId": "get_setup_status_api_setup_status_get",
+        "parameters": [
+          {
+            "name": "device_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Device Name"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "expect_image",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Expect Image"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusRead"
                 }
               }
             }
@@ -1891,6 +2035,29 @@
         ],
         "title": "DeviceCreate"
       },
+      "DeviceDeleteRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "device_id",
+          "message"
+        ],
+        "title": "DeviceDeleteRead"
+      },
       "DeviceNodeHeartbeatCreate": {
         "properties": {
           "device_id": {
@@ -2268,6 +2435,127 @@
           "created_at"
         ],
         "title": "DeviceRead"
+      },
+      "DeviceSetupCodeRead": {
+        "properties": {
+          "serial_number": {
+            "type": "string",
+            "title": "Serial Number"
+          },
+          "setup_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Code"
+          },
+          "claim_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Token"
+          },
+          "setup_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Token"
+          },
+          "local_setup_url": {
+            "type": "string",
+            "title": "Local Setup Url"
+          },
+          "provisioning_api_url": {
+            "type": "string",
+            "title": "Provisioning Api Url"
+          },
+          "platform_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Url"
+          },
+          "setup_finishing_url": {
+            "type": "string",
+            "title": "Setup Finishing Url"
+          },
+          "continue_setup_url": {
+            "type": "string",
+            "title": "Continue Setup Url"
+          },
+          "expect_image": {
+            "type": "boolean",
+            "title": "Expect Image",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "serial_number",
+          "local_setup_url",
+          "provisioning_api_url",
+          "setup_finishing_url",
+          "continue_setup_url"
+        ],
+        "title": "DeviceSetupCodeRead"
+      },
+      "DeviceSetupCodeRequest": {
+        "properties": {
+          "serial_number": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Serial Number"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serial_number"
+        ],
+        "title": "DeviceSetupCodeRequest"
       },
       "DeviceStatusCreate": {
         "properties": {
@@ -2862,6 +3150,61 @@
           "pump_status"
         ],
         "title": "SensorReadingRead"
+      },
+      "SetupStatusRead": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "device_found": {
+            "type": "boolean",
+            "title": "Device Found",
+            "default": false
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "has_reading": {
+            "type": "boolean",
+            "title": "Has Reading",
+            "default": false
+          },
+          "has_image": {
+            "type": "boolean",
+            "title": "Has Image",
+            "default": false
+          },
+          "expect_image": {
+            "type": "boolean",
+            "title": "Expect Image",
+            "default": true
+          },
+          "redirect_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ready"
+        ],
+        "title": "SetupStatusRead"
       },
       "ValidationError": {
         "properties": {
