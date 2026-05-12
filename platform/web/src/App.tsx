@@ -5,6 +5,7 @@ import { AddDeviceScreen } from "./screens/AddDeviceScreen";
 import { DeviceDashboardScreen } from "./screens/DeviceDashboardScreen";
 import { DeviceListScreen } from "./screens/DeviceListScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
+import { LandingScreen } from "./screens/LandingScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { RemoveDeviceScreen } from "./screens/RemoveDeviceScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
@@ -22,9 +23,9 @@ function ProtectedRoutes() {
 export function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingScreen />} />
       <Route path="/login" element={<LoginScreen />} />
-      <Route path="/" element={<ProtectedRoutes />}>
-        <Route index element={<Navigate to="/devices" replace />} />
+      <Route element={<ProtectedRoutes />}>
         <Route path="devices" element={<DeviceListScreen />} />
         <Route path="devices/add" element={<AddDeviceScreen />} />
         <Route path="devices/setup-finishing" element={<SetupFinishingScreen />} />

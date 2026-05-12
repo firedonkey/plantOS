@@ -17,7 +17,7 @@ The goal is to retire the old backend-rendered web safely later, without deletin
 
 | Old route | Template | Current purpose | `platform/web` equivalent | Coverage | Safe to remove later? | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `GET /` | `index.html` | Landing page / signed-in redirect surface | None | Missing | No | New standalone web currently starts at app login and devices, not a public landing page. |
+| `GET /` | `index.html` | Landing page / signed-in redirect surface | `/` | Partial | No | Standalone landing page now exists, but old root still carries session-aware redirect behavior and production auth is not migrated yet. |
 | `GET /login` | `login.html` | Google sign-in page for backend-rendered web | `/login` | Partial | No | New web has dev-only standalone login, not production Google sign-in parity yet. |
 | `GET /devices` | `devices.html` | Device list, card overview, remove-device entry point, add-device entry point | `/devices` | Partial | No | New web now covers list browsing, refresh, add-device entry, and removal entry, but standalone auth is still dev-only. |
 | `GET /devices/add` | `add_device.html` | Guided add-device setup flow, SN setup-code request, Wi-Fi handoff copy | `/devices/add` | Covered | No | Standalone onboarding flow now exists, but keep the old route until broader retirement gates are satisfied. |
@@ -50,6 +50,7 @@ As of this checkpoint:
 
 - No old backend-rendered route is safe to remove yet.
 - The closest candidates for eventual retirement are:
+  - `GET /`
   - `GET /devices/add`
   - `GET /devices/setup-finishing`
   - `GET /devices`
@@ -62,14 +63,13 @@ As of this checkpoint:
 ## Remaining gaps before retirement can begin
 
 1. Production-ready standalone auth that replaces old Google-sign-in web entry.
-2. Production-ready standalone auth in `platform/web`.
-3. Final removal decision for the legacy direct-create shortcut behind `POST /devices`.
-4. Feature parity decision for remove-device entry placement and post-delete UX.
-5. Feature parity decision for:
+2. Final removal decision for the legacy direct-create shortcut behind `POST /devices`.
+3. Feature parity decision for remove-device entry placement and post-delete UX.
+4. Feature parity decision for optional dashboard extras:
    - recent image gallery
    - command activity panel
    - trend charts / range picker
-6. Decision on whether transitional JSON routes:
+5. Decision on whether transitional JSON routes:
    - `/devices/{device_id}/summary.json`
    - `/setup/status.json`
    should be reimplemented as API-first endpoints or retired with the old pages.
