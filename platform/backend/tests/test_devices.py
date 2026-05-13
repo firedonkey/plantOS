@@ -406,11 +406,41 @@ def test_device_command_wrapper_apis():
         assert pump_payload["value"] == "7"
 
         capture_response = client.post(f"/api/devices/{device_id}/commands/capture")
-        assert capture_response.status_code == 501
+        assert capture_response.status_code == 201
         capture_payload = capture_response.json()
-        assert capture_payload["error"]["code"] == "capture_not_supported"
-        assert "not yet supported" in capture_payload["error"]["message"]
-        assert capture_payload["error"]["details"]["future_response"]["status"] == "accepted"
+        assert capture_payload["status"] == "accepted"
+        assert capture_payload["device_id"] == device_id
+        assert capture_payload["command"] == "capture"
+        assert capture_payload["action"] == "capture"
+        assert capture_payload["queued"] is True
+        assert capture_payload["command_status"] == "pending"
+        assert capture_payload["message"] == "Capture command queued."
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            capture_command = session.get(Command, capture_payload["command_id"])
+            assert capture_command is not None
+            assert capture_command.target == CommandTarget.CAMERA
+            assert capture_command.action == CommandAction.CAPTURE
+    finally:
+        teardown_overrides()
+
+
+def test_device_capture_command_api_requires_auth():
+    client = TestClient(app)
+
+    response = client.post("/api/devices/1/commands/capture")
+
+    assert response.status_code == 401
+
+
+def test_device_capture_command_api_returns_404_when_device_missing():
+    client, _ = build_client_with_user()
+    try:
+        response = client.post("/api/devices/999/commands/capture")
+
+        assert response.status_code == 404
+        payload = response.json()
+        assert payload["error"]["code"] == "not_found"
     finally:
         teardown_overrides()
 

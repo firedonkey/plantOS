@@ -18,6 +18,8 @@ class CommandCreate(BaseModel):
             raise ValueError("Pump commands support run or off.")
         if self.target == CommandTarget.LIGHT and self.action not in {CommandAction.ON, CommandAction.OFF}:
             raise ValueError("Growing light commands support on or off.")
+        if self.target == CommandTarget.CAMERA and self.action not in {CommandAction.CAPTURE}:
+            raise ValueError("Camera commands support capture.")
         return self
 
 

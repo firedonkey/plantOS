@@ -14,12 +14,14 @@ if TYPE_CHECKING:
 class CommandTarget(str, Enum):
     PUMP = "pump"
     LIGHT = "light"
+    CAMERA = "camera"
 
 
 class CommandAction(str, Enum):
     ON = "on"
     OFF = "off"
     RUN = "run"
+    CAPTURE = "capture"
 
 
 class CommandStatus(str, Enum):

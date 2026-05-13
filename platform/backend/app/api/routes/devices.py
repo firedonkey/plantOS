@@ -375,7 +375,7 @@ def create_pump_command(
     )
 
 
-@router.post("/{device_id}/commands/capture", response_model=DeviceCommandEnvelopeRead, status_code=501)
+@router.post("/{device_id}/commands/capture", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_capture_command(
     device_id: int,
     session: Session = Depends(get_session),
@@ -384,23 +384,17 @@ def create_capture_command(
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
-    raise api_error(
-        501,
-        "capture_not_supported",
-        "Capture commands are not yet supported through the shared backend command queue.",
-        details={
-            "device_id": device.id,
-            "command": "capture",
-            "action": "capture",
-            "future_response": {
-                "status": "accepted",
-                "device_id": device.id,
-                "command": "capture",
-                "action": "capture",
-                "message": "Capture command queued.",
-                "queued": True,
-            },
-        },
+    command = create_command(
+        session,
+        device.id,
+        CommandCreate(target="camera", action="capture"),
+    )
+    return _queued_command_response(
+        device_id=device.id,
+        command_name="capture",
+        action="capture",
+        command=command,
+        message="Capture command queued.",
     )
 
 
