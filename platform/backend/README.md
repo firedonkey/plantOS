@@ -16,10 +16,28 @@ source ../../.venv/bin/activate
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
+Local Docker demo flow:
+
+```bash
+cd /Users/gary/plantOS
+docker compose -f docker-compose.local.yml up -d --build platform
+```
+
 Current local test flow:
 
 ```bash
 cd platform/backend
 source ../../.venv/bin/activate
 python -m pytest tests
+```
+
+Quick verification pointers:
+
+- health check: [http://localhost:8000/health](http://localhost:8000/health)
+- old backend-rendered login: [http://localhost:8000/login](http://localhost:8000/login)
+- one-command local status check:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/local_status_check.py
 ```

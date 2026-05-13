@@ -10,6 +10,10 @@ Defaults:
 
 ## Available scripts
 
+- `local_status_check.py`
+  - one-command local demo status check
+  - prints clear `PASS`, `WARN`, and `FAIL` lines
+  - checks backend health, one device summary, hardware health, recent readings, recent images, and recent commands
 - `hardware_simulator.py`
   - fake hardware loop for backend contract testing
 - `backend_health_check.py`
@@ -25,6 +29,20 @@ Defaults:
   - prints recent image metadata for one device
 
 ## Examples
+
+Run the one-command local demo status check:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/local_status_check.py --device-id 36
+```
+
+Let the script choose the first available device automatically:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/local_status_check.py
+```
 
 Check backend health:
 
@@ -109,3 +127,42 @@ Check hardware endpoints directly with a device token:
 curl -s http://localhost:8000/api/hardware/commands/pending -H 'X-Device-Token: <DEVICE_TOKEN>'
 curl -s -X POST http://localhost:8000/api/hardware/heartbeat -H 'Content-Type: application/json' -H 'X-Device-Token: <DEVICE_TOKEN>' -d '{"status":"online","message":"manual probe"}'
 ```
+
+## Demo entry points
+
+For a quick local demo bring-up:
+
+1. restart or verify backend:
+
+```bash
+cd /Users/gary/plantOS
+docker compose -f docker-compose.local.yml up -d --build platform
+```
+
+2. start standalone web:
+
+```bash
+cd /Users/gary/plantOS/platform/web
+npm run dev
+```
+
+3. start mobile with Node 22:
+
+```bash
+cd /Users/gary/plantOS/platform/mobile
+source ~/.nvm/nvm.sh
+nvm use 22
+npx expo start --clear --host lan
+```
+
+4. run the one-command local status check before showing hardware:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/local_status_check.py --device-id 36
+```
+
+For broader QA and recovery guidance, also see:
+
+- [LOCAL_RELEASE_CHECKLIST.md](/Users/gary/plantOS/platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md)
+- [device/esp32/README.md](/Users/gary/plantOS/device/esp32/README.md)

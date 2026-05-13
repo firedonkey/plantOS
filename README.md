@@ -126,6 +126,17 @@ For the current architecture and design source of truth, start with:
 
 - [Design Docs Index](/Users/gary/plantOS/docs/design/README.md)
 
+## Local demo entry points
+
+For the current local hardware-backed flow:
+
+- backend: [platform/backend/README.md](/Users/gary/plantOS/platform/backend/README.md)
+- standalone web: [platform/web/README.md](/Users/gary/plantOS/platform/web/README.md)
+- Expo mobile: [platform/mobile/README.md](/Users/gary/plantOS/platform/mobile/README.md)
+- ESP32 master + camera notes: [device/esp32/README.md](/Users/gary/plantOS/device/esp32/README.md)
+- local recovery scripts: [platform/infra/scripts/README.md](/Users/gary/plantOS/platform/infra/scripts/README.md)
+- local release checklist: [platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md](/Users/gary/plantOS/platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md)
+
 ## MVP behavior
 
 ### Watering
