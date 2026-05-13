@@ -7,7 +7,7 @@ PIO_BIN="/Users/gary/plantOS/.venv/bin/pio"
 PIO_CORE_DIR="/Users/gary/plantOS/.pio-core"
 
 ENV_NAME="esp32-s3-devkitc-1"
-PORT="/dev/cu.usbmodem1301"
+PORT="/dev/cu.usbmodem11401"
 OPEN_MONITOR=0
 
 release_port_if_busy() {
