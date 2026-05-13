@@ -48,6 +48,18 @@ void StatusLed::update(uint32_t now_ms) {
     case StatusLedMode::kSleepPending:
       apply((now_ms / 80) % 2 == 0);
       return;
+    case StatusLedMode::kError:
+      apply((now_ms % 2000 < 120) || (now_ms % 2000 >= 240 && now_ms % 2000 < 360));
+      return;
+    case StatusLedMode::kFallback:
+      apply(
+          (now_ms % 2400 < 140) ||
+          (now_ms % 2400 >= 280 && now_ms % 2400 < 420) ||
+          (now_ms % 2400 >= 560 && now_ms % 2400 < 700));
+      return;
+    case StatusLedMode::kFactoryReset:
+      apply((now_ms / 75) % 2 == 0);
+      return;
     case StatusLedMode::kBooting:
     default:
       apply((now_ms / 400) % 2 == 0);

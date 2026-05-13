@@ -1,4 +1,5 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
+import { getApiBaseUrl } from "./config";
 import { AuthSession } from "@/types";
 
 type LoginInput = {
@@ -10,6 +11,21 @@ type ApiLoginResponse = {
   token: string;
   email: string;
   mode: "api";
+};
+
+type ApiRefreshResponse = {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+  expires_at: string;
+  mode: "standalone";
+  refresh_token?: string | null;
+  user: {
+    id: number;
+    email: string;
+    name?: string | null;
+    avatar_url?: string | null;
+  };
 };
 
 export async function loginWithBackendFallback({ email, password }: LoginInput): Promise<AuthSession> {
@@ -30,4 +46,43 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
       mode: "mock",
     };
   }
+}
+
+export async function refreshProductionSession(input: {
+  refreshToken?: string;
+  handoffCode?: string;
+}): Promise<{ session: AuthSession; refreshToken?: string | null }> {
+  const payload = await apiRequest<ApiRefreshResponse>("/api/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({
+      refresh_token: input.refreshToken,
+      handoff_code: input.handoffCode,
+    }),
+  });
+  return {
+    session: {
+      token: payload.access_token,
+      email: payload.user.email,
+      mode: "production",
+      expiresAt: payload.expires_at,
+      refreshToken: payload.refresh_token ?? undefined,
+    },
+    refreshToken: payload.refresh_token,
+  };
+}
+
+export async function logoutProductionSession(refreshToken?: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>("/api/auth/logout", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+}
+
+export function getMobileGoogleAuthStartUrl(returnTo = "plantlab://auth/callback"): string {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) {
+    throw new Error("API base URL is not configured. Set EXPO_PUBLIC_API_BASE_URL before using Google sign-in.");
+  }
+  const params = new URLSearchParams({ client: "mobile", return_to: returnTo });
+  return `${baseUrl}/api/auth/google/start?${params.toString()}`;
 }

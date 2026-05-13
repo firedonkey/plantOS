@@ -10,7 +10,30 @@ from app.db.session import get_session
 from app.main import app
 from app.models import User
 from app.models.base import Base
+from app.services.standalone_auth import create_handoff_code, create_refresh_session, issue_access_token
 from app.services.users import get_user_by_id, upsert_google_user
+
+
+def make_test_client():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_session():
+        with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    return TestClient(app), override_session
 
 
 def test_google_login_reports_missing_config(monkeypatch):
@@ -30,6 +53,29 @@ def test_google_login_reports_missing_config(monkeypatch):
     auth_routes.get_settings.cache_clear()
 
 
+def test_standalone_google_start_reports_missing_config(monkeypatch):
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client = TestClient(app)
+    response = client.get("/api/auth/google/start?client=web&return_to=/login")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "google_auth_not_configured",
+            "message": "Google sign-in is not configured for standalone auth.",
+            "details": {},
+        }
+    }
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+
 def test_me_reports_anonymous_user():
     client = TestClient(app)
     response = client.get("/api/me")
@@ -43,26 +89,7 @@ def test_dev_login_returns_bearer_token_and_me_works(monkeypatch):
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
 
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-
-    from sqlalchemy.orm import sessionmaker
-
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def override_session():
-        with TestingSessionLocal() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_session
-    app.dependency_overrides.pop(get_current_user, None)
-    app.dependency_overrides.pop(get_optional_current_user, None)
-
-    client = TestClient(app)
+    client, override_session = make_test_client()
     try:
         login_response = client.post(
             "/api/auth/login",
@@ -101,23 +128,7 @@ def test_dev_login_rejected_when_disabled(monkeypatch):
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
 
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-
-    from sqlalchemy.orm import sessionmaker
-
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def override_session():
-        with TestingSessionLocal() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_session
-    client = TestClient(app)
+    client, _override_session = make_test_client()
     try:
         response = client.post(
             "/api/auth/login",
@@ -142,23 +153,7 @@ def test_api_validation_errors_use_standard_error_shape(monkeypatch):
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
 
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-
-    from sqlalchemy.orm import sessionmaker
-
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def override_session():
-        with TestingSessionLocal() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_session
-    client = TestClient(app)
+    client, _override_session = make_test_client()
     try:
         response = client.post(
             "/api/auth/login",
@@ -180,26 +175,7 @@ def test_dev_bearer_token_can_access_device_endpoints(monkeypatch):
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
 
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-
-    from sqlalchemy.orm import sessionmaker
-
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def override_session():
-        with TestingSessionLocal() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_session
-    app.dependency_overrides.pop(get_current_user, None)
-    app.dependency_overrides.pop(get_optional_current_user, None)
-
-    client = TestClient(app)
+    client, _override_session = make_test_client()
     try:
         login_response = client.post(
             "/api/auth/login",
@@ -269,3 +245,252 @@ def test_upsert_google_user_creates_and_updates_user():
         assert updated.id == user.id
         assert updated.name == "Rose Grower"
         assert updated.avatar_url == "https://example.com/rose.jpg"
+
+
+def test_standalone_refresh_rotates_cookie_and_old_token_fails(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_STANDALONE_REFRESH_COOKIE_SECURE", "false")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="grower@example.com", name="Grower")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+
+        client.cookies.set(get_settings().standalone_refresh_cookie_name, refresh_bundle.token)
+        response = client.post("/api/auth/refresh")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["access_token"]
+        assert payload["token_type"] == "bearer"
+        assert payload["mode"] == "standalone"
+        assert payload["user"]["email"] == "grower@example.com"
+        assert payload["refresh_token"] is None
+
+        client.cookies.set(get_settings().standalone_refresh_cookie_name, refresh_bundle.token)
+        old_response = client.post("/api/auth/refresh")
+        assert old_response.status_code == 401
+        assert old_response.json()["error"]["code"] == "invalid_refresh"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_refresh_accepts_body_token_for_mobile(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="mobile@example.com", name="Mobile User")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+
+        response = client.post("/api/auth/refresh", json={"refresh_token": refresh_bundle.token})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["access_token"]
+        assert payload["mode"] == "standalone"
+        assert payload["user"]["email"] == "mobile@example.com"
+        assert payload["refresh_token"]
+        assert payload["refresh_token"] != refresh_bundle.token
+
+        old_response = client.post("/api/auth/refresh", json={"refresh_token": refresh_bundle.token})
+        assert old_response.status_code == 401
+        assert old_response.json()["error"]["code"] == "invalid_refresh"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_refresh_rejects_missing_token(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, _override_session = make_test_client()
+    try:
+        response = client.post("/api/auth/refresh")
+
+        assert response.status_code == 401
+        assert response.json() == {
+            "error": {
+                "code": "invalid_refresh",
+                "message": "Refresh session is missing, expired, or revoked.",
+                "details": {},
+            }
+        }
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_refresh_exchanges_handoff_code_once(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="handoff@example.com", name="Handoff User")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            handoff_code = create_handoff_code(session, user.id)
+
+        response = client.post("/api/auth/refresh", json={"handoff_code": handoff_code})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["access_token"]
+        assert payload["refresh_token"]
+        assert payload["user"]["email"] == "handoff@example.com"
+
+        repeat_response = client.post("/api/auth/refresh", json={"handoff_code": handoff_code})
+        assert repeat_response.status_code == 401
+        assert repeat_response.json()["error"]["code"] == "invalid_refresh"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_logout_is_idempotent_and_revokes_refresh(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_STANDALONE_REFRESH_COOKIE_SECURE", "false")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="logout@example.com", name="Logout")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+
+        client.cookies.set(get_settings().standalone_refresh_cookie_name, refresh_bundle.token)
+        response = client.post("/api/auth/logout")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+
+        repeat_response = client.post("/api/auth/logout")
+        assert repeat_response.status_code == 200
+        assert repeat_response.json() == {"ok": True}
+
+        client.cookies.set(get_settings().standalone_refresh_cookie_name, refresh_bundle.token)
+        refresh_response = client.post("/api/auth/refresh")
+        assert refresh_response.status_code == 401
+        assert refresh_response.json()["error"]["code"] == "invalid_refresh"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_logout_revokes_body_refresh_token(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="mobile-logout@example.com", name="Mobile Logout")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+
+        response = client.post("/api/auth/logout", json={"refresh_token": refresh_bundle.token})
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+
+        repeat_response = client.post("/api/auth/logout", json={"refresh_token": refresh_bundle.token})
+        assert repeat_response.status_code == 200
+        assert repeat_response.json() == {"ok": True}
+
+        refresh_response = client.post("/api/auth/refresh", json={"refresh_token": refresh_bundle.token})
+        assert refresh_response.status_code == 401
+        assert refresh_response.json()["error"]["code"] == "invalid_refresh"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_me_accepts_standalone_access_token(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="token@example.com", name="Token User")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            access = issue_access_token(get_settings(), user.id)
+
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {access.token}"})
+
+        assert response.status_code == 200
+        assert response.json()["authenticated"] is True
+        assert response.json()["user"]["email"] == "token@example.com"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_old_google_callback_still_sets_session_auth(monkeypatch):
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "google-client")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "google-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    async def fake_authorize_access_token(request):
+        return {
+            "userinfo": {
+                "sub": "google-old-session",
+                "email": "old-session@example.com",
+                "name": "Old Session",
+                "picture": "https://example.com/avatar.png",
+            }
+        }
+
+    monkeypatch.setattr(auth_routes.oauth, "_clients", {}, raising=False)
+    auth_routes._register_google_client()
+    monkeypatch.setattr(auth_routes.oauth.google, "authorize_access_token", fake_authorize_access_token)
+
+    client, _override_session = make_test_client()
+    try:
+        callback_response = client.get("/auth/callback", follow_redirects=False)
+        assert callback_response.status_code == 303
+        assert callback_response.headers["location"] == "/"
+
+        me_response = client.get("/api/me")
+        assert me_response.status_code == 200
+        assert me_response.json()["authenticated"] is True
+        assert me_response.json()["user"]["email"] == "old-session@example.com"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()

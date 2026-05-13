@@ -79,5 +79,6 @@ export type DeviceDashboard = {
 export type AuthSession = {
   token: string;
   email: string;
-  mode: "mock" | "api";
+  mode: "mock" | "api" | "production";
+  expiresAt?: string;
 };

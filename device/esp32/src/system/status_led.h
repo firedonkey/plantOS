@@ -8,6 +8,9 @@ enum class StatusLedMode {
   kNormal,
   kProvisioning,
   kSleepPending,
+  kError,
+  kFallback,
+  kFactoryReset,
 };
 
 class StatusLed {

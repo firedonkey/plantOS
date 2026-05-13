@@ -51,12 +51,20 @@ const char* provisioningStateName(ProvisioningState state) {
       return "NORMAL";
     case ProvisioningState::PROVISIONING_BLE:
       return "PROVISIONING_BLE";
+    case ProvisioningState::PROVISIONING_COMMITTING:
+      return "PROVISIONING_COMMITTING";
     case ProvisioningState::WIFI_CONNECTING:
       return "WIFI_CONNECTING";
+    case ProvisioningState::BACKEND_REGISTERING:
+      return "BACKEND_REGISTERING";
     case ProvisioningState::PROVISIONING_FAILED:
       return "PROVISIONING_FAILED";
     case ProvisioningState::PROVISIONING_SUCCESS:
       return "PROVISIONING_SUCCESS";
+    case ProvisioningState::FALLBACK_SOFTAP:
+      return "FALLBACK_SOFTAP";
+    case ProvisioningState::FACTORY_RESET_PENDING:
+      return "FACTORY_RESET_PENDING";
     default:
       return "PROVISIONING_FAILED";
   }
@@ -92,6 +100,16 @@ const char* provisioningParseErrorCode(ProvisioningParseError error) {
       return "url_too_long";
     case ProvisioningParseError::kDirectDeviceTokenUnsupported:
       return "direct_device_token_unsupported";
+    case ProvisioningParseError::kBusy:
+      return "busy";
+    case ProvisioningParseError::kSaveFailed:
+      return "save_failed";
+    case ProvisioningParseError::kTimeout:
+      return "timeout";
+    case ProvisioningParseError::kBleInitFailed:
+      return "ble_init_failed";
+    case ProvisioningParseError::kAlreadyCommitted:
+      return "already_committed";
     default:
       return "malformed_payload";
   }
@@ -179,7 +197,7 @@ std::string maskSecretForLog(const std::string& value) {
 }
 
 ProvisioningState provisioningStateAfterValidPayload() {
-  return ProvisioningState::PROVISIONING_SUCCESS;
+  return ProvisioningState::PROVISIONING_COMMITTING;
 }
 
 ProvisioningState provisioningStateAfterInvalidPayload() {
@@ -189,6 +207,28 @@ ProvisioningState provisioningStateAfterInvalidPayload() {
 ProvisioningState provisioningStateAfterTimeout(bool has_previous_runtime_config) {
   return has_previous_runtime_config ? ProvisioningState::WIFI_CONNECTING
                                      : ProvisioningState::PROVISIONING_FAILED;
+}
+
+ProvisioningParseError provisioningWriteRejectionError(
+    ProvisioningState state,
+    bool has_pending_result,
+    bool accepting_writes) {
+  if (has_pending_result) {
+    return ProvisioningParseError::kBusy;
+  }
+  if (!accepting_writes) {
+    return state == ProvisioningState::PROVISIONING_SUCCESS
+               ? ProvisioningParseError::kAlreadyCommitted
+               : ProvisioningParseError::kBusy;
+  }
+  return ProvisioningParseError::kNone;
+}
+
+bool provisioningShouldStopAcceptingWritesOnTake(
+    bool has_pending_result,
+    bool result_ok,
+    bool accepting_writes) {
+  return has_pending_result && result_ok && accepting_writes;
 }
 
 }  // namespace plantlab

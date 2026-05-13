@@ -137,6 +137,14 @@ For the current local hardware-backed flow:
 - local recovery scripts: [platform/infra/scripts/README.md](/Users/gary/plantOS/platform/infra/scripts/README.md)
 - local release checklist: [platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md](/Users/gary/plantOS/platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md)
 
+## Auth notes
+
+- The old backend-rendered web still uses `/login`, `/auth/login`, `/auth/callback`, and session auth.
+- Standalone web production auth is backend-owned Google OAuth through `/api/auth/google/start`, `/api/auth/google/callback`, `/api/auth/refresh`, `/api/auth/logout`, and `/api/me`.
+- Standalone web keeps the production refresh credential in an HTTP-only cookie and holds the short-lived access token in memory.
+- Local dev bearer auth remains available only through explicit dev mode env settings.
+- Mobile has backend Google handoff API helpers, but production mobile persistence remains blocked until OS-backed secure storage and deep-link callback handling are added.
+
 ## MVP behavior
 
 ### Watering

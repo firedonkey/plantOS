@@ -1,5 +1,8 @@
 #pragma once
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
+
 #include <memory>
 #include <string>
 
@@ -33,6 +36,7 @@ class BleProvisioningService {
   bool hasPendingResult() const;
   ProvisioningParseResult takePendingResult();
   void setStatus(ProvisioningState state, ProvisioningParseError error = ProvisioningParseError::kNone);
+  void setAcceptingWrites(bool accepting);
 
  private:
   friend class BleProvisioningServiceServerCallbacks;
@@ -46,10 +50,12 @@ class BleProvisioningService {
   bool active_ = false;
   bool connected_ = false;
   bool pending_result_ready_ = false;
+  bool accepting_writes_ = true;
   std::string fallback_platform_url_;
   ProvisioningState state_ = ProvisioningState::PROVISIONING_BLE;
   ProvisioningParseError last_error_ = ProvisioningParseError::kNone;
   ProvisioningParseResult pending_result_;
+  mutable portMUX_TYPE pending_lock_ = portMUX_INITIALIZER_UNLOCKED;
   NimBLEServer* server_ = nullptr;
   NimBLEService* service_ = nullptr;
   NimBLECharacteristic* write_characteristic_ = nullptr;

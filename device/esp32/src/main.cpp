@@ -38,6 +38,7 @@ constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
 constexpr uint32_t kBleProvisioningTimeoutMs = 10UL * 60UL * 1000UL;
+constexpr uint32_t kFactoryResetHoldMs = 10000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
@@ -139,6 +140,8 @@ unsigned long g_restart_at_ms = 0;
 plantlab::ProvisioningState g_provisioning_state = plantlab::ProvisioningState::NORMAL;
 unsigned long g_ble_provisioning_started_at_ms = 0;
 bool g_ble_had_previous_config = false;
+bool g_factory_reset_fired = false;
+unsigned long g_factory_reset_pressed_since_ms = 0;
 String g_pending_claim_token;
 String g_pending_backend_url;
 String g_pending_platform_url;
@@ -1151,12 +1154,32 @@ void updateStatusLed() {
     g_status_led.set_mode(StatusLedMode::kProvisioning);
     return;
   }
+  if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_COMMITTING) {
+    g_status_led.set_mode(StatusLedMode::kBooting);
+    return;
+  }
   if (g_provisioning_state == plantlab::ProvisioningState::WIFI_CONNECTING) {
     g_status_led.set_mode(StatusLedMode::kBooting);
     return;
   }
+  if (g_provisioning_state == plantlab::ProvisioningState::BACKEND_REGISTERING) {
+    g_status_led.set_mode(g_wifi_ready ? StatusLedMode::kNormal : StatusLedMode::kBooting);
+    return;
+  }
   if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_FAILED) {
-    g_status_led.set_mode(StatusLedMode::kOff);
+    g_status_led.set_mode(StatusLedMode::kError);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_SUCCESS) {
+    g_status_led.set_mode(StatusLedMode::kNormal);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::FALLBACK_SOFTAP) {
+    g_status_led.set_mode(StatusLedMode::kFallback);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::FACTORY_RESET_PENDING) {
+    g_status_led.set_mode(StatusLedMode::kFactoryReset);
     return;
   }
 
@@ -1171,7 +1194,7 @@ void updateStatusLed() {
       g_status_led.set_mode(StatusLedMode::kNormal);
       break;
     case DeviceMode::kWifiFailed:
-      g_status_led.set_mode(StatusLedMode::kOff);
+      g_status_led.set_mode(StatusLedMode::kError);
       break;
     case DeviceMode::kBooting:
     default:
@@ -1211,40 +1234,7 @@ bool loadConfig() {
   return hasWifiCredentials();
 }
 
-bool saveConfig() {
-  g_config.wifi_ssid.trim();
-  g_config.claim_token.trim();
-  g_config.device_token.trim();
-  g_config.backend_url.trim();
-  g_config.platform_url.trim();
-
-  Serial.println("[provisioning] saving config to Preferences");
-  g_preferences.begin(kPreferencesNamespace, false);
-  const size_t ssid_written = g_preferences.putString(kConfigKeySsid, g_config.wifi_ssid);
-  g_preferences.putString(kConfigKeyPassword, g_config.wifi_password);
-  g_preferences.putString(kConfigKeyClaimToken, g_config.claim_token);
-  g_preferences.putString(kConfigKeyDeviceToken, g_config.device_token);
-  g_preferences.putString(kConfigKeyBackendUrl, g_config.backend_url);
-  g_preferences.putString(kConfigKeyPlatformUrl, g_config.platform_url);
-  g_preferences.putInt(kConfigKeyPlatformDeviceId, g_config.platform_device_id);
-  g_preferences.end();
-
-  rebuildPlatformClient();
-  if (ssid_written > 0 || g_config.wifi_ssid.isEmpty()) {
-    Serial.println("[provisioning] config saved");
-    return true;
-  }
-  Serial.println("[provisioning] failed to save config");
-  return false;
-}
-
-void clearConfig() {
-  Serial.println("[provisioning] clearing config from Preferences");
-  g_preferences.begin(kPreferencesNamespace, false);
-  g_preferences.clear();
-  g_preferences.end();
-  g_config = DeviceConfig{};
-  g_platform_client.reset();
+void resetCameraProvisioningRuntime() {
   g_camera_provisioning_session = MasterProvisioningSession{};
   g_camera_provisioning_acknowledged = false;
   g_camera_runtime_ready = false;
@@ -1258,6 +1248,78 @@ void clearConfig() {
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
       PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+}
+
+DeviceConfig normalizedConfig(DeviceConfig config) {
+  config.wifi_ssid.trim();
+  config.claim_token.trim();
+  config.device_token.trim();
+  config.backend_url.trim();
+  config.platform_url.trim();
+  return config;
+}
+
+bool stringPreferenceWriteOk(const String& value, size_t written) {
+  return value.isEmpty() || written > 0;
+}
+
+bool saveConfigCandidate(const DeviceConfig& candidate) {
+  const DeviceConfig normalized = normalizedConfig(candidate);
+
+  Serial.println("[provisioning] saving config to Preferences");
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[provisioning] failed to open Preferences for write");
+    return false;
+  }
+  const size_t ssid_written = g_preferences.putString(kConfigKeySsid, normalized.wifi_ssid);
+  const size_t password_written =
+      g_preferences.putString(kConfigKeyPassword, normalized.wifi_password);
+  const size_t claim_token_written =
+      g_preferences.putString(kConfigKeyClaimToken, normalized.claim_token);
+  const size_t device_token_written =
+      g_preferences.putString(kConfigKeyDeviceToken, normalized.device_token);
+  const size_t backend_url_written =
+      g_preferences.putString(kConfigKeyBackendUrl, normalized.backend_url);
+  const size_t platform_url_written =
+      g_preferences.putString(kConfigKeyPlatformUrl, normalized.platform_url);
+  const size_t platform_id_written =
+      g_preferences.putInt(kConfigKeyPlatformDeviceId, normalized.platform_device_id);
+  g_preferences.end();
+
+  const bool saved =
+      stringPreferenceWriteOk(normalized.wifi_ssid, ssid_written) &&
+      stringPreferenceWriteOk(normalized.wifi_password, password_written) &&
+      stringPreferenceWriteOk(normalized.claim_token, claim_token_written) &&
+      stringPreferenceWriteOk(normalized.device_token, device_token_written) &&
+      stringPreferenceWriteOk(normalized.backend_url, backend_url_written) &&
+      stringPreferenceWriteOk(normalized.platform_url, platform_url_written) &&
+      platform_id_written == sizeof(normalized.platform_device_id);
+  if (saved) {
+    Serial.println("[provisioning] config saved");
+    return true;
+  }
+  Serial.println("[provisioning] failed to save config");
+  return false;
+}
+
+bool saveConfig() {
+  const DeviceConfig normalized = normalizedConfig(g_config);
+  if (!saveConfigCandidate(normalized)) {
+    return false;
+  }
+  g_config = normalized;
+  rebuildPlatformClient();
+  return true;
+}
+
+void clearConfig() {
+  Serial.println("[provisioning] clearing config from Preferences");
+  g_preferences.begin(kPreferencesNamespace, false);
+  g_preferences.clear();
+  g_preferences.end();
+  g_config = DeviceConfig{};
+  g_platform_client.reset();
+  resetCameraProvisioningRuntime();
 }
 
 std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
@@ -1605,28 +1667,31 @@ void handleProvisioningSubmit() {
   Serial.println("[provisioning] saved Wi-Fi and setup code, reboot scheduled");
 }
 
-void applyBleProvisioningPayload(const plantlab::BleProvisioningPayload& payload) {
-  g_config.wifi_ssid = String(payload.ssid.c_str());
-  g_config.wifi_password = String(payload.password.c_str());
-  g_config.claim_token = String(payload.plantlab_token.c_str());
-  g_config.backend_url = String(payload.backend_url.c_str());
-  g_config.platform_url = String(payload.platform_url.c_str());
-  g_config.device_token = "";
-  g_config.platform_device_id = 0;
+DeviceConfig makeConfigFromBlePayload(const plantlab::BleProvisioningPayload& payload) {
+  DeviceConfig candidate;
+  candidate.wifi_ssid = String(payload.ssid.c_str());
+  candidate.wifi_password = String(payload.password.c_str());
+  candidate.claim_token = String(payload.plantlab_token.c_str());
+  candidate.backend_url = String(payload.backend_url.c_str());
+  candidate.platform_url = String(payload.platform_url.c_str());
+  candidate.device_token = "";
+  candidate.platform_device_id = 0;
+  return normalizedConfig(candidate);
+}
 
-  g_camera_provisioning_session = MasterProvisioningSession{};
-  g_camera_provisioning_acknowledged = false;
-  g_camera_runtime_ready = false;
-  g_last_camera_provisioning_attempt_ms = 0;
-  g_camera_target_mac_known = false;
-  memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
-  g_camera_bootstrap_capture_active = false;
-  g_camera_bootstrap_capture_attempts = 0;
-  g_next_camera_bootstrap_capture_ms = 0;
-  capture_schedule_init(
-      &g_camera_capture_schedule,
-      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
-      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+bool commitBleProvisioningPayload(const plantlab::BleProvisioningPayload& payload) {
+  const DeviceConfig old_config = g_config;
+  const DeviceConfig candidate = makeConfigFromBlePayload(payload);
+  if (!saveConfigCandidate(candidate)) {
+    g_config = old_config;
+    rebuildPlatformClient();
+    return false;
+  }
+
+  g_config = candidate;
+  rebuildPlatformClient();
+  resetCameraProvisioningRuntime();
+  return true;
 }
 
 void stopBleProvisioningMode() {
@@ -1659,11 +1724,19 @@ bool startBleProvisioningMode() {
   const String advertised_name = bleProvisioningDeviceName();
   const String fallback_platform_url = runtimePlatformUrl();
   if (!g_ble_provisioning.begin(advertised_name.c_str(), fallback_platform_url.c_str())) {
-    Serial.println("[provisioning] BLE setup failed, falling back to SoftAP provisioning");
+    Serial.println("[provisioning] BLE setup failed");
     g_ble_provisioning.stop();
     g_provisioning_mode = false;
-    g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
-    startProvisioningMode();
+    if (g_ble_had_previous_config) {
+      Serial.println("[provisioning] resuming saved Wi-Fi after BLE setup failure");
+      g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
+      g_device_mode = DeviceMode::kConnecting;
+      g_last_wifi_attempt_ms = 0;
+    } else {
+      g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
+      g_device_mode = DeviceMode::kWifiFailed;
+    }
+    updateStatusLed();
     return false;
   }
 
@@ -1697,27 +1770,33 @@ void serviceBleProvisioning(unsigned long now) {
         result.payload.platform_url.empty() ? "<empty>" : result.payload.platform_url.c_str(),
         result.payload.backend_url.empty() ? "<empty>" : result.payload.backend_url.c_str());
 
-    applyBleProvisioningPayload(result.payload);
-    if (!saveConfig()) {
+    g_provisioning_state = plantlab::provisioningStateAfterValidPayload();
+    g_ble_provisioning.setAcceptingWrites(false);
+    g_ble_provisioning.setStatus(g_provisioning_state);
+    updateStatusLed();
+
+    if (!commitBleProvisioningPayload(result.payload)) {
       g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
       g_ble_provisioning.setStatus(
           g_provisioning_state,
-          plantlab::ProvisioningParseError::kMalformedPayload);
+          plantlab::ProvisioningParseError::kSaveFailed);
       Serial.println("[provisioning] BLE config save failed");
+      updateStatusLed();
       return;
     }
 
-    g_provisioning_state = plantlab::provisioningStateAfterValidPayload();
+    g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_SUCCESS;
     g_ble_provisioning.setStatus(g_provisioning_state);
     g_restart_scheduled = true;
     g_restart_at_ms = now + 2500UL;
+    updateStatusLed();
     Serial.println("[provisioning] BLE credentials saved, reboot scheduled");
     return;
   }
 
   if (!g_restart_scheduled && now - g_ble_provisioning_started_at_ms >= kBleProvisioningTimeoutMs) {
     g_provisioning_state = plantlab::provisioningStateAfterTimeout(g_ble_had_previous_config);
-    g_ble_provisioning.setStatus(g_provisioning_state);
+    g_ble_provisioning.setStatus(g_provisioning_state, plantlab::ProvisioningParseError::kTimeout);
     Serial.printf(
         "[provisioning] BLE provisioning timed out, next_state=%s\n",
         plantlab::provisioningStateName(g_provisioning_state));
@@ -1740,7 +1819,7 @@ void startProvisioningMode() {
   Serial.println("[provisioning] entering SoftAP provisioning mode");
   g_provisioning_mode = true;
   g_softap_provisioning_active = true;
-  g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_BLE;
+  g_provisioning_state = plantlab::ProvisioningState::FALLBACK_SOFTAP;
   g_wifi_ready = false;
   g_device_mode = DeviceMode::kProvisioning;
   updateStatusLed();
@@ -1869,6 +1948,8 @@ bool registerProvisionedDevice() {
     return false;
   }
 
+  g_provisioning_state = plantlab::ProvisioningState::BACKEND_REGISTERING;
+  updateStatusLed();
   Serial.println("[provisioning] registering device with setup code");
   StaticJsonDocument<384> payload;
   payload["device_id"] = stableHardwareDeviceId();
@@ -1924,28 +2005,65 @@ bool registerProvisionedDevice() {
   g_config.device_token = String(device_access_token);
   g_config.claim_token = "";
   saveConfig();
-  g_camera_provisioning_session = MasterProvisioningSession{};
-  g_camera_provisioning_acknowledged = false;
-  g_camera_runtime_ready = false;
-  g_last_camera_provisioning_attempt_ms = 0;
-  g_camera_target_mac_known = false;
-  memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
-  g_camera_bootstrap_capture_active = false;
-  g_camera_bootstrap_capture_attempts = 0;
-  g_next_camera_bootstrap_capture_ms = 0;
-  capture_schedule_init(
-      &g_camera_capture_schedule,
-      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
-      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+  resetCameraProvisioningRuntime();
+  g_provisioning_state = plantlab::ProvisioningState::NORMAL;
+  updateStatusLed();
   Serial.printf("[provisioning] registration complete, platform_device_id=%d\n", g_config.platform_device_id);
   return true;
 }
 
+void startFactoryReset() {
+  if (g_restart_scheduled && g_provisioning_state == plantlab::ProvisioningState::FACTORY_RESET_PENDING) {
+    return;
+  }
+
+  Serial.println("[button] factory reset hold detected -> clearing credentials");
+  g_provisioning_state = plantlab::ProvisioningState::FACTORY_RESET_PENDING;
+  g_provisioning_mode = true;
+  g_softap_provisioning_active = false;
+  g_wifi_ready = false;
+  g_device_mode = DeviceMode::kProvisioning;
+  updateStatusLed();
+
+  stopBleProvisioningMode();
+  g_provisioning_mode = true;
+  g_provisioning_state = plantlab::ProvisioningState::FACTORY_RESET_PENDING;
+  updateStatusLed();
+  g_web_server.stop();
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  clearConfig();
+  g_restart_scheduled = true;
+  g_restart_at_ms = millis() + 2000UL;
+  Serial.println("[provisioning] credentials cleared, reboot scheduled");
+}
+
 void checkProvisioningButton() {
-  const PowerButtonEvent event = g_power_button.update(millis());
+  const unsigned long now = millis();
+  const PowerButtonEvent event = g_power_button.update(now);
+  if (g_power_button.is_pressed()) {
+    if (g_factory_reset_pressed_since_ms == 0) {
+      g_factory_reset_pressed_since_ms = now;
+      g_factory_reset_fired = false;
+    } else if (!g_factory_reset_fired &&
+               now - g_factory_reset_pressed_since_ms >= kFactoryResetHoldMs) {
+      g_factory_reset_fired = true;
+      startFactoryReset();
+      return;
+    }
+  } else {
+    g_factory_reset_pressed_since_ms = 0;
+    g_factory_reset_fired = false;
+  }
+
   if (event == PowerButtonEvent::kLongPress && !g_provisioning_mode) {
     Serial.println("[button] long press detected -> BLE provisioning mode");
     startBleProvisioningMode();
+    return;
+  }
+  if (event == PowerButtonEvent::kLongPress && g_ble_provisioning.active()) {
+    Serial.println("[button] long press detected while BLE provisioning is already active");
+    g_ble_provisioning.setStatus(g_provisioning_state);
     return;
   }
 }

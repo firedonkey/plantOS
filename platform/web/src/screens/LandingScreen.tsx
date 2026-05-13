@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useSession } from "@/hooks/useSession";
 
 export function LandingScreen() {
-  const { token } = useSession();
+  const { authMode, token } = useSession();
 
   if (token) {
     return <Navigate to="/devices" replace />;
@@ -27,7 +27,7 @@ export function LandingScreen() {
             </a>
           </div>
           <p className="meta-text">
-            The standalone web app currently uses dev-only local auth. Production auth migration is documented before we retire the old Google sign-in flow.
+            Standalone auth mode: {authMode}. Legacy web remains available during the migration.
           </p>
         </div>
 
@@ -50,7 +50,7 @@ export function LandingScreen() {
             </div>
             <div className="metric-card">
               <span>Auth</span>
-              <strong>Prod plan documented</strong>
+              <strong>Backend-owned</strong>
             </div>
           </div>
         </div>

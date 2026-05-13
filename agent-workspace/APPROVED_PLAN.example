@@ -1,6 +1,0 @@
-Approved by:
-Date:
-
-Notes:
-- Copy this file to `agent-workspace/APPROVED_PLAN` after reviewing `agent-workspace/plan.md`.
-- The pipeline will refuse to run without that approval file.

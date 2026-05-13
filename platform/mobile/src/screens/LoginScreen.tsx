@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { router } from "expo-router";
+import * as Linking from "expo-linking";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { loginWithBackendFallback } from "@/api/auth";
+import { getMobileGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
+import { isDevAuthEnabled } from "@/api/config";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
 
 export function LoginScreen() {
-  const { signIn } = useSession();
+  const { authMode, signIn } = useSession();
   const [email, setEmail] = useState("dev@plantlab.local");
   const [password, setPassword] = useState("password");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,26 +32,45 @@ export function LoginScreen() {
     }
   };
 
+  const onProductionAuth = async () => {
+    try {
+      const startUrl = getMobileGoogleAuthStartUrl("plantlab://auth/callback");
+      await Linking.openURL(startUrl);
+    } catch (error) {
+      Alert.alert("Production auth unavailable", error instanceof Error ? error.message : "Unknown error.");
+    }
+  };
+
+  const showDevLogin = authMode === "dev" && isDevAuthEnabled();
+
   return (
     <Screen>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>
-          Dev-only login uses the local backend. Mock fallback is off by default and only activates when EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=true.
+          {showDevLogin
+            ? "Use Google sign-in for backend-owned auth, or use dev-only login for local testing."
+            : "Use backend-owned Google sign-in. Dev login is hidden unless EXPO_PUBLIC_ENABLE_DEV_AUTH=true."}
         </Text>
       </View>
 
       <View style={styles.form}>
-        <TextInput value={email} onChangeText={setEmail} style={styles.input} placeholder="Email" autoCapitalize="none" />
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-        />
-        <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} />
+        <PrimaryButton label="Continue with Google" onPress={onProductionAuth} />
+        {showDevLogin ? (
+          <>
+            <View style={styles.divider} />
+            <TextInput value={email} onChangeText={setEmail} style={styles.input} placeholder="Email" autoCapitalize="none" />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              placeholder="Password"
+              secureTextEntry
+            />
+            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} />
+          </>
+        ) : null}
       </View>
     </Screen>
   );
@@ -77,6 +98,11 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: 4,
   },
   input: {
     backgroundColor: theme.colors.surface,

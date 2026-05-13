@@ -1,11 +1,11 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
-import { loginWithBackendFallback } from "@/api/auth";
+import { getGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
 import { useSession } from "@/hooks/useSession";
 
 export function LoginScreen() {
-  const { token, signIn, authError } = useSession();
+  const { authMode, isHydrated, token, signIn, authError } = useSession();
   const navigate = useNavigate();
   const [email, setEmail] = useState("dev@plantlab.local");
   const [password, setPassword] = useState("password");
@@ -14,6 +14,14 @@ export function LoginScreen() {
 
   if (token) {
     return <Navigate to="/devices" replace />;
+  }
+
+  if (!isHydrated) {
+    return (
+      <div className="centered-page">
+        <div className="auth-card">Restoring session...</div>
+      </div>
+    );
   }
 
   const onSubmit = async (event: FormEvent) => {
@@ -31,25 +39,45 @@ export function LoginScreen() {
     }
   };
 
+  const startGoogleAuth = () => {
+    setError(null);
+    try {
+      window.location.href = getGoogleAuthStartUrl();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start Google sign-in.");
+    }
+  };
+
   return (
     <div className="centered-page">
-      <form className="auth-card" onSubmit={onSubmit}>
+      <div className="auth-card">
         <div className="eyebrow">PLANTLAB WEB</div>
         <h1>Sign in</h1>
-        <p className="subtitle">Dev-only login uses the local backend. Mock fallback is off by default and only activates when <code>VITE_ENABLE_MOCK_FALLBACK=true</code>.</p>
-        <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
-        <input
-          value={password}
-          type="password"
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Password"
-        />
+        {authMode === "production" ? (
+          <>
+            <p className="subtitle">Use backend-owned Google sign-in for standalone PlantLab access.</p>
+            <button className="primary-button" type="button" onClick={startGoogleAuth}>
+              Continue with Google
+            </button>
+          </>
+        ) : (
+          <form className="stack-form" onSubmit={onSubmit}>
+            <p className="subtitle">Dev-only login uses the local backend. Mock fallback is off by default and only activates when <code>VITE_ENABLE_MOCK_FALLBACK=true</code>.</p>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
+            <input
+              value={password}
+              type="password"
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password"
+            />
+            <button className="primary-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Signing in..." : "Continue"}
+            </button>
+          </form>
+        )}
         {authError ? <p className="error-text">{authError}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
-        <button className="primary-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Signing in..." : "Continue"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }

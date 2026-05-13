@@ -14,7 +14,10 @@ import { SetupFinishingScreen } from "./screens/SetupFinishingScreen";
 import { useSession } from "./hooks/useSession";
 
 function ProtectedRoutes() {
-  const { token } = useSession();
+  const { isHydrated, token } = useSession();
+  if (!isHydrated) {
+    return <div className="centered-page"><div className="auth-card">Restoring session...</div></div>;
+  }
   if (!token) {
     return <Navigate to="/login" replace />;
   }

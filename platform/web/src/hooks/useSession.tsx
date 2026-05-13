@@ -1,6 +1,7 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 
-import { fetchCurrentUser } from "@/api/auth";
+import { fetchCurrentUser, logoutProductionSession, refreshProductionSession } from "@/api/auth";
+import { getAuthMode, isDevAuthEnabled } from "@/api/config";
 import { AuthSession } from "@/types";
 
 const STORAGE_KEY = "plantlab.web.session";
@@ -8,15 +9,21 @@ const STORAGE_KEY = "plantlab.web.session";
 type SessionContextValue = {
   session: AuthSession | null;
   token: string | null;
+  authMode: "production" | "dev";
+  isHydrated: boolean;
   authError: string | null;
   signIn: (session: AuthSession) => void;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
 export function SessionProvider({ children }: PropsWithChildren) {
+  const authMode = getAuthMode();
   const [session, setSession] = useState<AuthSession | null>(() => {
+    if (!isDevAuthEnabled()) {
+      return null;
+    }
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       return null;
@@ -27,10 +34,48 @@ export function SessionProvider({ children }: PropsWithChildren) {
       return null;
     }
   });
+  const [isHydrated, setIsHydrated] = useState(authMode === "dev");
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session || session.mode !== "api") {
+    if (authMode !== "production") {
+      setIsHydrated(true);
+      return;
+    }
+
+    let cancelled = false;
+    refreshProductionSession()
+      .then((nextSession) => {
+        if (cancelled) {
+          return;
+        }
+        setSession(nextSession);
+        setAuthError(null);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setSession(null);
+        if (new URLSearchParams(window.location.search).get("auth") === "complete") {
+          setAuthError(error instanceof Error ? error.message : "Unable to restore Google session.");
+        } else {
+          setAuthError(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authMode]);
+
+  useEffect(() => {
+    if (!session || session.mode !== "api" || !isDevAuthEnabled()) {
       setAuthError(null);
       return;
     }
@@ -67,19 +112,32 @@ export function SessionProvider({ children }: PropsWithChildren) {
     () => ({
       session,
       token: session?.token ?? null,
+      authMode,
+      isHydrated,
       authError,
       signIn: (nextSession) => {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+        if (nextSession.mode === "api" && isDevAuthEnabled()) {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+        } else {
+          window.localStorage.removeItem(STORAGE_KEY);
+        }
         setSession(nextSession);
         setAuthError(null);
       },
-      signOut: () => {
+      signOut: async () => {
+        if (session?.mode === "production" || authMode === "production") {
+          try {
+            await logoutProductionSession();
+          } catch {
+            // Local state still clears; the next refresh will fail if the backend logout did not complete.
+          }
+        }
         window.localStorage.removeItem(STORAGE_KEY);
         setSession(null);
         setAuthError(null);
       },
     }),
-    [authError, session],
+    [authError, authMode, isHydrated, session],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

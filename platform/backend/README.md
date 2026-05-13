@@ -35,6 +35,7 @@ Quick verification pointers:
 
 - health check: [http://localhost:8000/health](http://localhost:8000/health)
 - old backend-rendered login: [http://localhost:8000/login](http://localhost:8000/login)
+- standalone Google auth start: [http://localhost:8000/api/auth/google/start?client=web&return_to=http%3A%2F%2Flocalhost%3A5173%2Flogin%3Fauth%3Dcomplete](http://localhost:8000/api/auth/google/start?client=web&return_to=http%3A%2F%2Flocalhost%3A5173%2Flogin%3Fauth%3Dcomplete)
 - one-command local status check:
 
 ```bash

@@ -17,9 +17,9 @@ The goal is to retire the old backend-rendered web safely later, without deletin
 
 | Old route | Template | Current purpose | `platform/web` equivalent | Coverage | Safe to remove later? | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `GET /` | `index.html` | Landing page / signed-in redirect surface | `/` | Partial | No | Standalone landing page now exists, but old root still carries session-aware redirect behavior and production auth is not migrated yet. |
-| `GET /login` | `login.html` | Google sign-in page for backend-rendered web | `/login` | Partial | No | New web still uses dev-only standalone login. Old `/login` remains blocked until the documented production auth contract is implemented. |
-| `GET /devices` | `devices.html` | Device list, card overview, remove-device entry point, add-device entry point | `/devices` | Partial | No | New web now covers list browsing, refresh, add-device entry, and removal entry, but standalone auth is still dev-only. |
+| `GET /` | `index.html` | Landing page / signed-in redirect surface | `/` | Partial | No | Standalone landing page now exists, but old root still carries session-aware redirect behavior during the transition. |
+| `GET /login` | `login.html` | Google sign-in page for backend-rendered web | `/login` | Partial | No | Standalone web now has backend-owned Google auth, but old `/login` remains until standalone auth is verified in production and mobile has completed secure handoff. |
+| `GET /devices` | `devices.html` | Device list, card overview, remove-device entry point, add-device entry point | `/devices` | Partial | No | New web now covers list browsing, refresh, add-device entry, removal entry, and production standalone auth, but route retirement still depends on full production verification. |
 | `GET /devices/add` | `add_device.html` | Guided add-device setup flow, SN setup-code request, Wi-Fi handoff copy | `/devices/add` | Covered | No | Standalone onboarding flow now exists, but keep the old route until broader retirement gates are satisfied. |
 | `GET /devices/setup-finishing` | `setup_finishing.html` | Setup polling / ready-state redirect during onboarding | `/devices/setup-finishing` | Covered | No | Standalone setup-finishing flow now polls API status and redirects into the standalone dashboard. |
 | `GET /devices/{device_id}` | `device_detail.html` | Detailed dashboard, images, controls, component summary, activity | `/devices/:deviceId` | Partial | No | New web covers the main dashboard and controls, but not full parity for recent images grid, command activity, and trend charts. |
@@ -55,14 +55,15 @@ As of this checkpoint:
   - `GET /devices/setup-finishing`
   - `GET /devices`
   - `GET /devices/{device_id}`
-- `GET /login` should be considered separately because auth migration is the explicit gate.
+- `GET /login` should be considered separately because production auth rollout and mobile handoff are still explicit gates.
 - But even those are only `Partial`, not `Covered`, because:
-  - standalone web still uses dev-only auth
+  - standalone web production auth exists but still needs real Google OAuth environment verification
+  - mobile production auth still needs secure storage and deep-link handoff handling
   - the old dashboard still has features not yet mirrored in standalone web
 
 ## Remaining gaps before retirement can begin
 
-1. Production-ready standalone auth that replaces old Google-sign-in web entry.
+1. Production-ready standalone auth verified with real Google OAuth configuration.
 2. Final removal decision for the legacy direct-create shortcut behind `POST /devices`.
 3. Feature parity decision for remove-device entry placement and post-delete UX.
 4. Feature parity decision for optional dashboard extras:
@@ -81,3 +82,4 @@ Keep the old backend-rendered web in place for now.
 Use this checklist as the gate before deleting anything:
 
 - a route should only move to `Safe to remove later = Yes` after its standalone replacement works in local verification and no old template still depends on it.
+- `/login` should stay until standalone web and mobile production auth are both verified end to end.

@@ -1,0 +1,9 @@
+{
+  "status": "idle",
+  "planner": {},
+  "pipeline": {
+    "attempt": 0,
+    "max_retries": 3,
+    "result": null
+  }
+}

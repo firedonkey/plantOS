@@ -25,6 +25,10 @@ Current purpose:
 ### Auth and current user
 
 - `POST /api/auth/login`
+- `GET /api/auth/google/start`
+- `GET /api/auth/google/callback`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
 - `GET /auth/login`
 - `GET /auth/callback`
 - `POST /auth/logout`
@@ -34,20 +38,34 @@ Current state:
 
 - browser session and Google OAuth still power the existing backend-rendered web
 - `POST /api/auth/login` is now available as a **dev-only** bearer-token login for local standalone clients
-- `GET /api/me` works for either browser session auth or bearer auth from the dev-only login path
+- standalone production auth is additive and backend-owned
+- `GET /api/me` works for browser session auth, production standalone bearer auth, or dev bearer auth when enabled
 
-Documented next production auth contract:
+Implemented production standalone auth contract:
 
 - `GET /api/auth/google/start`
+  - starts backend Google OAuth for `client=web|mobile`
+  - returns `503 google_auth_not_configured` when Google OAuth env is missing
+  - validates `return_to` before redirecting to Google
 - `GET /api/auth/google/callback`
+  - completes Google OAuth and upserts the PlantLab user
+  - web: sets an HTTP-only refresh cookie and redirects back to standalone web
+  - mobile: creates a short-lived one-time handoff code and redirects to the configured mobile scheme
 - `POST /api/auth/refresh`
+  - web: rotates the refresh cookie and returns a short-lived access token
+  - mobile: accepts `refresh_token` or `handoff_code` in JSON and returns a fresh access token plus rotated refresh token when needed
 - `POST /api/auth/logout`
+  - revokes matching refresh credentials
+  - clears the standalone refresh cookie
+  - succeeds idempotently
 - `GET /api/me`
 
 Current note:
 
-- these production standalone auth endpoints are documented, not implemented yet
 - the backend remains the intended auth owner for both standalone web and mobile
+- old `/auth/login`, `/auth/callback`, `/auth/logout`, and `/login` remain in place during migration
+- production access tokens are short-lived bearer tokens
+- refresh sessions are stored server-side by SHA-256 hash and rotate on successful refresh
 
 ### Devices
 
@@ -381,20 +399,20 @@ Standalone replacements now available:
 
 ## Remaining contract gaps for standalone web and mobile
 
-### 1. Production-ready standalone auth contract
+### 1. Production auth rollout completion
 
 Current state:
 
-- a dev-only bearer login now exists for local standalone clients
-- production auth is still browser-session / Google-OAuth oriented
+- the backend-owned standalone auth contract is implemented
+- standalone web can use Google start/callback, refresh-cookie rotation, logout, and short-lived bearer access tokens
+- mobile has the backend handoff and refresh API helpers, but production sign-in is not enabled until secure storage and deep-link handling are verified
 
 Needed later:
 
-- standalone Google-start and callback endpoints for standalone clients
-- backend-issued short-lived access tokens
-- backend-owned refresh-token/session contract
-- clear logout and token-rotation behavior
-- clear rollout rules for web/mobile auth beyond local dev
+- verify standalone web with real Google OAuth environment configuration
+- add OS-backed secure storage for mobile refresh credentials
+- handle the `plantlab://auth/callback?handoff_code=...` deep link in the Expo app
+- keep dev-only bearer login limited to explicit local/dev mode
 
 ### 2. Capture command device support
 
@@ -575,7 +593,7 @@ For the immediate next steps:
 - treat web-route JSON endpoints as transitional
 - standalone mobile can use the dev-only bearer login for local development
 - do not treat the dev-only login as the final production auth design
-- treat the documented production auth endpoints as the next implementation target, not as live endpoints yet
+- treat the documented production auth endpoints as implemented, but still requiring real Google OAuth and mobile secure-storage verification before removing old auth
 
 ## Migration rule
 

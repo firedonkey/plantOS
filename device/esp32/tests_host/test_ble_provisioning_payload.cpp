@@ -60,6 +60,33 @@ void test_claim_token_alias_payload() {
   assert(result.payload.plantlab_token == "claim-token");
 }
 
+void test_claim_token_used_when_setup_alias_is_blank() {
+  const char json[] =
+      "{\"ssid\":\"PlantLabWiFi\",\"password\":\"secret-pass\","
+      "\"plantlab_token\":\"  \",\"setup_code\":\"  \",\"claim_token\":\"claim-token\","
+      "\"platform_url\":\"https://platform.example\"}";
+  const plantlab::ProvisioningParseResult result =
+      plantlab::parseBleProvisioningPayload(json, strlen(json));
+  assert(result.ok);
+  assert(result.payload.plantlab_token == "claim-token");
+}
+
+void test_trims_accepted_fields() {
+  const char json[] =
+      "{\"ssid\":\"  HomeWiFi  \",\"password\":\"  wifi-password  \","
+      "\"plantlab_token\":\"  claim-token  \","
+      "\"platform_url\":\"  https://platform.example  \","
+      "\"backend_url\":\"  https://provisioning.example  \"}";
+  const plantlab::ProvisioningParseResult result =
+      plantlab::parseBleProvisioningPayload(json, strlen(json));
+  assert(result.ok);
+  assert(result.payload.ssid == "HomeWiFi");
+  assert(result.payload.password == "wifi-password");
+  assert(result.payload.plantlab_token == "claim-token");
+  assert(result.payload.platform_url == "https://platform.example");
+  assert(result.payload.backend_url == "https://provisioning.example");
+}
+
 void test_missing_fields() {
   const char missing_ssid[] =
       "{\"password\":\"wifi-password\",\"plantlab_token\":\"token\","
@@ -144,6 +171,54 @@ void test_direct_token_rejected() {
 }
 
 void test_length_limits() {
+  const std::string max_ssid(plantlab::kProvisioningMaxSsidLength, 's');
+  const std::string max_ssid_json =
+      "{\"ssid\":\"" + max_ssid +
+      "\",\"password\":\"wifi-password\",\"plantlab_token\":\"token\","
+      "\"platform_url\":\"https://platform.example\"}";
+  const plantlab::ProvisioningParseResult max_ssid_result =
+      plantlab::parseBleProvisioningPayload(max_ssid_json.c_str(), max_ssid_json.length());
+  assert(max_ssid_result.ok);
+  assert(max_ssid_result.payload.ssid.length() == plantlab::kProvisioningMaxSsidLength);
+
+  const std::string max_password(plantlab::kProvisioningMaxPasswordLength, 'p');
+  const std::string max_password_json =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"" + max_password +
+      "\",\"plantlab_token\":\"token\",\"platform_url\":\"https://platform.example\"}";
+  const plantlab::ProvisioningParseResult max_password_result =
+      plantlab::parseBleProvisioningPayload(max_password_json.c_str(), max_password_json.length());
+  assert(max_password_result.ok);
+  assert(max_password_result.payload.password.length() == plantlab::kProvisioningMaxPasswordLength);
+
+  const std::string max_token(plantlab::kProvisioningMaxTokenLength, 't');
+  const std::string max_token_json =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\",\"plantlab_token\":\"" +
+      max_token + "\",\"platform_url\":\"https://platform.example\"}";
+  const plantlab::ProvisioningParseResult max_token_result =
+      plantlab::parseBleProvisioningPayload(max_token_json.c_str(), max_token_json.length());
+  assert(max_token_result.ok);
+  assert(max_token_result.payload.plantlab_token.length() == plantlab::kProvisioningMaxTokenLength);
+
+  const std::string max_platform_url(plantlab::kProvisioningMaxUrlLength, 'u');
+  const std::string max_platform_url_json =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\",\"plantlab_token\":\"token\","
+      "\"platform_url\":\"" + max_platform_url + "\"}";
+  const plantlab::ProvisioningParseResult max_platform_url_result =
+      plantlab::parseBleProvisioningPayload(
+          max_platform_url_json.c_str(),
+          max_platform_url_json.length());
+  assert(max_platform_url_result.ok);
+  assert(max_platform_url_result.payload.platform_url.length() == plantlab::kProvisioningMaxUrlLength);
+
+  const std::string max_backend_url(plantlab::kProvisioningMaxUrlLength, 'b');
+  const std::string max_backend_url_json =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\",\"plantlab_token\":\"token\","
+      "\"platform_url\":\"https://platform.example\",\"backend_url\":\"" + max_backend_url + "\"}";
+  const plantlab::ProvisioningParseResult max_backend_url_result =
+      plantlab::parseBleProvisioningPayload(max_backend_url_json.c_str(), max_backend_url_json.length());
+  assert(max_backend_url_result.ok);
+  assert(max_backend_url_result.payload.backend_url.length() == plantlab::kProvisioningMaxUrlLength);
+
   const std::string long_ssid(33, 'a');
   const std::string ssid_json =
       "{\"ssid\":\"" + long_ssid +
@@ -202,16 +277,28 @@ void test_state_helpers() {
              plantlab::provisioningStateName(plantlab::ProvisioningState::PROVISIONING_BLE),
              "PROVISIONING_BLE") == 0);
   assert(strcmp(
+             plantlab::provisioningStateName(plantlab::ProvisioningState::PROVISIONING_COMMITTING),
+             "PROVISIONING_COMMITTING") == 0);
+  assert(strcmp(
              plantlab::provisioningStateName(plantlab::ProvisioningState::WIFI_CONNECTING),
              "WIFI_CONNECTING") == 0);
+  assert(strcmp(
+             plantlab::provisioningStateName(plantlab::ProvisioningState::BACKEND_REGISTERING),
+             "BACKEND_REGISTERING") == 0);
   assert(strcmp(
              plantlab::provisioningStateName(plantlab::ProvisioningState::PROVISIONING_FAILED),
              "PROVISIONING_FAILED") == 0);
   assert(strcmp(
              plantlab::provisioningStateName(plantlab::ProvisioningState::PROVISIONING_SUCCESS),
              "PROVISIONING_SUCCESS") == 0);
+  assert(strcmp(
+             plantlab::provisioningStateName(plantlab::ProvisioningState::FALLBACK_SOFTAP),
+             "FALLBACK_SOFTAP") == 0);
+  assert(strcmp(
+             plantlab::provisioningStateName(plantlab::ProvisioningState::FACTORY_RESET_PENDING),
+             "FACTORY_RESET_PENDING") == 0);
   assert(plantlab::provisioningStateAfterValidPayload() ==
-         plantlab::ProvisioningState::PROVISIONING_SUCCESS);
+         plantlab::ProvisioningState::PROVISIONING_COMMITTING);
   assert(plantlab::provisioningStateAfterInvalidPayload() ==
          plantlab::ProvisioningState::PROVISIONING_BLE);
   assert(plantlab::provisioningStateAfterTimeout(true) ==
@@ -264,6 +351,62 @@ void test_error_codes() {
              plantlab::provisioningParseErrorCode(
                  plantlab::ProvisioningParseError::kDirectDeviceTokenUnsupported),
              "direct_device_token_unsupported") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kBusy),
+             "busy") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kSaveFailed),
+             "save_failed") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kTimeout),
+             "timeout") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kBleInitFailed),
+             "ble_init_failed") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kAlreadyCommitted),
+             "already_committed") == 0);
+}
+
+void test_duplicate_valid_write_gate() {
+  bool accepting_writes = true;
+  bool has_pending_result = true;
+  const bool valid_result = true;
+
+  assert(plantlab::provisioningWriteRejectionError(
+             plantlab::ProvisioningState::PROVISIONING_BLE,
+             has_pending_result,
+             accepting_writes) == plantlab::ProvisioningParseError::kBusy);
+  assert(plantlab::provisioningShouldStopAcceptingWritesOnTake(
+      has_pending_result,
+      valid_result,
+      accepting_writes));
+
+  // Model the first valid payload being consumed by the main loop: the gate
+  // closes before the pending slot is cleared, so a second valid write is
+  // rejected during commit and after success.
+  accepting_writes = false;
+  has_pending_result = false;
+  assert(plantlab::provisioningWriteRejectionError(
+             plantlab::ProvisioningState::PROVISIONING_COMMITTING,
+             has_pending_result,
+             accepting_writes) == plantlab::ProvisioningParseError::kBusy);
+  assert(plantlab::provisioningWriteRejectionError(
+             plantlab::ProvisioningState::PROVISIONING_SUCCESS,
+             has_pending_result,
+             accepting_writes) == plantlab::ProvisioningParseError::kAlreadyCommitted);
+}
+
+void test_invalid_write_keeps_gate_open() {
+  assert(!plantlab::provisioningShouldStopAcceptingWritesOnTake(true, false, true));
+  assert(plantlab::provisioningWriteRejectionError(
+             plantlab::ProvisioningState::PROVISIONING_BLE,
+             false,
+             true) == plantlab::ProvisioningParseError::kNone);
+  assert(plantlab::provisioningWriteRejectionError(
+             plantlab::ProvisioningState::PROVISIONING_BLE,
+             true,
+             true) == plantlab::ProvisioningParseError::kBusy);
 }
 
 }  // namespace
@@ -273,6 +416,8 @@ int main() {
   test_alias_payload();
   test_primary_fields_take_precedence_over_aliases();
   test_claim_token_alias_payload();
+  test_claim_token_used_when_setup_alias_is_blank();
+  test_trims_accepted_fields();
   test_missing_fields();
   test_platform_url_fallback();
   test_invalid_json_and_malformed_payload();
@@ -281,5 +426,7 @@ int main() {
   test_secret_masking();
   test_state_helpers();
   test_error_codes();
+  test_duplicate_valid_write_gate();
+  test_invalid_write_keeps_gate_open();
   return 0;
 }

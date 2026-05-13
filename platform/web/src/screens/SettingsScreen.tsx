@@ -2,7 +2,7 @@ import { getApiBaseUrl } from "@/api/config";
 import { useSession } from "@/hooks/useSession";
 
 export function SettingsScreen() {
-  const { session, signOut } = useSession();
+  const { authMode, session, signOut } = useSession();
 
   return (
     <section className="page-section">
@@ -20,12 +20,12 @@ export function SettingsScreen() {
 
       <div className="card">
         <h3>Session mode</h3>
-        <p className="subtitle">{session?.mode ?? "Signed out"}</p>
+        <p className="subtitle">{session?.mode ?? "Signed out"} ({authMode})</p>
       </div>
 
       <div className="card">
         <h3>Notes</h3>
-        <p className="subtitle">Dev-only bearer auth is for local standalone development only. Production auth still lives in the backend-rendered web flow.</p>
+        <p className="subtitle">Production standalone auth uses backend Google sign-in, an HTTP-only refresh cookie, and an in-memory access token. Dev bearer auth is shown only in explicit dev mode.</p>
       </div>
 
       <div className="card">
@@ -33,7 +33,7 @@ export function SettingsScreen() {
         <p className="subtitle">Operational device details such as labels, masked token summaries, hardware identifiers, and provisioning status now live on each device dashboard.</p>
       </div>
 
-      <button className="primary-button" onClick={signOut}>
+      <button className="primary-button" onClick={() => void signOut()}>
         Log out
       </button>
     </section>

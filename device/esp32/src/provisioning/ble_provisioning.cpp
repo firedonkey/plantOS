@@ -5,11 +5,11 @@
 namespace plantlab {
 namespace {
 
-std::string statusJson(ProvisioningState state, ProvisioningParseError error) {
+std::string statusJson(ProvisioningState state, ProvisioningParseError error, bool accepting_writes) {
   std::string json = "{\"state\":\"";
   json += provisioningStateName(state);
   json += "\",\"ready\":";
-  json += state == ProvisioningState::PROVISIONING_BLE ? "true" : "false";
+  json += state == ProvisioningState::PROVISIONING_BLE && accepting_writes ? "true" : "false";
   if (error != ProvisioningParseError::kNone) {
     json += ",\"error\":\"";
     json += provisioningParseErrorCode(error);
@@ -67,6 +67,7 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
   fallback_platform_url_ = fallback_platform_url == nullptr ? "" : fallback_platform_url;
   state_ = ProvisioningState::PROVISIONING_BLE;
   last_error_ = ProvisioningParseError::kNone;
+  accepting_writes_ = true;
   pending_result_ready_ = false;
   connected_ = false;
 
@@ -120,6 +121,11 @@ void BleProvisioningService::stop() {
   NimBLEDevice::deinit(true);
   active_ = false;
   connected_ = false;
+  accepting_writes_ = false;
+  portENTER_CRITICAL(&pending_lock_);
+  pending_result_ready_ = false;
+  pending_result_ = ProvisioningParseResult{};
+  portEXIT_CRITICAL(&pending_lock_);
   server_ = nullptr;
   service_ = nullptr;
   write_characteristic_ = nullptr;
@@ -137,12 +143,30 @@ bool BleProvisioningService::connected() const {
 }
 
 bool BleProvisioningService::hasPendingResult() const {
-  return pending_result_ready_;
+  portENTER_CRITICAL(&pending_lock_);
+  const bool ready = pending_result_ready_;
+  portEXIT_CRITICAL(&pending_lock_);
+  return ready;
 }
 
 ProvisioningParseResult BleProvisioningService::takePendingResult() {
+  bool status_changed = false;
+  portENTER_CRITICAL(&pending_lock_);
+  const ProvisioningParseResult result = pending_result_;
+  if (provisioningShouldStopAcceptingWritesOnTake(
+          pending_result_ready_,
+          result.ok,
+          accepting_writes_)) {
+    accepting_writes_ = false;
+    status_changed = true;
+  }
   pending_result_ready_ = false;
-  return pending_result_;
+  pending_result_ = ProvisioningParseResult{};
+  portEXIT_CRITICAL(&pending_lock_);
+  if (status_changed) {
+    publishStatus(true);
+  }
+  return result;
 }
 
 void BleProvisioningService::setStatus(ProvisioningState state, ProvisioningParseError error) {
@@ -151,14 +175,49 @@ void BleProvisioningService::setStatus(ProvisioningState state, ProvisioningPars
   publishStatus(true);
 }
 
+void BleProvisioningService::setAcceptingWrites(bool accepting) {
+  portENTER_CRITICAL(&pending_lock_);
+  accepting_writes_ = accepting;
+  portEXIT_CRITICAL(&pending_lock_);
+  publishStatus(true);
+}
+
 void BleProvisioningService::handleWrite(const std::string& value) {
-  pending_result_ = parseBleProvisioningPayload(
+  portENTER_CRITICAL(&pending_lock_);
+  const bool pending = pending_result_ready_;
+  const bool accepting = accepting_writes_;
+  portEXIT_CRITICAL(&pending_lock_);
+
+  ProvisioningParseError error = provisioningWriteRejectionError(state_, pending, accepting);
+  if (error != ProvisioningParseError::kNone) {
+    setStatus(state_, error);
+    return;
+  }
+
+  ProvisioningParseResult result = parseBleProvisioningPayload(
       value.c_str(),
       value.length(),
       fallback_platform_url_.c_str());
-  pending_result_ready_ = true;
-  if (!pending_result_.ok) {
-    setStatus(provisioningStateAfterInvalidPayload(), pending_result_.error);
+
+  portENTER_CRITICAL(&pending_lock_);
+  error = provisioningWriteRejectionError(state_, pending_result_ready_, accepting_writes_);
+  if (error == ProvisioningParseError::kNone) {
+    pending_result_ = result;
+    pending_result_ready_ = true;
+    result = pending_result_;
+  } else {
+    result = ProvisioningParseResult{};
+    result.error = error;
+  }
+  portEXIT_CRITICAL(&pending_lock_);
+
+  if (result.error == ProvisioningParseError::kBusy ||
+      result.error == ProvisioningParseError::kAlreadyCommitted) {
+    setStatus(state_, result.error);
+    return;
+  }
+  if (!result.ok) {
+    setStatus(provisioningStateAfterInvalidPayload(), result.error);
   }
 }
 
@@ -178,7 +237,7 @@ void BleProvisioningService::publishStatus(bool notify) {
   if (status_characteristic_ == nullptr) {
     return;
   }
-  const std::string json = statusJson(state_, last_error_);
+  const std::string json = statusJson(state_, last_error_, accepting_writes_);
   status_characteristic_->setValue(json);
   if (notify) {
     status_characteristic_->notify();

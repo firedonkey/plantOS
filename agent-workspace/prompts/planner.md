@@ -6,7 +6,12 @@ Role constraints:
 - Do not propose unrelated cleanup.
 - Stop after producing the design and execution plan.
 
-Your output is written to `agent-workspace/plan.md`.
+Your output is written to the active task output folder as `plan.md`.
+
+Progress reporting requirements:
+- The orchestrator will update `progress.log`, `heartbeat.json`, and `current_stage.txt` while you run.
+- When permitted by the sandbox, update those files yourself at major planning milestones.
+- Never write Wi-Fi passwords, device tokens, claim tokens, or other secrets to progress or heartbeat files.
 
 Required output structure:
 

@@ -10,7 +10,7 @@ import { getApiBaseUrl } from "@/api/config";
 import { theme } from "@/styles/theme";
 
 export function SettingsScreen() {
-  const { session, signOut } = useSession();
+  const { authMode, session, signOut } = useSession();
 
   return (
     <Screen>
@@ -26,7 +26,12 @@ export function SettingsScreen() {
 
       <Card>
         <Text style={styles.label}>Session mode</Text>
-        <Text style={styles.value}>{session?.mode ?? "Signed out"}</Text>
+        <Text style={styles.value}>{session?.mode ?? "Signed out"} ({authMode})</Text>
+      </Card>
+
+      <Card>
+        <Text style={styles.label}>Auth note</Text>
+        <Text style={styles.todo}>Production mobile auth uses backend Google handoff, but refresh-token persistence is disabled until secure storage is added.</Text>
       </Card>
 
       <Card>

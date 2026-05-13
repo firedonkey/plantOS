@@ -23,16 +23,17 @@ The goal is to retire old `/login` only after standalone web and mobile both hav
 
 ### Standalone web
 
-- Uses `POST /api/auth/login`.
-- Stores a bearer token in local storage.
-- Calls `GET /api/me` to verify the token.
-- This is explicitly **dev-only** local auth.
+- Uses backend-owned Google auth when `VITE_AUTH_MODE=production`.
+- Starts at `GET /api/auth/google/start`.
+- Restores sessions through `POST /api/auth/refresh` using an HTTP-only refresh cookie.
+- Keeps the short-lived access token in memory.
+- Keeps `POST /api/auth/login` available only for explicit local/dev mode.
 
 ### Mobile
 
 - Uses the same dev-only bearer auth path as standalone web.
 - Stores the token locally and uses `Authorization: Bearer ...`.
-- Also explicitly **dev-only** today.
+- Also has client helpers for the backend-owned Google handoff path, but production mobile sign-in is not enabled until secure refresh storage and deep-link handoff handling are added.
 
 ## Target production auth
 
@@ -61,7 +62,7 @@ Backend remains the single auth owner.
 
 ### Proposed standalone auth endpoints
 
-These are the recommended production endpoints to implement next:
+These production endpoints are now implemented for standalone clients:
 
 - `GET /api/auth/google/start`
 - `GET /api/auth/google/callback`
@@ -118,6 +119,12 @@ Recommended behavior:
 - for mobile: accept a mobile refresh token in the request body or authorization scheme
 - return a fresh access token and expiry metadata
 
+Implemented behavior:
+
+- web reads the HTTP-only refresh cookie and rotates it on every successful refresh
+- mobile can exchange either `refresh_token` or one-time `handoff_code` in the JSON body
+- invalid, expired, missing, or revoked refresh credentials return the standard API error envelope with `invalid_refresh`
+
 #### `POST /api/auth/logout`
 
 Purpose:
@@ -130,6 +137,12 @@ Recommended behavior:
 - revoke or invalidate the refresh token/session
 - clear refresh cookies if present
 - make repeated logout safe and idempotent
+
+Implemented behavior:
+
+- revokes a refresh cookie and/or request-body refresh token when present
+- clears the standalone refresh cookie
+- returns idempotent success for repeated logout calls
 
 #### `GET /api/me`
 
@@ -144,15 +157,21 @@ Recommended direction:
 
 - keep `/api/me` as the stable current-user endpoint across all auth modes
 
+Implemented behavior:
+
+- accepts old browser session auth
+- accepts explicit local dev bearer auth when enabled
+- accepts production standalone bearer access tokens
+
 ## Token and session strategy
 
 ### Access token
 
-Recommended:
+Implemented:
 
 - short-lived backend-issued access token
 - bearer token for standalone API calls
-- target lifetime: about 10 to 15 minutes
+- default lifetime: 15 minutes, configurable with `PLANTLAB_STANDALONE_ACCESS_TOKEN_TTL_SECONDS`
 
 Required properties:
 
@@ -162,15 +181,17 @@ Required properties:
 
 ### Refresh token
 
-Recommended:
+Implemented:
 
 - long-lived backend-owned refresh credential
-- target lifetime: about 30 days, revocable
+- default lifetime: 30 days, configurable with `PLANTLAB_STANDALONE_REFRESH_TOKEN_TTL_DAYS`
+- only a SHA-256 hash is stored server-side
+- successful refresh rotates to a new credential and revokes the old one
 
 Storage:
 
 - web: secure, HTTP-only, same-site cookie
-- mobile: OS-backed secure storage
+- mobile: OS-backed secure storage is still required before enabling production persistence
 
 ### Expiry and rotation
 
@@ -252,6 +273,13 @@ For mobile, the most practical next design is:
 
 That keeps Google secrets and identity verification on the backend.
 
+Current implementation status:
+
+- backend can issue a short-lived one-time handoff code and exchange it through `POST /api/auth/refresh`
+- mobile has API helpers for start URL, handoff exchange, refresh, and logout
+- mobile does not persist production refresh tokens because `expo-secure-store` is not installed in this app yet
+- dev auth remains the mobile fallback until secure storage and deep-link callback handling are verified
+
 ## Old `/login` retirement gate
 
 Old `/login` is not safe to retire until all of the following are true:
@@ -273,7 +301,7 @@ Until then:
 These are temporary and should not be mistaken for the production plan:
 
 - `POST /api/auth/login`
-- local-storage bearer tokens in standalone web
+- local-storage bearer tokens in standalone web when `VITE_AUTH_MODE=dev` or `VITE_ENABLE_DEV_AUTH=true`
 - mobile local bearer login using the same endpoint
 
 ## Recommended next auth step
@@ -282,7 +310,8 @@ Do **not** replace auth during structure cleanup.
 
 The safest next auth milestone is:
 
-1. add the production auth endpoints listed above
-2. implement standalone web first using the cookie + refresh-token design
-3. keep dev-only `/api/auth/login` for local development
-4. then bring mobile onto the same refresh/access-token contract
+1. add `expo-secure-store` or an equivalent OS-backed secure storage dependency to mobile
+2. handle the `plantlab://auth/callback?handoff_code=...` deep link in the Expo app
+3. exchange the handoff code through `POST /api/auth/refresh`
+4. persist only the mobile refresh credential in secure storage
+5. keep old `/login` until production standalone web and mobile are both verified end to end

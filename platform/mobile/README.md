@@ -16,6 +16,9 @@ Local dev:
 
 - Set `EXPO_PUBLIC_API_BASE_URL` to your backend base URL.
 - Use [`.env.example`](/Users/gary/plantOS/platform/mobile/.env.example) as the starting point.
+- Keep `EXPO_PUBLIC_AUTH_MODE=dev` for local dev bearer login.
+- Google sign-in is available from the mobile login screen and uses the backend-owned `/api/auth/google/start` handoff.
+- The mobile callback uses the app scheme `plantlab://auth/callback`. Expo Go may not claim custom app schemes reliably; use a dev build or installed app build when validating the full callback loop.
 - Leave `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
 - Optional: set `EXPO_PUBLIC_WIFI_SSID_OPTIONS=HomeWiFi,LabWiFi` to seed the add-device Wi-Fi dropdown.
 - During real device setup, connect the phone to `PlantLab-Setup`, then tap `Load nearby Wi-Fi from device` to populate the mobile dropdown from the ESP32 scan cache. Manual SSID entry remains available.
@@ -52,7 +55,9 @@ Status:
 
 - Expo app scaffold is in place
 - tries the local backend first
+- includes API helpers for backend Google start URL, handoff refresh exchange, production refresh, and logout
+- handles backend Google handoff callbacks at `plantlab://auth/callback`
+- does not persist production refresh credentials because `expo-secure-store` is not installed yet
 - does not silently switch to mock data by default when the backend is unavailable
 - mock fallback remains available only when `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=true`
-- manual image capture is intentionally postponed for now
-- the mobile UI treats capture as a coming-later capability instead of a failed command
+- supports manual image capture from the recent image gallery
