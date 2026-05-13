@@ -307,6 +307,7 @@ bool PlatformClient::upload_jpeg(
     size_t length,
     const char* filename,
     const char* source_hardware_device_id,
+    int* http_status_code,
     String* error) {
   if (bytes == nullptr || length == 0) {
     set_error(error, "image upload skipped: empty buffer");
@@ -404,8 +405,14 @@ bool PlatformClient::upload_jpeg(
   client->stop();
 
   if (status_code < 200 || status_code >= 300) {
+    if (http_status_code != nullptr) {
+      *http_status_code = status_code;
+    }
     set_error(error, "image upload failed with HTTP " + String(status_code) + ": " + response_body);
     return false;
+  }
+  if (http_status_code != nullptr) {
+    *http_status_code = status_code;
   }
   return true;
 }

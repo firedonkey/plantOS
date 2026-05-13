@@ -19,7 +19,7 @@ def test_default_command_timeout_is_20_seconds():
 
 
 def test_capture_command_timeout_is_longer_for_real_uploads():
-    assert CAPTURE_COMMAND_TIMEOUT_SECONDS == 90
+    assert CAPTURE_COMMAND_TIMEOUT_SECONDS == 150
 
 
 def build_client_with_devices() -> tuple[TestClient, int, int]:

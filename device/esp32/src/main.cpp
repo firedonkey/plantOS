@@ -41,7 +41,7 @@ constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
-constexpr uint32_t kManualCaptureAckTimeoutMs = 90000UL;
+constexpr uint32_t kManualCaptureAckTimeoutMs = 120000UL;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -375,6 +375,8 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
   const EspNowAckStatus ack_status = static_cast<EspNowAckStatus>(packet.ack_status);
   const bool is_pending_capture_ack =
       g_pending_capture_command.active && packet.request_id == g_pending_capture_command.request_id;
+  const unsigned long capture_wait_ms =
+      is_pending_capture_ack ? millis() - g_pending_capture_command.started_at_ms : 0;
   if (ack_status == EspNowAckStatus::kOk) {
     if (mac_addr != nullptr) {
       memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
@@ -388,16 +390,26 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
   }
 
   if (is_pending_capture_ack) {
+    Serial.printf(
+        "[platform] capture ACK command_id=%d request=%u ack_command_id=%lu upload_ms=%lu status=%s waited_ms=%lu\n",
+        g_pending_capture_command.command_id,
+        static_cast<unsigned int>(packet.request_id),
+        static_cast<unsigned long>(packet.value_u32_1),
+        static_cast<unsigned long>(packet.value_u32_2),
+        espnowAckToString(ack_status),
+        static_cast<unsigned long>(capture_wait_ms));
     reportPendingCaptureCommandResult(
         ack_status == EspNowAckStatus::kOk ? "completed" : "failed",
         manualCaptureAckMessage(ack_status));
   }
 
   Serial.printf(
-      "[camera-schedule] ACK request=%u command=%s status=%s from %s\n",
+      "[camera-schedule] ACK request=%u command=%s status=%s ack_command_id=%lu upload_ms=%lu from %s\n",
       static_cast<unsigned int>(packet.request_id),
       espnowCommandToString(command),
       espnowAckToString(ack_status),
+      static_cast<unsigned long>(packet.value_u32_1),
+      static_cast<unsigned long>(packet.value_u32_2),
       mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
 }
 
@@ -523,6 +535,8 @@ bool sendEspNowCaptureCommand(uint32_t now) {
   packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
   packet.request_id = g_next_espnow_request_id++;
   packet.timestamp_ms = now;
+  packet.value_u32_1 = 0;
+  packet.value_u32_2 = 0;
 
   const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
@@ -546,7 +560,7 @@ bool sendEspNowCaptureCommand(uint32_t now) {
   return true;
 }
 
-bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out) {
+bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int command_id = 0) {
   if (!g_espnow_ready) {
     return false;
   }
@@ -559,6 +573,8 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out) {
   packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
   packet.request_id = g_next_espnow_request_id++;
   packet.timestamp_ms = now;
+  packet.value_u32_1 = command_id > 0 ? static_cast<uint32_t>(command_id) : 0;
+  packet.value_u32_2 = 0;
 
   const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
@@ -578,8 +594,9 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out) {
   }
 
   Serial.printf(
-      "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
+      "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu target=%s\n",
       static_cast<unsigned int>(packet.request_id),
+      static_cast<unsigned long>(packet.value_u32_1),
       static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
       macToString(target_mac).c_str());
   return true;
@@ -635,6 +652,8 @@ void markPendingCaptureCommandInProgress(int command_id) {
     return;
   }
 
+  Serial.printf("[platform] capture command %d marked in_progress\n", command_id);
+
   String ack_error;
   if (!g_platform_client->report_hardware_command_result(
           command_id,
@@ -669,7 +688,7 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
   markPendingCaptureCommandInProgress(command.id);
 
   uint32_t request_id = 0;
-  if (!sendEspNowCaptureCommand(now, &request_id)) {
+  if (!sendEspNowCaptureCommand(now, &request_id, command.id)) {
     const String message =
         g_camera_target_mac_known ? "failed to send capture request to camera" : "camera node is not reachable";
     String ack_error;
@@ -691,9 +710,11 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
   g_pending_capture_command.request_id = request_id;
   g_pending_capture_command.started_at_ms = now;
   Serial.printf(
-      "[platform] capture command %d forwarded to camera request=%u\n",
+      "[platform] capture command %d forwarded to camera request=%u target=%s at_ms=%lu\n",
       command.id,
-      static_cast<unsigned int>(request_id));
+      static_cast<unsigned int>(request_id),
+      g_camera_target_mac_known ? macToString(g_camera_target_mac).c_str() : "broadcast",
+      static_cast<unsigned long>(now));
   return true;
 }
 
@@ -704,6 +725,11 @@ void servicePendingCaptureCommand(unsigned long now) {
   if (now - g_pending_capture_command.started_at_ms < kManualCaptureAckTimeoutMs) {
     return;
   }
+  Serial.printf(
+      "[platform] capture command %d request=%u timed out after %lu ms waiting for camera ACK/upload\n",
+      g_pending_capture_command.command_id,
+      static_cast<unsigned int>(g_pending_capture_command.request_id),
+      static_cast<unsigned long>(now - g_pending_capture_command.started_at_ms));
   reportPendingCaptureCommandResult("failed", "timed out waiting for camera upload acknowledgement");
 }
 
@@ -1518,6 +1544,7 @@ void execute_platform_command(const PlatformCommand& command) {
       message = "unsupported pump command";
     }
   } else if (command.target == "camera" && command.action == "capture") {
+    Serial.printf("[platform] received backend capture command id=%d value=%s\n", command.id, command.value.c_str());
     startPendingCaptureCommand(command, millis());
     return;
   } else {

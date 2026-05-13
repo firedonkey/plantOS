@@ -60,6 +60,8 @@ uint32_t g_last_provision_request_id = 0;
 volatile bool g_capture_requested = false;
 volatile bool g_capture_request_has_sender = false;
 volatile uint32_t g_capture_request_id = 0;
+volatile uint32_t g_capture_command_id = 0;
+volatile uint32_t g_capture_request_received_at_ms = 0;
 uint8_t g_capture_request_mac[6] = {0};
 }
 
@@ -568,19 +570,38 @@ bool captureAndUploadImage() {
       static_cast<unsigned int>(frame->height),
       static_cast<unsigned int>(frame->len));
 
+  const unsigned long upload_started_at_ms = millis();
+  Serial.printf(
+      "[camera-node] upload start command_id=%lu request=%u bytes=%u\n",
+      static_cast<unsigned long>(g_capture_command_id),
+      static_cast<unsigned int>(g_capture_request_id),
+      static_cast<unsigned int>(frame->len));
   String error;
+  int upload_http_status = 0;
   const bool uploaded = g_platform_client->upload_jpeg(
       frame->buf,
       frame->len,
       "esp32-camera.jpg",
       camera_node_runtime_config_complete(g_runtime_config) ? stableHardwareDeviceId().c_str() : nullptr,
+      &upload_http_status,
       &error);
   esp_camera_fb_return(frame);
 
   if (uploaded) {
-    Serial.println("[camera-node] image upload succeeded");
+    Serial.printf(
+        "[camera-node] upload success command_id=%lu request=%u http=%d elapsed_ms=%lu\n",
+        static_cast<unsigned long>(g_capture_command_id),
+        static_cast<unsigned int>(g_capture_request_id),
+        upload_http_status,
+        static_cast<unsigned long>(millis() - upload_started_at_ms));
   } else {
-    Serial.printf("[camera-node] image upload failed: %s\n", error.c_str());
+    Serial.printf(
+        "[camera-node] upload failed command_id=%lu request=%u http=%d elapsed_ms=%lu error=%s\n",
+        static_cast<unsigned long>(g_capture_command_id),
+        static_cast<unsigned int>(g_capture_request_id),
+        upload_http_status,
+        static_cast<unsigned long>(millis() - upload_started_at_ms),
+        error.c_str());
   }
 
   deinitCamera();
@@ -607,9 +628,10 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
 
   const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
   Serial.printf(
-      "[camera-node] ESP-NOW command received request=%u command=%s from %s\n",
+      "[camera-node] ESP-NOW command received request=%u command=%s command_id=%lu from %s\n",
       static_cast<unsigned int>(packet.request_id),
       commandToString(command),
+      static_cast<unsigned long>(packet.value_u32_1),
       macToString(mac_addr).c_str());
 
   if (command == EspNowCommandType::kProvisionStart) {
@@ -664,6 +686,8 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
 
   memcpy(g_capture_request_mac, mac_addr, sizeof(g_capture_request_mac));
   g_capture_request_id = packet.request_id;
+  g_capture_command_id = packet.value_u32_1;
+  g_capture_request_received_at_ms = millis();
   g_capture_request_has_sender = true;
   g_capture_requested = true;
 }
@@ -685,16 +709,30 @@ void handleCaptureRequest() {
 
   g_capture_requested = false;
   g_capture_in_progress = true;
+  Serial.printf(
+      "[camera-node] capture start command_id=%lu request=%u queue_wait_ms=%lu\n",
+      static_cast<unsigned long>(g_capture_command_id),
+      static_cast<unsigned int>(g_capture_request_id),
+      static_cast<unsigned long>(millis() - g_capture_request_received_at_ms));
   enterActiveCaptureMode();
 
   const bool success = captureAndUploadImage();
+  const unsigned long capture_elapsed_ms = millis() - g_capture_request_received_at_ms;
 
   if (g_capture_request_has_sender) {
+    Serial.printf(
+        "[camera-node] sending capture ACK command_id=%lu request=%u status=%s elapsed_ms=%lu\n",
+        static_cast<unsigned long>(g_capture_command_id),
+        static_cast<unsigned int>(g_capture_request_id),
+        success ? "ok" : "failed",
+        static_cast<unsigned long>(capture_elapsed_ms));
     sendAck(
         g_capture_request_mac,
         EspNowCommandType::kCaptureImage,
         g_capture_request_id,
-        success ? EspNowAckStatus::kOk : EspNowAckStatus::kFailed);
+        success ? EspNowAckStatus::kOk : EspNowAckStatus::kFailed,
+        g_capture_command_id,
+        capture_elapsed_ms);
   }
   g_capture_request_has_sender = false;
 

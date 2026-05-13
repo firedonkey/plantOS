@@ -8,7 +8,7 @@ from app.schemas.commands import CommandAck, CommandCreate
 
 
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 20
-CAPTURE_COMMAND_TIMEOUT_SECONDS = 90
+CAPTURE_COMMAND_TIMEOUT_SECONDS = 150
 
 
 def _timeout_seconds_for_command(command: Command, default_timeout_seconds: int) -> int:

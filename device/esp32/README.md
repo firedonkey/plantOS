@@ -174,6 +174,63 @@ Suggested smoke-test order:
 6. Flash the XIAO camera board with `camera-platform-test`.
 7. Confirm images begin appearing for the same device.
 
+## Manual capture debug checklist
+
+When a manual capture does not complete cleanly, keep both serial monitors open and trigger
+`Capture Image` from the standalone web or mobile dashboard.
+
+Master serial should now show:
+
+- backend capture command id
+- ESP-NOW capture `request_id`
+- target MAC used for the request
+- `in_progress` update sent to the backend
+- camera ACK status, echoed command id, and capture/upload elapsed time
+- explicit timeout log if no ACK is received in time
+
+Camera serial should now show:
+
+- capture request received with `request_id` and echoed backend command id
+- queue wait before capture starts
+- upload start with request id and JPEG byte count
+- upload HTTP result and elapsed time
+- ACK sent back to the master with the echoed backend command id
+
+Recommended local debug flow:
+
+1. Flash the master:
+
+```bash
+cd /Users/gary/plantOS/device/esp32
+./scripts/flash_esp32.sh --local --port /dev/cu.usbmodem11401 --monitor
+```
+
+2. Flash the camera node in another terminal:
+
+```bash
+cd /Users/gary/plantOS/device/esp32
+./scripts/flash_esp32.sh --test-camera-platform --port /dev/cu.usbmodem112201 --monitor
+```
+
+3. Trigger `Capture Image` once.
+4. Match the backend command id from the UI/API with:
+   - the master `capture command <id> forwarded to camera request=<request_id>` log
+   - the camera `command_id=<id> request=<request_id>` log
+   - the master ACK/result log for the same request
+
+If the gallery updates but the command fails, compare:
+
+- master timeout timestamp
+- camera upload completion timestamp
+- whether the camera sent the ACK after upload
+
+That will distinguish:
+
+- camera never received the request
+- camera captured but upload failed
+- upload succeeded but ACK was lost
+- ACK arrived too late for the current timeout budget
+
 ## Build/Flash (PlatformIO)
 
 1. Install PlatformIO Core in `/Users/gary/plantOS/.venv`.

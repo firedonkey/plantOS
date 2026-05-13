@@ -65,6 +65,7 @@ class PlatformClient {
       size_t length,
       const char* filename,
       const char* source_hardware_device_id = nullptr,
+      int* http_status_code = nullptr,
       String* error = nullptr);
 
  private:
