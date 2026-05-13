@@ -9,6 +9,7 @@ type ApiDevice = {
   name: string;
   location?: string | null;
   plant_type?: string | null;
+  api_token?: string | null;
   status?: string | null;
   latest_reading?: ApiDeviceSummary["latest_reading"] | null;
   latest_image?: ApiDeviceSummary["latest_image"] | null;
@@ -159,6 +160,15 @@ export type SetupStatus = {
   redirectPath?: string;
 };
 
+export type DeviceSettingsDetails = {
+  device: Device;
+  hardwareHealth?: HardwareHealth;
+  maskedToken: string;
+  hardwareIdentifiers: { label: string; value: string }[];
+  onboardingStatus: string;
+  onboardingGuidance: string;
+};
+
 function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
   switch (status) {
     case "pending":
@@ -175,7 +185,7 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
   }
 }
 
-function mapStatus(summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading">, explicitStatus?: string | null): Device["status"] {
+function mapStatus(summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading" | "latest_image">, explicitStatus?: string | null): Device["status"] {
   const normalizedExplicit = explicitStatus?.toLowerCase();
   if (normalizedExplicit === "online" || normalizedExplicit === "offline" || normalizedExplicit === "unknown" || normalizedExplicit === "degraded") {
     return normalizedExplicit;
@@ -627,4 +637,155 @@ export async function deleteDevice(
       message: "Mock mode does not persist device removal, but the flow is available for layout testing.",
     };
   }
+}
+
+export async function getDeviceSettingsDetails(
+  deviceId: string,
+  token?: string,
+): Promise<{ details: DeviceSettingsDetails; usedMock: boolean }> {
+  try {
+    const device = await apiRequest<ApiDevice>(`/api/devices/${deviceId}`, {}, token);
+    const mappedDevice: Device = {
+      id: String(device.id),
+      name: device.name,
+      location: device.location ?? undefined,
+      plantType: device.plant_type ?? undefined,
+      status: mapStatus(
+        {
+          latest_reading: device.latest_reading ?? undefined,
+          latest_image: device.latest_image ?? undefined,
+          node_summary: device.node_summary ?? undefined,
+        },
+        device.status,
+      ),
+      lastSeenAt: device.hardware_health?.last_heartbeat_at ?? device.latest_reading?.timestamp ?? undefined,
+      latestReading: mapReading(device.latest_reading),
+      latestImage: device.latest_image
+        ? {
+            id: String(device.latest_image.id),
+            url: device.latest_image.content_url,
+            capturedAt: device.latest_image.timestamp,
+          }
+        : undefined,
+    };
+    const hardwareHealth = mapHardwareHealth(device.hardware_health);
+    return {
+      usedMock: false,
+      details: {
+        device: mappedDevice,
+        hardwareHealth,
+        maskedToken: maskToken(device.api_token ?? ""),
+        hardwareIdentifiers: collectHardwareIdentifiers(hardwareHealth),
+        onboardingStatus: deriveOnboardingStatus(mappedDevice, hardwareHealth),
+        onboardingGuidance: deriveOnboardingGuidance(mappedDevice, hardwareHealth),
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
+    const health = mockDashboard.hardwareHealth;
+    return {
+      usedMock: true,
+      details: {
+        device: mockDashboard.device,
+        hardwareHealth: health,
+        maskedToken: "mock...token",
+        hardwareIdentifiers: collectHardwareIdentifiers(health),
+        onboardingStatus: deriveOnboardingStatus(mockDashboard.device, health),
+        onboardingGuidance: deriveOnboardingGuidance(mockDashboard.device, health),
+      },
+    };
+  }
+}
+
+export async function updateDeviceSettings(
+  deviceId: string,
+  input: { name: string; location?: string; plantType?: string },
+  token?: string,
+): Promise<{ details: DeviceSettingsDetails; usedMock: boolean }> {
+  try {
+    await apiRequest<ApiDevice>(
+      `/api/devices/${deviceId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: input.name,
+          location: input.location ?? null,
+          plant_type: input.plantType ?? null,
+        }),
+      },
+      token,
+    );
+    return getDeviceSettingsDetails(deviceId, token);
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
+    return {
+      usedMock: true,
+      details: {
+        device: {
+          ...mockDashboard.device,
+          name: input.name,
+          location: input.location,
+          plantType: input.plantType,
+        },
+        hardwareHealth: mockDashboard.hardwareHealth,
+        maskedToken: "mock...token",
+        hardwareIdentifiers: collectHardwareIdentifiers(mockDashboard.hardwareHealth),
+        onboardingStatus: deriveOnboardingStatus(mockDashboard.device, mockDashboard.hardwareHealth),
+        onboardingGuidance: "Mock mode previews the settings form, but it does not persist device changes.",
+      },
+    };
+  }
+}
+
+function maskToken(token: string): string {
+  if (!token) {
+    return "Not issued yet";
+  }
+  if (token.length <= 10) {
+    return token;
+  }
+  return `${token.slice(0, 4)}…${token.slice(-4)}`;
+}
+
+function collectHardwareIdentifiers(health?: HardwareHealth) {
+  const identifiers: { label: string; value: string }[] = [];
+  if (health?.primary?.hardwareDeviceId) {
+    identifiers.push({ label: health.primary.displayName ?? "Primary node", value: health.primary.hardwareDeviceId });
+  }
+  for (const camera of health?.cameras ?? []) {
+    identifiers.push({ label: camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim(), value: camera.hardwareDeviceId });
+  }
+  return identifiers;
+}
+
+function deriveOnboardingStatus(device: Device, health?: HardwareHealth) {
+  if (!health?.primary) {
+    return "Provisioning details have not reached the backend yet.";
+  }
+  if (!device.latestReading) {
+    return "Device registered and waiting for its first reading.";
+  }
+  if (health.cameras.length > 0 && !device.latestImage) {
+    return "Master is online. Waiting for the first camera image.";
+  }
+  return "Device is provisioned and actively reporting.";
+}
+
+function deriveOnboardingGuidance(device: Device, health?: HardwareHealth) {
+  if (!health?.primary) {
+    return "If the device never appears here, put it back into provisioning mode and walk through the setup flow again.";
+  }
+  if (!device.latestReading) {
+    return "Keep power connected and confirm the device joined your home Wi-Fi. The dashboard opens fully after the first reading arrives.";
+  }
+  if (health.cameras.length > 0 && !device.latestImage) {
+    return "The camera node may still be joining. Check the camera power and ESP-NOW logs if images stay missing.";
+  }
+  return "For a reboot or re-provision, use the physical device controls and watch the serial monitor. No remote recovery action is wired in yet.";
 }

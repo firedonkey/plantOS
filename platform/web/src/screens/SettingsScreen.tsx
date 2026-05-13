@@ -28,6 +28,11 @@ export function SettingsScreen() {
         <p className="subtitle">Dev-only bearer auth is for local standalone development only. Production auth still lives in the backend-rendered web flow.</p>
       </div>
 
+      <div className="card">
+        <h3>Device settings</h3>
+        <p className="subtitle">Operational device details such as labels, masked token summaries, hardware identifiers, and provisioning status now live on each device dashboard.</p>
+      </div>
+
       <button className="primary-button" onClick={signOut}>
         Log out
       </button>

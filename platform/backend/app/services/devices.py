@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import Command, Device, Event, Image, SensorReading, User
-from app.schemas.devices import DeviceCreate
+from app.schemas.devices import DeviceCreate, DeviceUpdate
 
 
 def generate_device_token() -> str:
@@ -58,6 +58,20 @@ def get_device_for_user(session: Session, user: User, device_id: int) -> Device 
     )
     if device is None:
         return None
+    return ensure_device_api_token(session, device)
+
+
+def update_device_for_user(session: Session, user: User, device_id: int, device_data: DeviceUpdate) -> Device | None:
+    device = get_device_for_user(session, user, device_id)
+    if device is None:
+        return None
+
+    updates = device_data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(device, field, value)
+    session.add(device)
+    session.commit()
+    session.refresh(device)
     return ensure_device_api_token(session, device)
 
 

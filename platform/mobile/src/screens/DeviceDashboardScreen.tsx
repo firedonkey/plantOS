@@ -137,6 +137,9 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           <Link href={`/(app)/devices/${deviceId}/history`} style={styles.historyLink}>
             View history
           </Link>
+          <Link href={`/(app)/devices/${deviceId}/settings`} style={styles.historyLink}>
+            Device settings
+          </Link>
         </>
       ) : (
         <Text style={styles.meta}>Loading dashboard…</Text>

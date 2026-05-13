@@ -112,6 +112,37 @@ def test_create_list_and_get_device_api():
         teardown_overrides()
 
 
+def test_update_device_api():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post(
+            "/api/devices",
+            json={
+                "name": "Kitchen Rose",
+                "plant_type": "Rose",
+                "location": "Kitchen window",
+            },
+        )
+        device_id = create_response.json()["id"]
+
+        update_response = client.patch(
+            f"/api/devices/{device_id}",
+            json={
+                "name": "Kitchen Basil",
+                "location": "Desk",
+                "plant_type": "Basil",
+            },
+        )
+
+        assert update_response.status_code == 200
+        payload = update_response.json()
+        assert payload["name"] == "Kitchen Basil"
+        assert payload["location"] == "Desk"
+        assert payload["plant_type"] == "Basil"
+    finally:
+        teardown_overrides()
+
+
 def test_device_summary_readings_and_latest_image_api():
     client, _ = build_client_with_user()
     try:

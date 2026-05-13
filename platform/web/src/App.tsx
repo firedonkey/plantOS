@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { AddDeviceScreen } from "./screens/AddDeviceScreen";
 import { DeviceDashboardScreen } from "./screens/DeviceDashboardScreen";
+import { DeviceSettingsScreen } from "./screens/DeviceSettingsScreen";
 import { DeviceListScreen } from "./screens/DeviceListScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { LandingScreen } from "./screens/LandingScreen";
@@ -31,6 +32,7 @@ export function App() {
         <Route path="devices/setup-finishing" element={<SetupFinishingScreen />} />
         <Route path="devices/:deviceId" element={<DeviceDashboardScreen />} />
         <Route path="devices/:deviceId/history" element={<HistoryScreen />} />
+        <Route path="devices/:deviceId/settings" element={<DeviceSettingsScreen />} />
         <Route path="devices/:deviceId/remove" element={<RemoveDeviceScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
       </Route>

@@ -611,6 +611,36 @@ input {
   color: #55635d;
 }
 
+.detail-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid #e7ecef;
+  padding-top: 12px;
+}
+
+.detail-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.detail-row span {
+  color: #55635d;
+  text-align: right;
+}
+
+.token-summary {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+}
+
 .empty-state {
   background: #ffffff;
   border: 1px solid #d7dee3;

@@ -59,6 +59,12 @@ class DeviceCreate(BaseModel):
     plant_type: str | None = Field(default=None, max_length=120)
 
 
+class DeviceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    location: str | None = Field(default=None, max_length=120)
+    plant_type: str | None = Field(default=None, max_length=120)
+
+
 class DeviceRead(BaseModel):
     id: int
     name: str

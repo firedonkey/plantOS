@@ -28,6 +28,7 @@ from app.schemas.devices import (
     DeviceSummaryImageRead,
     DeviceSummaryRead,
     DeviceSummaryReadingRead,
+    DeviceUpdate,
 )
 from app.schemas.setup import DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
@@ -39,6 +40,7 @@ from app.services.devices import (
     factory_reset_device,
     get_device_for_user,
     list_devices_for_user,
+    update_device_for_user,
 )
 from app.services.images import list_recent_images_for_device
 from app.services.readings import get_latest_reading_for_device, list_recent_readings_for_device
@@ -147,6 +149,20 @@ def get_device(
     current_user: User = Depends(get_current_user),
 ):
     device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return _build_device_read(request, session, device)
+
+
+@router.patch("/{device_id}", response_model=DeviceRead)
+def update_device(
+    device_id: int,
+    payload: DeviceUpdate,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = update_device_for_user(session, current_user, device_id, payload)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
     return _build_device_read(request, session, device)

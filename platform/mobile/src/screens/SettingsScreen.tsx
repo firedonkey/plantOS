@@ -34,6 +34,11 @@ export function SettingsScreen() {
         <Text style={styles.value}>{Constants.expoConfig?.version ?? "0.1.0"}</Text>
       </Card>
 
+      <Card>
+        <Text style={styles.label}>Device settings</Text>
+        <Text style={styles.todo}>Operational device labels, masked token summaries, hardware identifiers, and provisioning state now live on each device dashboard.</Text>
+      </Card>
+
       <PrimaryButton
         label="Log out"
         onPress={async () => {
