@@ -41,7 +41,7 @@ constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
-constexpr uint32_t kManualCaptureAckTimeoutMs = 15000UL;
+constexpr uint32_t kManualCaptureAckTimeoutMs = 90000UL;
 
 struct DeviceConfig {
   String wifi_ssid;

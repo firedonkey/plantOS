@@ -8,6 +8,20 @@ from app.schemas.commands import CommandAck, CommandCreate
 
 
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 20
+CAPTURE_COMMAND_TIMEOUT_SECONDS = 90
+
+
+def _timeout_seconds_for_command(command: Command, default_timeout_seconds: int) -> int:
+    if command.target == "camera" and command.action == "capture":
+        return max(default_timeout_seconds, CAPTURE_COMMAND_TIMEOUT_SECONDS)
+    return default_timeout_seconds
+
+
+def _command_created_at(command: Command) -> datetime:
+    created_at = command.created_at
+    if created_at.tzinfo is None:
+        return created_at.replace(tzinfo=timezone.utc)
+    return created_at
 
 
 def create_command(session: Session, device_id: int, payload: CommandCreate) -> Command:
@@ -125,13 +139,11 @@ def expire_stale_commands(
     device_id: int,
     timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
 ) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
     commands = list(
         session.scalars(
             select(Command).where(
                 Command.device_id == device_id,
                 Command.status.in_([CommandStatus.PENDING, CommandStatus.SENT, CommandStatus.IN_PROGRESS]),
-                Command.created_at < cutoff,
             )
         )
     )
@@ -139,7 +151,15 @@ def expire_stale_commands(
         return
 
     now = datetime.now(timezone.utc)
-    for command in commands:
+    stale_commands = [
+        command
+        for command in commands
+        if _command_created_at(command) < now - timedelta(seconds=_timeout_seconds_for_command(command, timeout_seconds))
+    ]
+    if not stale_commands:
+        return
+
+    for command in stale_commands:
         command.status = CommandStatus.TIMED_OUT
         command.completed_at = now
         if command.sent_at:
