@@ -1,3 +1,4 @@
+from app.models.auth import AuthHandoffCode, AuthRefreshSession
 from app.models.command import Command, CommandAction, CommandStatus, CommandTarget
 from app.models.device import Device
 from app.models.device_node import DeviceNode
@@ -9,6 +10,8 @@ from app.models.user import User
 
 __all__ = [
     "Device",
+    "AuthHandoffCode",
+    "AuthRefreshSession",
     "DeviceNode",
     "Command",
     "CommandAction",

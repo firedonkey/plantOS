@@ -6,6 +6,7 @@ from app.core.settings import get_settings
 from app.models import Device, User
 from app.services.devices import get_device_by_api_token
 from app.services.dev_auth import read_dev_token
+from app.services.standalone_auth import get_user_from_access_token
 from app.services.users import get_user_by_id
 
 
@@ -16,6 +17,9 @@ def get_optional_current_user(request: Request, session: Session = Depends(get_s
         if not token:
             return None
         settings = get_settings()
+        user = get_user_from_access_token(settings, session, token)
+        if user is not None:
+            return user
         if not settings.dev_token_auth_enabled:
             return None
         user_id = read_dev_token(settings, token)

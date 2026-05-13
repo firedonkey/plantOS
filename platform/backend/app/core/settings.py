@@ -36,6 +36,12 @@ class Settings:
     device_platform_url: str | None = None
     dev_token_auth_enabled: bool = True
     standalone_web_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    standalone_access_token_ttl_seconds: int = 15 * 60
+    standalone_refresh_token_ttl_days: int = 30
+    standalone_refresh_cookie_name: str = "plantlab_refresh"
+    standalone_refresh_cookie_samesite: str = "lax"
+    standalone_refresh_cookie_secure: bool | None = None
+    standalone_mobile_scheme: str | None = "plantlab"
 
     @property
     def google_auth_configured(self) -> bool:
@@ -66,6 +72,20 @@ class Settings:
             raise ValueError("APP_SECRET_KEY must be set to a secure value in production.")
         if self.is_production and self.dev_token_auth_enabled:
             raise ValueError("PLANTLAB_DEV_TOKEN_AUTH_ENABLED cannot be enabled in production.")
+        if self.standalone_access_token_ttl_seconds < 60:
+            raise ValueError("PLANTLAB_STANDALONE_ACCESS_TOKEN_TTL_SECONDS must be at least 60.")
+        if self.standalone_refresh_token_ttl_days < 1:
+            raise ValueError("PLANTLAB_STANDALONE_REFRESH_TOKEN_TTL_DAYS must be at least 1.")
+        if self.standalone_refresh_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError("PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE must be one of lax, strict, or none.")
+        if self.standalone_refresh_cookie_samesite == "none" and self.effective_refresh_cookie_secure is False:
+            raise ValueError("PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=none requires a secure refresh cookie.")
+
+    @property
+    def effective_refresh_cookie_secure(self) -> bool:
+        if self.standalone_refresh_cookie_secure is not None:
+            return self.standalone_refresh_cookie_secure
+        return self.is_production
 
 
 @lru_cache
@@ -97,6 +117,31 @@ def get_settings() -> Settings:
             if os.getenv("APP_ENV", Settings.app_env).lower() == "production"
             else Settings.standalone_web_origin_regex
         ),
+        standalone_access_token_ttl_seconds=_env_int(
+            "PLANTLAB_STANDALONE_ACCESS_TOKEN_TTL_SECONDS",
+            default=Settings.standalone_access_token_ttl_seconds,
+        ),
+        standalone_refresh_token_ttl_days=_env_int(
+            "PLANTLAB_STANDALONE_REFRESH_TOKEN_TTL_DAYS",
+            default=Settings.standalone_refresh_token_ttl_days,
+        ),
+        standalone_refresh_cookie_name=os.getenv(
+            "PLANTLAB_STANDALONE_REFRESH_COOKIE_NAME",
+            Settings.standalone_refresh_cookie_name,
+        ).strip()
+        or Settings.standalone_refresh_cookie_name,
+        standalone_refresh_cookie_samesite=os.getenv(
+            "PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE",
+            Settings.standalone_refresh_cookie_samesite,
+        )
+        .strip()
+        .lower(),
+        standalone_refresh_cookie_secure=_optional_env_bool("PLANTLAB_STANDALONE_REFRESH_COOKIE_SECURE"),
+        standalone_mobile_scheme=(
+            _optional_env("PLANTLAB_STANDALONE_MOBILE_SCHEME")
+            if os.getenv("PLANTLAB_STANDALONE_MOBILE_SCHEME") is not None
+            else Settings.standalone_mobile_scheme
+        ),
     )
     settings.validate()
     return settings
@@ -122,6 +167,29 @@ def _env_bool(name: str, *, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _optional_env_bool(name: str) -> bool | None:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _env_int(name: str, *, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
 
 
 def _required_or_default_secret(name: str, legacy_name: str | None = None) -> str:

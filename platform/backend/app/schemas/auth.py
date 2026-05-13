@@ -20,6 +20,25 @@ class AuthSessionRead(BaseModel):
     user: AuthUserRead
 
 
+class AuthRefreshRequest(BaseModel):
+    refresh_token: str | None = None
+    handoff_code: str | None = None
+
+
+class AuthLogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+
+class AuthRefreshRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    expires_at: str
+    mode: str = "standalone"
+    user: AuthUserRead
+    refresh_token: str | None = None
+
+
 class CurrentUserRead(BaseModel):
     authenticated: bool
     user: AuthUserRead | None
