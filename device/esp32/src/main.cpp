@@ -41,6 +41,7 @@ constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
+constexpr uint32_t kManualCaptureAckTimeoutMs = 15000UL;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -50,6 +51,13 @@ struct DeviceConfig {
   String backend_url;
   String platform_url;
   int platform_device_id = 0;
+};
+
+struct PendingCaptureCommand {
+  bool active = false;
+  int command_id = 0;
+  uint32_t request_id = 0;
+  unsigned long started_at_ms = 0;
 };
 
 struct WiFiNetworkOption {
@@ -111,6 +119,14 @@ bool g_camera_target_mac_known = false;
 bool g_camera_bootstrap_capture_active = false;
 uint8_t g_camera_bootstrap_capture_attempts = 0;
 unsigned long g_next_camera_bootstrap_capture_ms = 0;
+PendingCaptureCommand g_pending_capture_command{};
+
+const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
+void clearPendingCaptureCommand();
+void reportPendingCaptureCommandResult(const char* status, const String& message);
+void markPendingCaptureCommandInProgress(int command_id);
+bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now);
+void servicePendingCaptureCommand(unsigned long now);
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -357,6 +373,8 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
   }
 
   const EspNowAckStatus ack_status = static_cast<EspNowAckStatus>(packet.ack_status);
+  const bool is_pending_capture_ack =
+      g_pending_capture_command.active && packet.request_id == g_pending_capture_command.request_id;
   if (ack_status == EspNowAckStatus::kOk) {
     if (mac_addr != nullptr) {
       memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
@@ -367,6 +385,12 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       Serial.println("[camera-schedule] capture ACK confirms camera runtime is ready");
     }
     g_camera_bootstrap_capture_active = false;
+  }
+
+  if (is_pending_capture_ack) {
+    reportPendingCaptureCommandResult(
+        ack_status == EspNowAckStatus::kOk ? "completed" : "failed",
+        manualCaptureAckMessage(ack_status));
   }
 
   Serial.printf(
@@ -522,9 +546,170 @@ bool sendEspNowCaptureCommand(uint32_t now) {
   return true;
 }
 
+bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out) {
+  if (!g_espnow_ready) {
+    return false;
+  }
+
+  EspNowPacket packet{};
+  packet.magic = ESPNOW_TEST_MAGIC;
+  packet.version = ESPNOW_TEST_VERSION;
+  packet.kind = static_cast<uint8_t>(EspNowMessageKind::kCommand);
+  packet.command = static_cast<uint8_t>(EspNowCommandType::kCaptureImage);
+  packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
+  packet.request_id = g_next_espnow_request_id++;
+  packet.timestamp_ms = now;
+
+  const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
+  if (!ensureEspNowPeer(target_mac)) {
+    return false;
+  }
+  const esp_err_t err = esp_now_send(
+      target_mac,
+      reinterpret_cast<const uint8_t*>(&packet),
+      sizeof(packet));
+  if (err != ESP_OK) {
+    Serial.printf("[camera-schedule] capture send failed err=%d\n", static_cast<int>(err));
+    return false;
+  }
+
+  if (request_id_out != nullptr) {
+    *request_id_out = packet.request_id;
+  }
+
+  Serial.printf(
+      "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
+      static_cast<unsigned int>(packet.request_id),
+      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      macToString(target_mac).c_str());
+  return true;
+}
+
+const char* manualCaptureAckMessage(EspNowAckStatus ack_status) {
+  switch (ack_status) {
+    case EspNowAckStatus::kOk:
+      return "camera uploaded a new image";
+    case EspNowAckStatus::kBusy:
+      return "camera is busy capturing another image";
+    case EspNowAckStatus::kUnsupported:
+      return "camera firmware does not support manual capture";
+    case EspNowAckStatus::kInvalid:
+      return "camera rejected the capture request";
+    case EspNowAckStatus::kFailed:
+    default:
+      return "camera capture failed";
+  }
+}
+
+void clearPendingCaptureCommand() {
+  g_pending_capture_command = PendingCaptureCommand{};
+}
+
+void reportPendingCaptureCommandResult(const char* status, const String& message) {
+  if (!g_pending_capture_command.active || !platform_enabled()) {
+    clearPendingCaptureCommand();
+    return;
+  }
+
+  String ack_error;
+  if (!g_platform_client->report_hardware_command_result(
+          g_pending_capture_command.command_id,
+          status,
+          message.c_str(),
+          g_growing_light.is_on(),
+          g_pump.is_on(),
+          &ack_error)) {
+    Serial.printf("[platform] capture command result update failed: %s\n", ack_error.c_str());
+  } else {
+    Serial.printf(
+        "[platform] capture command %d marked %s: %s\n",
+        g_pending_capture_command.command_id,
+        status,
+        message.c_str());
+  }
+  clearPendingCaptureCommand();
+}
+
+void markPendingCaptureCommandInProgress(int command_id) {
+  if (!platform_enabled()) {
+    return;
+  }
+
+  String ack_error;
+  if (!g_platform_client->report_hardware_command_result(
+          command_id,
+          "in_progress",
+          "waiting for camera upload",
+          g_growing_light.is_on(),
+          g_pump.is_on(),
+          &ack_error)) {
+    Serial.printf("[platform] capture command progress update failed: %s\n", ack_error.c_str());
+  }
+}
+
+bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now) {
+  if (g_pending_capture_command.active) {
+    Serial.printf(
+        "[platform] capture command %d cannot start while command %d is still pending\n",
+        command.id,
+        g_pending_capture_command.command_id);
+    String ack_error;
+    if (!g_platform_client->report_hardware_command_result(
+            command.id,
+            "failed",
+            "capture already in progress",
+            g_growing_light.is_on(),
+            g_pump.is_on(),
+            &ack_error)) {
+      Serial.printf("[platform] overlapping capture command update failed: %s\n", ack_error.c_str());
+    }
+    return false;
+  }
+
+  markPendingCaptureCommandInProgress(command.id);
+
+  uint32_t request_id = 0;
+  if (!sendEspNowCaptureCommand(now, &request_id)) {
+    const String message =
+        g_camera_target_mac_known ? "failed to send capture request to camera" : "camera node is not reachable";
+    String ack_error;
+    if (!g_platform_client->report_hardware_command_result(
+            command.id,
+            "failed",
+            message.c_str(),
+            g_growing_light.is_on(),
+            g_pump.is_on(),
+            &ack_error)) {
+      Serial.printf("[platform] capture command failure update failed: %s\n", ack_error.c_str());
+    }
+    Serial.printf("[platform] capture command %d failed to start: %s\n", command.id, message.c_str());
+    return false;
+  }
+
+  g_pending_capture_command.active = true;
+  g_pending_capture_command.command_id = command.id;
+  g_pending_capture_command.request_id = request_id;
+  g_pending_capture_command.started_at_ms = now;
+  Serial.printf(
+      "[platform] capture command %d forwarded to camera request=%u\n",
+      command.id,
+      static_cast<unsigned int>(request_id));
+  return true;
+}
+
+void servicePendingCaptureCommand(unsigned long now) {
+  if (!g_pending_capture_command.active) {
+    return;
+  }
+  if (now - g_pending_capture_command.started_at_ms < kManualCaptureAckTimeoutMs) {
+    return;
+  }
+  reportPendingCaptureCommandResult("failed", "timed out waiting for camera upload acknowledgement");
+}
+
 void maybeSendBootstrapCapture(unsigned long now) {
   if (!g_camera_bootstrap_capture_active || g_provisioning_mode || !g_espnow_ready || !g_wifi_ready ||
-      !platform_enabled()) {
+      !platform_enabled() || g_pending_capture_command.active) {
     return;
   }
   if (g_camera_runtime_ready) {
@@ -551,6 +736,9 @@ void maybeSendBootstrapCapture(unsigned long now) {
 }
 
 void pollCameraCaptureSchedule(unsigned long now) {
+  if (g_pending_capture_command.active) {
+    return;
+  }
   maybeSendBootstrapCapture(now);
   const bool runtime_ready =
       g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
@@ -1329,6 +1517,9 @@ void execute_platform_command(const PlatformCommand& command) {
       success = false;
       message = "unsupported pump command";
     }
+  } else if (command.target == "camera" && command.action == "capture") {
+    startPendingCaptureCommand(command, millis());
+    return;
   } else {
     success = false;
     message = "unsupported command target";
@@ -1456,6 +1647,7 @@ void loop() {
 
   if (platform_enabled()) {
     serviceCameraProvisioning(now);
+    servicePendingCaptureCommand(now);
     pollCameraCaptureSchedule(now);
     poll_platform_commands(now);
     send_platform_status(now);
