@@ -47,7 +47,7 @@ unsigned long g_last_node_register_attempt_ms = 0;
 unsigned long g_wifi_connect_started_at_ms = 0;
 bool g_wifi_connecting = false;
 bool g_wifi_ready = false;
-bool g_wifi_power_save_configured = false;
+bool g_wifi_runtime_configured = false;
 bool g_camera_initialized = false;
 bool g_capture_in_progress = false;
 bool g_scheduled_capture_paused = false;
@@ -346,16 +346,16 @@ void enterActiveCaptureMode() {
 }
 
 void enableLowPowerWiFi() {
-  if (g_wifi_power_save_configured || !g_wifi_ready) {
+  if (g_wifi_runtime_configured || !g_wifi_ready) {
     return;
   }
 
-  esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+  esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
   esp_err_t tx_err = esp_wifi_set_max_tx_power(PLANTLAB_WIFI_MAX_TX_POWER);
   if (ps_err == ESP_OK && tx_err == ESP_OK) {
-    g_wifi_power_save_configured = true;
+    g_wifi_runtime_configured = true;
     Serial.printf(
-        "[camera-node] Wi-Fi power save enabled mode=min_modem tx_power=%d\n",
+        "[camera-node] Wi-Fi tuned for ESP-NOW reliability mode=none tx_power=%d\n",
         static_cast<int>(PLANTLAB_WIFI_MAX_TX_POWER));
   } else {
     Serial.printf(
@@ -375,7 +375,7 @@ void setupWiFi() {
   const String wifi_password = runtimeWifiPassword();
   Serial.printf("[camera-node] connecting to %s\n", wifi_ssid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(true);
+  WiFi.setSleep(false);
   WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
   g_last_wifi_attempt_ms = millis();
   g_wifi_connect_started_at_ms = millis();
@@ -391,7 +391,7 @@ void maintainWiFiConnection() {
     if (!g_wifi_ready) {
       g_wifi_ready = true;
       g_wifi_connecting = false;
-      g_wifi_power_save_configured = false;
+      g_wifi_runtime_configured = false;
       Serial.printf("[camera-node] Wi-Fi connected ip=%s\n", WiFi.localIP().toString().c_str());
     }
     enableLowPowerWiFi();
@@ -399,7 +399,7 @@ void maintainWiFiConnection() {
   }
 
   g_wifi_ready = false;
-  g_wifi_power_save_configured = false;
+  g_wifi_runtime_configured = false;
 
   const unsigned long now = millis();
   if (g_wifi_connecting && now - g_wifi_connect_started_at_ms >= PLANTLAB_WIFI_CONNECT_TIMEOUT_MS) {

@@ -79,6 +79,15 @@ struct CameraCaptureFlight {
   unsigned long last_delivery_failure_ms = 0;
 };
 
+struct EspNowSendContext {
+  bool valid = false;
+  uint32_t request_id = 0;
+  int command_id = 0;
+  EspNowCommandType command = EspNowCommandType::kHealthCheck;
+  unsigned long sent_at_ms = 0;
+  uint8_t target_mac[6] = {0};
+};
+
 struct WiFiNetworkOption {
   String ssid;
   int rssi = -127;
@@ -140,6 +149,7 @@ uint8_t g_camera_bootstrap_capture_attempts = 0;
 unsigned long g_next_camera_bootstrap_capture_ms = 0;
 PendingCaptureCommand g_pending_capture_command{};
 CameraCaptureFlight g_camera_capture_in_flight{};
+EspNowSendContext g_last_espnow_send{};
 bool g_camera_schedule_paused_for_manual = false;
 
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
@@ -155,6 +165,12 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
 bool dispatchPendingCaptureCommand(unsigned long now);
 void serviceCameraCaptureFlight(unsigned long now);
 void servicePendingCaptureCommand(unsigned long now);
+void noteEspNowSend(
+    EspNowCommandType command,
+    uint32_t request_id,
+    int command_id,
+    const uint8_t* target_mac,
+    unsigned long now);
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -334,11 +350,31 @@ void onEspNowDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
       g_camera_capture_in_flight.last_delivery_failure_ms = millis();
     }
     Serial.printf(
-        "[camera-schedule] ESP-NOW send failed status=%d request=%u command_id=%d target=%s\n",
+        "[camera-schedule] ESP-NOW send failed status=%d command=%s request=%u command_id=%d target=%s age_ms=%lu\n",
         static_cast<int>(status),
-        static_cast<unsigned int>(g_camera_capture_in_flight.request_id),
-        g_camera_capture_in_flight.command_id,
-        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+        espnowCommandToString(g_last_espnow_send.command),
+        static_cast<unsigned int>(g_last_espnow_send.request_id),
+        g_last_espnow_send.command_id,
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : macToString(g_last_espnow_send.target_mac).c_str(),
+        static_cast<unsigned long>(millis() - g_last_espnow_send.sent_at_ms));
+  }
+}
+
+void noteEspNowSend(
+    EspNowCommandType command,
+    uint32_t request_id,
+    int command_id,
+    const uint8_t* target_mac,
+    unsigned long now) {
+  g_last_espnow_send.valid = true;
+  g_last_espnow_send.command = command;
+  g_last_espnow_send.request_id = request_id;
+  g_last_espnow_send.command_id = command_id;
+  g_last_espnow_send.sent_at_ms = now;
+  if (target_mac != nullptr) {
+    memcpy(g_last_espnow_send.target_mac, target_mac, sizeof(g_last_espnow_send.target_mac));
+  } else {
+    memset(g_last_espnow_send.target_mac, 0, sizeof(g_last_espnow_send.target_mac));
   }
 }
 
@@ -552,6 +588,12 @@ bool sendCameraProvisioningPacket(unsigned long now) {
     return false;
   }
 
+  noteEspNowSend(
+      EspNowCommandType::kProvisionStart,
+      packet.request_id,
+      0,
+      g_camera_provisioning_session.target_mac,
+      now);
   espnow_mark_provisioning_packet_sent(&g_camera_provisioning_session, now);
   Serial.printf(
       "[camera-provisioning] request=%u sent camera_index=%u target=%s\n",
@@ -625,6 +667,7 @@ bool sendEspNowCaptureCommand(uint32_t now) {
     return false;
   }
 
+  noteEspNowSend(EspNowCommandType::kCaptureImage, packet.request_id, 0, target_mac, now);
   capture_schedule_mark_requested(&g_camera_capture_schedule, now);
   markCameraCaptureInFlight(packet.request_id, 0, now);
   Serial.printf(
@@ -664,6 +707,7 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
     return false;
   }
 
+  noteEspNowSend(EspNowCommandType::kCaptureImage, packet.request_id, command_id, target_mac, now);
   if (request_id_out != nullptr) {
     *request_id_out = packet.request_id;
   }
@@ -708,6 +752,12 @@ bool sendEspNowPauseCaptureCommand(bool paused) {
     return false;
   }
 
+  noteEspNowSend(
+      EspNowCommandType::kPauseCapture,
+      packet.request_id,
+      0,
+      target_mac,
+      packet.timestamp_ms);
   Serial.printf(
       "[camera-schedule] pause command sent request=%u paused=%u target=%s\n",
       static_cast<unsigned int>(packet.request_id),
