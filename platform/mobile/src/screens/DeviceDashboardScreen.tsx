@@ -124,14 +124,24 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                 label={activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
                 onPress={() => runCommand("pump_run")}
               />
-              <PrimaryButton disabled label="Capture later" tone="secondary" onPress={() => {}} />
+              <PrimaryButton
+                disabled={isCommandRunning || isActionBlocked("capture_image")}
+                label={
+                  activeCommandAction === "capture_image" || isActionBlocked("capture_image")
+                    ? "Capture pending"
+                    : isCommandRunning
+                      ? "Working..."
+                      : "Capture image"
+                }
+                tone="secondary"
+                onPress={() => runCommand("capture_image")}
+              />
             </View>
             {dashboard.hardwareHealth?.lastCommand ? (
               <Text style={styles.meta}>
                 Last command: {formatActionLabel(dashboard.hardwareHealth.lastCommand.action)} {formatStatusLabel(dashboard.hardwareHealth.lastCommand.status).toLowerCase()}.
               </Text>
             ) : null}
-            <Text style={styles.meta}>Manual image capture is postponed while the shared backend capture contract stays in 501 mode.</Text>
           </Card>
 
           <Link href={`/(app)/devices/${deviceId}/history`} style={styles.historyLink}>

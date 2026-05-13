@@ -10,7 +10,7 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
       <div className="section-header">
         <div>
           <h3>Command activity</h3>
-          <p className="subtitle">Recent light and pump commands from the shared backend command history.</p>
+          <p className="subtitle">Recent light, pump, and capture commands from the shared backend command history.</p>
         </div>
       </div>
 

@@ -65,8 +65,8 @@ type ApiHealthNode = {
 
 type ApiHealthCommand = {
   id: number;
-  target: "light" | "pump";
-  action: "on" | "off" | "run";
+  target: "light" | "pump" | "camera";
+  action: "on" | "off" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   timestamp: string;
@@ -87,7 +87,7 @@ type ApiCommandRead = {
   target: "light" | "pump" | "camera";
   action: "on" | "off" | "run" | "capture";
   value?: string | null;
-  status: "pending" | "sent" | "completed" | "failed" | "timed_out";
+  status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   created_at: string;
   sent_at?: string | null;

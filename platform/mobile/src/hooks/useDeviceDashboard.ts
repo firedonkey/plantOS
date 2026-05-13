@@ -19,7 +19,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
   const [activeCommandAction, setActiveCommandAction] = useState<DeviceCommand["action"] | null>(null);
-  const [commandBannerAction, setCommandBannerAction] = useState<DeviceCommand["action"] | null>(null);
+  const [trackedCommand, setTrackedCommand] = useState<{ id: string; action: DeviceCommand["action"] } | null>(null);
   const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
@@ -32,16 +32,35 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
-      if (
-        commandBannerAction &&
-        !result.usedMock &&
-        !result.dashboard.recentCommands.some(
-          (command) => command.action === commandBannerAction && ["pending", "sent", "in_progress"].includes(command.status),
-        )
-      ) {
-        setCommandBannerAction(null);
-        setCommandMessage(null);
-        setCommandTone(null);
+      if (trackedCommand && !result.usedMock) {
+        const matchingCommand = result.dashboard.recentCommands.find((command) => command.id === trackedCommand.id);
+        if (matchingCommand) {
+          if (matchingCommand.status === "completed") {
+            if (trackedCommand.action === "capture_image") {
+              setCommandTone("success");
+              setCommandMessage(matchingCommand.detail ?? "Image captured and uploaded.");
+            } else {
+              setCommandMessage(null);
+              setCommandTone(null);
+            }
+            setTrackedCommand(null);
+          } else if (matchingCommand.status === "failed") {
+            setCommandTone("error");
+            setCommandMessage(matchingCommand.detail ?? `${friendlyCommandLabel(trackedCommand.action)} failed.`);
+            setTrackedCommand(null);
+          } else if (trackedCommand.action === "capture_image" && matchingCommand.status === "in_progress") {
+            setCommandTone("info");
+            setCommandMessage(matchingCommand.detail ?? "Waiting for camera upload.");
+          }
+        } else if (
+          !result.dashboard.recentCommands.some(
+            (command) => command.action === trackedCommand.action && ["pending", "sent", "in_progress"].includes(command.status),
+          )
+        ) {
+          setCommandMessage(trackedCommand.action === "capture_image" ? "Image capture completed." : null);
+          setCommandTone(trackedCommand.action === "capture_image" ? "success" : null);
+          setTrackedCommand(null);
+        }
       }
       hasLoadedRef.current = true;
     } catch (err) {
@@ -50,7 +69,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     } finally {
       setIsLoading(false);
     }
-  }, [commandBannerAction, deviceId, selectedRange, token]);
+  }, [deviceId, selectedRange, token, trackedCommand]);
 
   useEffect(() => {
     if (!deviceId) {
@@ -85,11 +104,6 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {
-      if (action === "capture_image") {
-        setCommandTone("info");
-        setCommandMessage("Image capture is coming later. For now, view the latest image already uploaded by the device.");
-        return;
-      }
       if (isActionBlocked(action)) {
         setCommandTone("info");
         setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);
@@ -101,13 +115,13 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setError(null);
         setCommandTone(null);
         const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
-        setCommandBannerAction(result.usedMock ? null : action);
-        setCommandTone("success");
+        setCommandTone(result.usedMock ? "success" : "info");
         setCommandMessage(
           result.usedMock
             ? `Simulated ${friendlyCommandLabel(action)} in mock mode.`
             : `${friendlyCommandLabel(action)} queued for the device.`,
         );
+        setTrackedCommand(result.usedMock ? null : { id: result.command.id, action });
         if (!result.usedMock) {
           const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
           setDashboard(refreshed.dashboard);
@@ -115,6 +129,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           setLastUpdatedAt(new Date().toISOString());
         }
       } catch (err) {
+        setTrackedCommand(null);
         setCommandTone("error");
         setCommandMessage(null);
         setError(err instanceof Error ? err.message : "Unable to send command.");

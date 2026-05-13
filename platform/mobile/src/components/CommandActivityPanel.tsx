@@ -12,7 +12,7 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
   return (
     <Card>
       <Text style={styles.title}>Command activity</Text>
-      <Text style={styles.subtitle}>Recent light and pump commands from the shared backend command history.</Text>
+      <Text style={styles.subtitle}>Recent light, pump, and capture commands from the shared backend command history.</Text>
 
       {!commands.length ? (
         <Text style={styles.subtitle}>No recent commands yet. Command activity will appear here after you use the controls.</Text>
