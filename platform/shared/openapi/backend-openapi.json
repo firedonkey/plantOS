@@ -1022,7 +1022,7 @@
           }
         ],
         "responses": {
-          "501": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -2033,7 +2033,8 @@
         "enum": [
           "on",
           "off",
-          "run"
+          "run",
+          "capture"
         ],
         "title": "CommandAction"
       },
@@ -2191,7 +2192,8 @@
         "type": "string",
         "enum": [
           "pump",
-          "light"
+          "light",
+          "camera"
         ],
         "title": "CommandTarget"
       },

@@ -128,12 +128,15 @@ Main firmware (`esp32-s3-devkitc-1`) now:
 - sends status heartbeats to `POST /api/hardware/heartbeat`
 - polls `GET /api/hardware/commands/pending`
 - reports command results to `POST /api/hardware/commands/{command_id}/result`
+- forwards queued manual capture commands to the camera node over the existing ESP-NOW capture path
+- reports capture `in_progress`, `completed`, or `failed` back to the backend based on the camera acknowledgement/upload result
 
 Camera uploader firmware (`camera-platform-test`) now:
 
 - runs on the XIAO ESP32-S3 Sense
 - captures JPEG frames
 - uploads images to the same platform device using the same device token
+- returns camera-side capture acknowledgements to the master after upload success or failure
 
 Dedicated Wi-Fi test firmware (`wifi-test`) now:
 
@@ -163,8 +166,13 @@ Suggested smoke-test order:
    - the command appears in serial output
    - the actuator runs
    - the command activity panel updates to completed
-5. Flash the XIAO camera board with `camera-platform-test`.
-6. Confirm images begin appearing for the same device.
+5. Use the web or mobile dashboard to send a manual capture command and confirm:
+   - the master logs the queued capture command
+   - the camera node captures and uploads a JPEG
+   - the command activity panel moves through `in_progress` to `completed`
+   - the recent image gallery refreshes with the new image
+6. Flash the XIAO camera board with `camera-platform-test`.
+7. Confirm images begin appearing for the same device.
 
 ## Build/Flash (PlatformIO)
 

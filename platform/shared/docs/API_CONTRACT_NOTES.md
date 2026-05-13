@@ -166,16 +166,21 @@ Current wrapper response note:
 
 Current capture note:
 
-- `POST /api/devices/{device_id}/commands/capture` currently returns `501 Not Implemented`
-- that is intentional for now; the shared backend command queue does not yet support a real capture command contract
-- the `501` response now uses the standard API error envelope and includes a `future_response` example in `error.details`
-- web and mobile should currently present manual capture as postponed or coming later, rather than as a broken action
+- `POST /api/devices/{device_id}/commands/capture` now queues a standard backend command and returns the normal standalone command envelope with `status="accepted"`
+- the queued command uses:
+  - `target="camera"`
+  - `action="capture"`
+- standalone web and mobile can now expose manual capture directly and should track the resulting command state instead of treating capture as postponed
 
 Current hardware polling note:
 
 - `GET /api/hardware/commands/pending` returns only commands for the authenticated device token
 - hardware polling claims commands by moving them from `pending` to `in_progress`
 - hardware completion is reported with `POST /api/hardware/commands/{command_id}/result`
+- capture commands now use the same hardware polling path:
+  - the master ESP32 receives `target="camera"` / `action="capture"`
+  - the master forwards the capture request to the camera node over the existing ESP-NOW path
+  - the backend command is marked `completed` only after the camera-side upload succeeds, or `failed` if the request times out or the camera reports an error
 - result statuses currently supported there are:
   - `in_progress`
   - `completed`
@@ -396,12 +401,16 @@ Needed later:
 Current state:
 
 - light and pump convenience wrappers now exist
-- capture convenience endpoint exists but intentionally returns `501 Not Implemented`
-- the future accepted response is now documented in the error payload
+- capture convenience endpoint now queues a real backend command
+- the master ESP32 now receives queued capture commands through `GET /api/hardware/commands/pending`
+- the master forwards manual capture requests to the camera node over the existing ESP-NOW camera flow
+- the camera node keeps the existing `POST /api/image` upload path
+- command completion now reflects the real camera/upload outcome instead of a placeholder response
 
-Needed later:
+Current limitation:
 
-- implement device-side support for a queued `capture` command so the backend can move from `unsupported` to `accepted`
+- capture completion currently depends on the master receiving a camera acknowledgement tied to a successful upload attempt
+- richer failure detail, retries, and multi-camera routing can be added later without changing the current client contract
 
 ## Setup/onboarding API responses
 
