@@ -96,9 +96,12 @@ export function AddDeviceScreen() {
           <p className="subtitle">
             We verified <strong>{handoff.serialNumber}</strong>. Open the device Wi-Fi setup page, finish Wi-Fi provisioning, then keep the setup-finishing page open until the first reading is ready.
           </p>
-          <p className="meta-text">
-            After joining <strong>PlantLab-Setup</strong>, your laptop may need 20-30 seconds to finish switching networks before the setup page becomes reachable.
-          </p>
+          <ol className="setup-checklist">
+            <li>Connect your laptop or phone to <strong>PlantLab-Setup</strong>.</li>
+            <li>Wait for the network switch to settle. On macOS, the setup page often takes 20-30 seconds to become reachable after joining the access point.</li>
+            <li>Open the device Wi-Fi setup page and submit your home Wi-Fi name and password.</li>
+            <li>Come back to the setup-finishing page and leave it open until the first reading arrives.</li>
+          </ol>
           {handoff.setupToken ? <p className="meta-text">Setup token: {handoff.setupToken}</p> : null}
           <div className="button-row">
             <a className="primary-button" href={handoff.continueSetupUrl} rel="noreferrer" target="_blank">
@@ -113,6 +116,14 @@ export function AddDeviceScreen() {
           <p className="meta-text">
             If the backend is unavailable, mock mode can still preview this flow, but it does not provision a real device.
           </p>
+          <div className="onboarding-help">
+            <strong>Troubleshooting</strong>
+            <ul>
+              <li>If the setup page does not open immediately, stay connected to <strong>PlantLab-Setup</strong> and try again after 20-30 seconds.</li>
+              <li>If your browser complains about no internet, ignore that warning and open the setup page again.</li>
+              <li>If the setup form loads but the device never appears, leave the setup-finishing page open and check the ESP32 serial monitor for registration logs.</li>
+            </ul>
+          </div>
         </div>
       ) : null}
     </section>

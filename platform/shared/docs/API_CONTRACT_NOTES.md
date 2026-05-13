@@ -405,6 +405,7 @@ Notes:
 - local Docker development should set:
   - `PLANTLAB_PROVISIONING_PUBLIC_URL=http://<your-mac-lan-ip>:3000`
   - `PLANTLAB_DEVICE_PLATFORM_URL=http://<your-mac-lan-ip>:8000`
+- local onboarding should assume the laptop may need roughly 20-30 seconds to finish switching onto `PlantLab-Setup` before `http://10.42.0.1:8080` becomes reachable.
 
 ### `GET /api/setup/status`
 
@@ -421,6 +422,13 @@ Current standalone response shape:
   "redirect_path": "/devices/30?setup=complete"
 }
 ```
+
+Interpretation notes:
+
+- `device_found=false` means the ESP32 has not finished registration into the signed-in account yet.
+- `has_reading=false` after `device_found=true` usually means the device joined Wi-Fi but has not completed its first sensor upload.
+- `has_image=false` while `expect_image=true` means the master board is online but the camera node has not uploaded its first image yet.
+- standalone clients should poll this endpoint quietly and explain the current waiting reason rather than treating each poll like a full-screen loading event.
 
 ## Standard API error envelope
 

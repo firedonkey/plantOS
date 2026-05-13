@@ -13,8 +13,10 @@ export function SetupFinishingScreen() {
   const expectImage = !["0", "false", "no"].includes((searchParams.get("expect_image") ?? "1").toLowerCase());
   const [usedMock, setUsedMock] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
   const [status, setStatus] = useState<{
     ready: boolean;
     deviceFound: boolean;
@@ -33,9 +35,13 @@ export function SetupFinishingScreen() {
     let cancelled = false;
     let timeoutId: number | null = null;
 
-    const refresh = async () => {
+    const refresh = async (background = false) => {
       setError(null);
-      setIsLoading(true);
+      if (background) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
       try {
         const result = await getSetupStatus(
           {
@@ -51,6 +57,7 @@ export function SetupFinishingScreen() {
         setUsedMock(result.usedMock);
         setStatus(result.status);
         setLastCheckedAt(new Date().toISOString());
+        setPollCount((count) => count + 1);
         if (result.status.ready && result.status.deviceId) {
           navigate(result.status.redirectPath ?? `/devices/${result.status.deviceId}?setup=complete`, { replace: true });
           return;
@@ -63,7 +70,10 @@ export function SetupFinishingScreen() {
       } finally {
         if (!cancelled) {
           setIsLoading(false);
-          timeoutId = window.setTimeout(refresh, 2000);
+          setIsRefreshing(false);
+          timeoutId = window.setTimeout(() => {
+            void refresh(true);
+          }, 3000);
         }
       }
     };
@@ -77,6 +87,16 @@ export function SetupFinishingScreen() {
       }
     };
   }, [deviceName, expectImage, location, navigate, token]);
+
+  const waitingReason = status
+    ? !status.deviceFound
+      ? "We are still waiting for the device registration to finish. Keep the PlantLab setup page open until the ESP32 confirms it joined your home Wi-Fi."
+      : !status.hasReading
+        ? "The device is in your account, but it has not posted its first reading yet. This usually means it is still reconnecting to Wi-Fi or waiting for its first sensor loop."
+        : status.expectImage && !status.hasImage
+          ? "The main board is online. We are waiting for the camera node to register and upload its first image before opening the dashboard."
+          : "Everything looks ready. Redirecting to the dashboard now."
+    : "Checking the latest setup status.";
 
   if (!deviceName) {
     return (
@@ -105,11 +125,21 @@ export function SetupFinishingScreen() {
             {lastCheckedAt ? `Last checked ${new Date(lastCheckedAt).toLocaleTimeString()}` : "Waiting for the first status check."}
           </p>
         </div>
+        <div className="header-actions">
+          <button className="secondary-button" type="button" disabled={isLoading || isRefreshing} onClick={() => window.location.reload()}>
+            {isLoading || isRefreshing ? "Checking..." : "Check again"}
+          </button>
+        </div>
       </div>
 
       {usedMock ? <p className="chip chip-mock">Mock data mode</p> : null}
       {error ? <p className="status-banner status-banner-error">{error}</p> : null}
       {isLoading && !status ? <p className="status-banner">Checking setup progress…</p> : null}
+      {status ? (
+        <p className={`status-banner ${status.ready ? "status-banner-success" : "status-banner-info"}`}>
+          {waitingReason}
+        </p>
+      ) : null}
 
       <div className="card stack-form">
         <div className={`status-step ${status?.deviceFound ? "status-step-complete" : ""}`}>
@@ -129,6 +159,28 @@ export function SetupFinishingScreen() {
                 ? "The first camera image arrived."
                 : "Waiting for the first camera image."}
           </span>
+        </div>
+        <div className="setup-status-footer">
+          <span>{isRefreshing ? "Polling again..." : "The page checks automatically every few seconds."}</span>
+          <span>{pollCount > 0 ? `${pollCount} check${pollCount === 1 ? "" : "s"} completed` : "No checks completed yet."}</span>
+        </div>
+      </div>
+
+      <div className="card stack-form">
+        <h3>Troubleshooting</h3>
+        <div className="setup-help-grid">
+          <div className="setup-help-item">
+            <strong>Setup page was slow to open</strong>
+            <span>After joining <strong>PlantLab-Setup</strong>, your laptop may take 20-30 seconds to switch fully onto the local ESP32 access point. If the page says it cannot be reached, stay on the Wi-Fi and try again once the network settles.</span>
+          </div>
+          <div className="setup-help-item">
+            <strong>Device not found yet</strong>
+            <span>Keep the browser on the ESP32 setup page until it says the device is connecting, then come back here. The device is only added to your account after registration succeeds.</span>
+          </div>
+          <div className="setup-help-item">
+            <strong>Waiting for the first image</strong>
+            <span>If the master board is online but the photo step is still pending, check that the camera node is powered, flashed, and responding to the master board.</span>
+          </div>
         </div>
       </div>
     </section>

@@ -37,3 +37,9 @@ Manual test checklist:
 - Remove-device flow shows confirmation and removes a device through the standalone API
 - Capture command shows the expected friendly unsupported message
 - Mock mode still works when `VITE_API_BASE_URL` is missing or the backend is unavailable
+
+Onboarding troubleshooting:
+
+- After joining `PlantLab-Setup`, macOS may need 20-30 seconds before `http://10.42.0.1:8080` becomes reachable.
+- If the browser warns that the Wi-Fi has no internet, stay on the access point and retry the setup page after the network switch settles.
+- Leave the standalone setup-finishing page open until it reports the first reading. If image setup is still pending after the reading arrives, check the camera node power, firmware, and ESP-NOW logs.
