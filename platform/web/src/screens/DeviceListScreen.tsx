@@ -49,7 +49,7 @@ export function DeviceListScreen() {
       ) : null}
       {error ? <p className="status-banner status-banner-error">{error}</p> : null}
       {isLoading && devices.length === 0 ? <p className="status-banner">Loading your devices…</p> : null}
-      {!isLoading && devices.length === 0 ? (
+      {!isLoading && !error && devices.length === 0 ? (
         <div className="empty-state">
           <h3>No devices yet</h3>
           <p className="subtitle">Start onboarding here, then come back to monitor the device once setup finishes.</p>

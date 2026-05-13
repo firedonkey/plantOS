@@ -29,7 +29,7 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {isLoading && !dashboard ? <Text style={styles.meta}>Loading readings…</Text> : null}
-      {!isLoading && !dashboard?.history.length ? (
+      {!isLoading && !error && !dashboard?.history.length ? (
         <Card>
           <Text style={styles.timestamp}>No readings yet</Text>
           <Text style={styles.row}>Once the device reports sensor data, the recent history will appear here.</Text>

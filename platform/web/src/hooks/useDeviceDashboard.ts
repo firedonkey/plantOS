@@ -19,6 +19,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
   const [activeCommandAction, setActiveCommandAction] = useState<DeviceCommand["action"] | null>(null);
+  const [commandBannerAction, setCommandBannerAction] = useState<DeviceCommand["action"] | null>(null);
   const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
@@ -31,6 +32,17 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
+      if (
+        commandBannerAction &&
+        !result.usedMock &&
+        !result.dashboard.recentCommands.some(
+          (command) => command.action === commandBannerAction && ["pending", "sent", "in_progress"].includes(command.status),
+        )
+      ) {
+        setCommandBannerAction(null);
+        setCommandMessage(null);
+        setCommandTone(null);
+      }
       hasLoadedRef.current = true;
     } catch (err) {
       setUsedMock(false);
@@ -38,7 +50,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, selectedRange, token]);
+  }, [commandBannerAction, deviceId, selectedRange, token]);
 
   useEffect(() => {
     if (!deviceId) {
@@ -90,6 +102,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setCommandTone(null);
       try {
         const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
+        setCommandBannerAction(result.usedMock ? null : action);
         setCommandTone("success");
         setCommandMessage(
           result.usedMock

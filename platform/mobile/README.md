@@ -16,6 +16,7 @@ Local dev:
 
 - Set `EXPO_PUBLIC_API_BASE_URL` to your backend base URL.
 - Use [`.env.example`](/Users/gary/plantOS/platform/mobile/.env.example) as the starting point.
+- Leave `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
 - iOS simulator can use `http://127.0.0.1:8000`
 - physical devices should use your Mac's LAN IP, for example `http://192.168.x.x:8000`
 
@@ -49,6 +50,7 @@ Status:
 
 - Expo app scaffold is in place
 - tries the local backend first
-- falls back to mock mode when the backend is unavailable
+- does not silently switch to mock data by default when the backend is unavailable
+- mock fallback remains available only when `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=true`
 - manual image capture is intentionally postponed for now
 - the mobile UI treats capture as a coming-later capability instead of a failed command

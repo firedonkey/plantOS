@@ -12,6 +12,7 @@ Local dev:
 
 - Copy [`.env.example`](/Users/gary/plantOS/platform/web/.env.example) to `.env` if needed.
 - Set `VITE_API_BASE_URL` to your local backend, usually `http://localhost:8000`.
+- Leave `VITE_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
 - Start the standalone app with `npm run dev`.
 - Keep this app running side-by-side with the backend-rendered web during migration.
 
@@ -19,7 +20,8 @@ Status:
 
 - standalone React/Vite frontend scaffold is in place
 - uses backend APIs when available
-- keeps mock fallback mode available when the backend is unavailable
+- does not silently switch to mock data by default when the backend is unavailable
+- mock fallback remains available only when `VITE_ENABLE_MOCK_FALLBACK=true`
 - does not replace backend-rendered web routes yet
 - manual image capture is intentionally postponed for now
 - the standalone UI treats capture as a coming-later capability instead of a broken action
@@ -36,7 +38,8 @@ Manual test checklist:
 - Light and pump commands return success feedback
 - Remove-device flow shows confirmation and removes a device through the standalone API
 - Capture command shows the expected friendly unsupported message
-- Mock mode still works when `VITE_API_BASE_URL` is missing or the backend is unavailable
+- Backend-down states stay visible by default
+- Mock mode still works when `VITE_ENABLE_MOCK_FALLBACK=true`
 
 Onboarding troubleshooting:
 

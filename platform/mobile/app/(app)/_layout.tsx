@@ -17,7 +17,7 @@ export default function AppLayout() {
         tabBarInactiveTintColor: theme.colors.textMuted,
       }}
     >
-      <Tabs.Screen name="devices" options={{ title: "Devices" }} />
+      <Tabs.Screen name="devices" options={{ title: "Devices", headerShown: false }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
     </Tabs>
   );

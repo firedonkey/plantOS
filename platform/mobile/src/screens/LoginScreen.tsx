@@ -36,7 +36,7 @@ export function LoginScreen() {
         <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>
-          Dev-only login uses the local backend when available and falls back to mock mode when it is not.
+          Dev-only login uses the local backend. Mock fallback is off by default and only activates when EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=true.
         </Text>
       </View>
 

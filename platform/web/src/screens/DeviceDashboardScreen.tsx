@@ -171,6 +171,8 @@ export function DeviceDashboardScreen() {
             Remove device
           </Link>
         </>
+      ) : error ? (
+        <p className="status-banner status-banner-error">{error}</p>
       ) : (
         <p className="status-banner">Loading dashboard…</p>
       )}

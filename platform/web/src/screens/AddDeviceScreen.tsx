@@ -114,7 +114,7 @@ export function AddDeviceScreen() {
             ) : null}
           </div>
           <p className="meta-text">
-            If the backend is unavailable, mock mode can still preview this flow, but it does not provision a real device.
+            Mock preview only works when <code>VITE_ENABLE_MOCK_FALLBACK=true</code>. With the default setting, backend outages stay visible instead of switching to fake data.
           </p>
           <div className="onboarding-help">
             <strong>Troubleshooting</strong>

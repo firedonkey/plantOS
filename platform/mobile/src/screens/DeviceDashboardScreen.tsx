@@ -141,6 +141,8 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             Device settings
           </Link>
         </>
+      ) : error ? (
+        <Text style={styles.error}>{error}</Text>
       ) : (
         <Text style={styles.meta}>Loading dashboard…</Text>
       )}

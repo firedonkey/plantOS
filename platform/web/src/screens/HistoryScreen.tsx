@@ -28,7 +28,7 @@ export function HistoryScreen() {
 
       {error ? <p className="status-banner status-banner-error">{error}</p> : null}
       {isLoading && !dashboard ? <p className="status-banner">Loading readings…</p> : null}
-      {!isLoading && !dashboard?.history.length ? (
+      {!isLoading && !error && !dashboard?.history.length ? (
         <div className="empty-state">
           <h3>No readings yet</h3>
           <p className="subtitle">Once the device reports sensor data, the recent history will appear here.</p>

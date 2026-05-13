@@ -36,7 +36,7 @@ export function LoginScreen() {
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="eyebrow">PLANTLAB WEB</div>
         <h1>Sign in</h1>
-        <p className="subtitle">Dev-only login uses the local backend when available and falls back to mock mode when it is not.</p>
+        <p className="subtitle">Dev-only login uses the local backend. Mock fallback is off by default and only activates when <code>VITE_ENABLE_MOCK_FALLBACK=true</code>.</p>
         <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
         <input
           value={password}

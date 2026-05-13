@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./config";
+import { getApiBaseUrl, isMockFallbackEnabled } from "./config";
 
 export class ApiError extends Error {
   status: number | null;
@@ -34,6 +34,9 @@ export class ApiError extends Error {
 }
 
 export function shouldUseMockFallback(error: unknown): boolean {
+  if (!isMockFallbackEnabled()) {
+    return false;
+  }
   if (error instanceof ApiError) {
     return error.isNetworkError || error.status === null;
   }
@@ -47,7 +50,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
-    throw new ApiError("API base URL is not configured.", {
+    throw new ApiError("API base URL is not configured. Set VITE_API_BASE_URL before using the standalone web app.", {
       isNetworkError: true,
     });
   }
@@ -68,7 +71,7 @@ export async function apiRequest<T>(
       headers,
     });
   } catch (error) {
-    throw new ApiError(error instanceof Error ? error.message : "Network request failed.", {
+    throw new ApiError("Backend is unavailable. Check that the local PlantLab backend is running and reachable.", {
       isNetworkError: true,
     });
   }

@@ -26,7 +26,7 @@ export function DeviceListScreen() {
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {isLoading && devices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
-      {!isLoading && devices.length === 0 ? (
+      {!isLoading && !error && devices.length === 0 ? (
         <Card>
           <Text style={styles.cardTitle}>No devices yet</Text>
           <Text style={styles.cardSubtitle}>Add a PlantLab from the existing backend-rendered flow, then come back here to monitor it.</Text>

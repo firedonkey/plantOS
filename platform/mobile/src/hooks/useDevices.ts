@@ -26,6 +26,7 @@ export function useDevices() {
       setLastUpdatedAt(new Date().toISOString());
       hasLoadedRef.current = true;
     } catch (err) {
+      setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load devices.");
     } finally {
       setIsLoading(false);
