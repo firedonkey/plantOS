@@ -3,6 +3,10 @@ export function attachDevUser(req, _res, next) {
     return next();
   }
 
+  if (req.user?.id) {
+    return next();
+  }
+
   const userId = req.header("x-dev-user-id") || process.env.DEV_AUTH_USER_ID || "1";
   const email = req.header("x-dev-user-email") || process.env.DEV_AUTH_EMAIL || "dev@example.com";
 
