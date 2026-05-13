@@ -27,6 +27,7 @@ class DeviceHealthNodeRead(BaseModel):
     display_name: str | None
     status: str
     last_seen_at: datetime | None = None
+    health_status: str | None = None
 
 
 class DeviceHealthCommandRead(BaseModel):
@@ -48,9 +49,16 @@ class DeviceHardwareHealthRead(BaseModel):
     primary: DeviceHealthNodeRead | None = None
     cameras: list[DeviceHealthNodeRead] = Field(default_factory=list)
     last_heartbeat_at: datetime | None = None
+    heartbeat_status: str | None = None
     last_reading_at: datetime | None = None
+    reading_status: str | None = None
     last_image_at: datetime | None = None
+    image_status: str | None = None
+    camera_status: str | None = None
     last_command: DeviceHealthCommandRead | None = None
+    last_failed_command_reason: str | None = None
+    last_failed_command_at: datetime | None = None
+    last_successful_command_at: datetime | None = None
 
 
 class DeviceCreate(BaseModel):

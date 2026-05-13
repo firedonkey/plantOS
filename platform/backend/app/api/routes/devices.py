@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -10,7 +11,7 @@ from app.api.errors import api_error
 from app.api.deps import get_current_user, get_device_from_token
 from app.core.settings import get_settings
 from app.db.session import get_session
-from app.models import User
+from app.models import CommandStatus, User
 from app.schemas.commands import (
     CommandCreate,
     CommandRead,
@@ -48,6 +49,20 @@ from app.services.readings import get_latest_reading_for_device, list_recent_rea
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 logger = logging.getLogger(__name__)
+
+HEARTBEAT_STALE_AFTER = timedelta(seconds=90)
+HEARTBEAT_OFFLINE_AFTER = timedelta(minutes=5)
+READING_STALE_AFTER = timedelta(minutes=2)
+READING_OFFLINE_AFTER = timedelta(minutes=15)
+IMAGE_STALE_AFTER = timedelta(minutes=5)
+IMAGE_OFFLINE_AFTER = timedelta(minutes=20)
+
+
+@dataclass(frozen=True)
+class CommandHealthSnapshot:
+    latest: object | None
+    last_failed: object | None
+    last_successful: object | None
 
 
 @router.get("", response_model=list[DeviceRead])
@@ -199,6 +214,7 @@ def get_device_summary(
     latest_images = list_recent_images_for_device(session, device.id, limit=1)
     latest_image = latest_images[0] if latest_images else None
     nodes = list_nodes_for_device(session, device.id)
+    command_health = _command_health(session, device.id)
 
     return DeviceSummaryRead(
         id=device.id,
@@ -225,7 +241,7 @@ def get_device_summary(
             nodes=nodes,
             latest_reading=latest_reading,
             latest_image=latest_image,
-            latest_command=_latest_command(session, device.id),
+            command_health=command_health,
         ),
     )
 
@@ -443,7 +459,7 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
     latest_image = latest_images[0] if latest_images else None
     nodes = list_nodes_for_device(session, device.id)
     node_summary = build_node_summary(nodes)
-    latest_command = _latest_command(session, device.id)
+    command_health = _command_health(session, device.id)
     return DeviceRead(
         id=device.id,
         name=device.name,
@@ -472,7 +488,7 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
             nodes=nodes,
             latest_reading=latest_reading,
             latest_image=latest_image,
-            latest_command=latest_command,
+            command_health=command_health,
         ),
     )
 
@@ -511,33 +527,54 @@ def _queued_command_response(
     )
 
 
-def _latest_command(session: Session, device_id: int):
-    commands = list_commands_for_device(session, device_id, limit=1)
-    return commands[0] if commands else None
+def _command_health(session: Session, device_id: int) -> CommandHealthSnapshot:
+    commands = list_commands_for_device(session, device_id, limit=20)
+    return CommandHealthSnapshot(
+        latest=commands[0] if commands else None,
+        last_failed=next(
+            (command for command in commands if command.status in {CommandStatus.FAILED, CommandStatus.TIMED_OUT}),
+            None,
+        ),
+        last_successful=next((command for command in commands if command.status == CommandStatus.COMPLETED), None),
+    )
 
 
-def _build_hardware_health(*, nodes: list, latest_reading, latest_image, latest_command) -> DeviceHardwareHealthRead:
+def _build_hardware_health(*, nodes: list, latest_reading, latest_image, command_health: CommandHealthSnapshot) -> DeviceHardwareHealthRead:
     node_summary = build_node_summary(nodes)
     primary = node_summary.get("primary")
     primary_status = (primary or {}).get("status")
     camera_summaries = node_summary.get("cameras") or []
+    last_heartbeat_at = latest_node_heartbeat_at(nodes)
     return DeviceHardwareHealthRead(
         overall_status=node_summary.get("overall_status") or "offline",
         master_status=primary_status,
         master_online=primary_status == "online",
         primary=_build_health_node(primary),
         cameras=[health_node for health_node in (_build_health_node(item) for item in camera_summaries) if health_node is not None],
-        last_heartbeat_at=latest_node_heartbeat_at(nodes),
+        last_heartbeat_at=last_heartbeat_at,
+        heartbeat_status=_freshness_status(last_heartbeat_at, stale_after=HEARTBEAT_STALE_AFTER, offline_after=HEARTBEAT_OFFLINE_AFTER),
         last_reading_at=getattr(latest_reading, "timestamp", None),
+        reading_status=_reading_status(
+            timestamp=getattr(latest_reading, "timestamp", None),
+            primary_status=primary_status,
+            last_heartbeat_at=last_heartbeat_at,
+        ),
         last_image_at=getattr(latest_image, "timestamp", None),
-        last_command=_build_health_command(latest_command),
+        image_status=_image_status(camera_summaries, getattr(latest_image, "timestamp", None)),
+        camera_status=_camera_status(camera_summaries),
+        last_command=_build_health_command(command_health.latest),
+        last_failed_command_reason=getattr(command_health.last_failed, "message", None),
+        last_failed_command_at=getattr(command_health.last_failed, "completed_at", None),
+        last_successful_command_at=getattr(command_health.last_successful, "completed_at", None),
     )
 
 
 def _build_health_node(node_summary_item: dict | None) -> DeviceHealthNodeRead | None:
     if not node_summary_item:
         return None
-    return DeviceHealthNodeRead.model_validate(node_summary_item)
+    payload = dict(node_summary_item)
+    payload["health_status"] = _node_health_status(node_summary_item)
+    return DeviceHealthNodeRead.model_validate(payload)
 
 
 def _build_health_command(command) -> DeviceHealthCommandRead | None:
@@ -555,6 +592,97 @@ def _build_health_command(command) -> DeviceHealthCommandRead | None:
         sent_at=command.sent_at,
         timestamp=timestamp,
     )
+
+
+def _camera_status(camera_summaries: list[dict]) -> str | None:
+    if not camera_summaries:
+        return None
+    statuses = [_node_health_status(item) for item in camera_summaries]
+    if any(status == "offline" for status in statuses):
+        return "offline"
+    if any(status == "stale" for status in statuses):
+        return "stale"
+    if any(status == "warning" for status in statuses):
+        return "warning"
+    return "online"
+
+
+def _image_status(camera_summaries: list[dict], timestamp: datetime | None) -> str | None:
+    if not camera_summaries and timestamp is None:
+        return None
+    if camera_summaries and _camera_status(camera_summaries) in {"offline", "stale", "warning"} and timestamp is None:
+        return "warning"
+    return _signal_status(
+        timestamp=timestamp,
+        stale_after=IMAGE_STALE_AFTER,
+        offline_after=IMAGE_OFFLINE_AFTER,
+        missing_status="warning" if camera_summaries else None,
+    )
+
+
+def _node_health_status(node_summary_item: dict | None) -> str:
+    if not node_summary_item:
+        return "offline"
+    status = str(node_summary_item.get("status") or "").strip().lower()
+    if status == "offline":
+        return "offline"
+    if status in {"provisioning", "error", "degraded"}:
+        return "warning"
+    return _freshness_status(
+        _parse_timestamp(node_summary_item.get("last_seen_at")),
+        stale_after=HEARTBEAT_STALE_AFTER,
+        offline_after=HEARTBEAT_OFFLINE_AFTER,
+    )
+
+
+def _reading_status(timestamp: datetime | None, primary_status: str | None, last_heartbeat_at: datetime | None) -> str | None:
+    if timestamp is None:
+        if last_heartbeat_at is None:
+            return None
+        if str(primary_status or "").lower() == "online":
+            return "warning"
+        return _freshness_status(last_heartbeat_at, stale_after=HEARTBEAT_STALE_AFTER, offline_after=HEARTBEAT_OFFLINE_AFTER)
+    return _freshness_status(timestamp, stale_after=READING_STALE_AFTER, offline_after=READING_OFFLINE_AFTER)
+
+
+def _signal_status(
+    *,
+    timestamp: datetime | None,
+    stale_after: timedelta,
+    offline_after: timedelta,
+    missing_status: str | None,
+) -> str | None:
+    if timestamp is None:
+        return missing_status
+    return _freshness_status(timestamp, stale_after=stale_after, offline_after=offline_after)
+
+
+def _freshness_status(timestamp: datetime | None, *, stale_after: timedelta, offline_after: timedelta) -> str | None:
+    if timestamp is None:
+        return None
+    age = datetime.now(timezone.utc) - _as_utc(timestamp)
+    if age > offline_after:
+        return "offline"
+    if age > stale_after:
+        return "stale"
+    return "online"
+
+
+def _parse_timestamp(value) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return _as_utc(value)
+    if isinstance(value, str):
+        normalized = value.replace("Z", "+00:00")
+        return _as_utc(datetime.fromisoformat(normalized))
+    return None
+
+
+def _as_utc(timestamp: datetime) -> datetime:
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
 
 
 def _build_setup_finishing_url(*, frontend_origin: str, device_name: str, location: str, expect_image: bool) -> str:

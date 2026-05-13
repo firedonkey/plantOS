@@ -15,7 +15,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import Image, SensorReading, User
+from app.models import Command, CommandAction, CommandStatus, CommandTarget, Image, SensorReading, User
 from app.models.base import Base
 from app.services.device_nodes import upsert_device_node
 from app.web.routes import _latest_device_activity, _latest_completed_command_state, _reading_chart
@@ -99,9 +99,15 @@ def test_create_list_and_get_device_api():
         assert listed[0]["hardware_health"]["overall_status"] == "offline"
         assert listed[0]["hardware_health"]["master_online"] is False
         assert listed[0]["hardware_health"]["last_heartbeat_at"] is None
+        assert listed[0]["hardware_health"]["heartbeat_status"] is None
         assert listed[0]["hardware_health"]["last_reading_at"] is None
+        assert listed[0]["hardware_health"]["reading_status"] is None
         assert listed[0]["hardware_health"]["last_image_at"] is None
+        assert listed[0]["hardware_health"]["image_status"] is None
+        assert listed[0]["hardware_health"]["camera_status"] is None
         assert listed[0]["hardware_health"]["last_command"] is None
+        assert listed[0]["hardware_health"]["last_failed_command_reason"] is None
+        assert listed[0]["hardware_health"]["last_successful_command_at"] is None
 
         get_response = client.get(f"/api/devices/{created['id']}")
         assert get_response.status_code == 200
@@ -411,6 +417,7 @@ def test_device_command_wrapper_apis():
 
 def test_device_summary_exposes_hardware_health_and_last_command():
     client, _ = build_client_with_user()
+    now = datetime.now(timezone.utc)
     try:
         create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
         device = create_response.json()
@@ -424,7 +431,7 @@ def test_device_summary_exposes_hardware_health_and_last_command():
                 node_role="master",
                 display_name="Master",
                 status="online",
-                last_seen_at=datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc),
+                last_seen_at=now,
             )
             upsert_device_node(
                 session,
@@ -434,7 +441,7 @@ def test_device_summary_exposes_hardware_health_and_last_command():
                 node_index=1,
                 display_name="Camera 1",
                 status="offline",
-                last_seen_at=datetime(2026, 5, 12, 11, 59, tzinfo=timezone.utc),
+                last_seen_at=now - timedelta(minutes=6),
             )
 
         data_response = client.post(
@@ -456,7 +463,7 @@ def test_device_summary_exposes_hardware_health_and_last_command():
                 Image(
                     device_id=device_id,
                     path="device-1/test.jpg",
-                    timestamp=datetime(2026, 5, 12, 12, 1, tzinfo=timezone.utc),
+                    timestamp=now,
                 )
             )
             session.commit()
@@ -484,13 +491,109 @@ def test_device_summary_exposes_hardware_health_and_last_command():
         assert payload["hardware_health"]["master_status"] == "online"
         assert payload["hardware_health"]["master_online"] is True
         assert payload["hardware_health"]["primary"]["status"] == "online"
+        assert payload["hardware_health"]["primary"]["health_status"] == "online"
         assert payload["hardware_health"]["cameras"][0]["status"] == "offline"
-        assert payload["hardware_health"]["last_heartbeat_at"].startswith("2026-05-12T12:00:00")
+        assert payload["hardware_health"]["cameras"][0]["health_status"] == "offline"
+        assert payload["hardware_health"]["last_heartbeat_at"] is not None
+        assert payload["hardware_health"]["heartbeat_status"] == "online"
         assert payload["hardware_health"]["last_reading_at"] == payload["latest_reading"]["timestamp"]
-        assert payload["hardware_health"]["last_image_at"].startswith("2026-05-12T12:01:00")
+        assert payload["hardware_health"]["reading_status"] == "online"
+        assert payload["hardware_health"]["last_image_at"] is not None
+        assert payload["hardware_health"]["image_status"] == "online"
+        assert payload["hardware_health"]["camera_status"] == "offline"
         assert payload["hardware_health"]["last_command"]["id"] == command_id
         assert payload["hardware_health"]["last_command"]["status"] == "completed"
         assert payload["hardware_health"]["last_command"]["message"] == "light turned on"
+        assert payload["hardware_health"]["last_failed_command_reason"] is None
+        assert payload["hardware_health"]["last_successful_command_at"] is not None
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_exposes_stale_diagnostics_and_last_failed_command():
+    client, _ = build_client_with_user()
+    now = datetime.now(timezone.utc)
+    try:
+        create_response = client.post("/api/devices", json={"name": "Bench Plant"})
+        device = create_response.json()
+        device_id = device["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=now - timedelta(minutes=2),
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-cam-1",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+                last_seen_at=now - timedelta(minutes=7),
+            )
+            session.add(
+                SensorReading(
+                    device_id=device_id,
+                    timestamp=now - timedelta(minutes=6),
+                    moisture=42.0,
+                    temperature=21.5,
+                    humidity=48.2,
+                )
+            )
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-stale/test.jpg",
+                    timestamp=now - timedelta(minutes=25),
+                    source_hardware_device_id="pl-cam-1",
+                )
+            )
+            session.add(
+                Command(
+                    device_id=device_id,
+                    target=CommandTarget.LIGHT,
+                    action=CommandAction.ON,
+                    status=CommandStatus.COMPLETED,
+                    message="light turned on",
+                    created_at=now - timedelta(minutes=10),
+                    sent_at=now - timedelta(minutes=10),
+                    completed_at=now - timedelta(minutes=9),
+                )
+            )
+            session.add(
+                Command(
+                    device_id=device_id,
+                    target=CommandTarget.PUMP,
+                    action=CommandAction.RUN,
+                    status=CommandStatus.FAILED,
+                    message="pump relay fault",
+                    created_at=now - timedelta(minutes=3),
+                    sent_at=now - timedelta(minutes=3),
+                    completed_at=now - timedelta(minutes=2),
+                )
+            )
+            session.commit()
+
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+
+        assert summary_response.status_code == 200
+        payload = summary_response.json()
+        assert payload["hardware_health"]["heartbeat_status"] == "stale"
+        assert payload["hardware_health"]["reading_status"] == "stale"
+        assert payload["hardware_health"]["image_status"] == "offline"
+        assert payload["hardware_health"]["camera_status"] == "offline"
+        assert payload["hardware_health"]["primary"]["health_status"] == "stale"
+        assert payload["hardware_health"]["cameras"][0]["health_status"] == "offline"
+        assert payload["hardware_health"]["last_failed_command_reason"] == "pump relay fault"
+        assert payload["hardware_health"]["last_failed_command_at"] is not None
+        assert payload["hardware_health"]["last_successful_command_at"] is not None
     finally:
         teardown_overrides()
 

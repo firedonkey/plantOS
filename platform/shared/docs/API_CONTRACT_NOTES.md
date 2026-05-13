@@ -93,10 +93,18 @@ Current hardware health note:
   - `primary`
   - `cameras`
   - `last_heartbeat_at`
+  - `heartbeat_status`
   - `last_reading_at`
+  - `reading_status`
   - `last_image_at`
+  - `image_status`
+  - `camera_status`
   - `last_command`
+  - `last_failed_command_reason`
+  - `last_failed_command_at`
+  - `last_successful_command_at`
 - `last_command` reports the latest command result/status that the backend knows about, including pending and in-progress commands
+- freshness-style status fields use `online`, `stale`, `offline`, or `warning`
 
 Readings history note:
 
@@ -462,7 +470,8 @@ Current additive summary shape on `GET /api/devices` and `GET /api/devices/{id}/
     "node_index": null,
     "display_name": "Master",
     "status": "online",
-    "last_seen_at": "2026-05-13T01:25:24.974864Z"
+    "last_seen_at": "2026-05-13T01:25:24.974864Z",
+    "health_status": "online"
   },
   "cameras": [
     {
@@ -471,12 +480,17 @@ Current additive summary shape on `GET /api/devices` and `GET /api/devices/{id}/
       "node_index": 1,
       "display_name": "Camera 1",
       "status": "online",
-      "last_seen_at": "2026-05-13T01:25:09.829072Z"
+      "last_seen_at": "2026-05-13T01:25:09.829072Z",
+      "health_status": "online"
     }
   ],
   "last_heartbeat_at": "2026-05-13T01:25:24.974864Z",
+  "heartbeat_status": "online",
   "last_reading_at": "2026-05-13T01:25:25.071861Z",
+  "reading_status": "online",
   "last_image_at": "2026-05-13T01:25:29.870833Z",
+  "image_status": "online",
+  "camera_status": "online",
   "last_command": {
     "id": 42,
     "target": "light",
@@ -487,7 +501,10 @@ Current additive summary shape on `GET /api/devices` and `GET /api/devices/{id}/
     "sent_at": "2026-05-13T01:20:02Z",
     "completed_at": "2026-05-13T01:20:05Z",
     "timestamp": "2026-05-13T01:20:05Z"
-  }
+  },
+  "last_failed_command_reason": null,
+  "last_failed_command_at": null,
+  "last_successful_command_at": "2026-05-13T01:20:05Z"
 }
 ```
 
@@ -495,7 +512,11 @@ Interpretation notes:
 
 - `overall_status` can be `degraded` when the master is online but one or more camera nodes are offline.
 - `last_heartbeat_at` tracks the most recent master heartbeat when a master node exists, otherwise the freshest node heartbeat.
-- `last_reading_at` and `last_image_at` are timestamps only; standalone clients should render human-friendly ages locally.
+- `heartbeat_status`, `reading_status`, `image_status`, and node-level `health_status` are additive diagnostic signals for standalone clients.
+- `camera_status` rolls camera-node freshness into one summary value when camera nodes are present.
+- `last_failed_command_reason` and `last_failed_command_at` help explain the most recent failed or timed-out command.
+- `last_successful_command_at` marks the most recent completed command.
+- `last_reading_at` and `last_image_at` remain timestamps only; standalone clients should render human-friendly ages locally.
 
 ## Standard API error envelope
 
