@@ -112,6 +112,25 @@ type ApiDeviceImage = {
   timestamp: string;
 };
 
+type ApiSetupCodeResponse = {
+  serial_number: string;
+  setup_code?: string | null;
+  claim_token?: string | null;
+  setup_token?: string | null;
+  continue_setup_url: string;
+  setup_finishing_url: string;
+  expect_image: boolean;
+  provisioning_api_url: string;
+};
+
+export type DeviceSetupHandoff = {
+  serialNumber: string;
+  setupToken?: string;
+  continueSetupUrl: string;
+  setupFinishingUrl: string;
+  expectImage: boolean;
+};
+
 export type DeviceSettingsDetails = {
   device: Device;
   hardwareHealth?: HardwareHealth;
@@ -429,6 +448,59 @@ export async function sendDeviceCommand(
         createdAt: new Date().toISOString(),
         status: "completed",
         detail: "Mock mode command completed immediately.",
+      },
+    };
+  }
+}
+
+export async function requestDeviceSetupCode(
+  input: {
+    serialNumber: string;
+    deviceName: string;
+    location?: string;
+  },
+  token?: string,
+): Promise<{ handoff: DeviceSetupHandoff; usedMock: boolean }> {
+  try {
+    const created = await apiRequest<ApiSetupCodeResponse>(
+      "/api/devices/setup-code",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          serial_number: input.serialNumber,
+          device_name: input.deviceName,
+          location: input.location ?? null,
+        }),
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      handoff: {
+        serialNumber: created.serial_number,
+        setupToken: created.setup_token ?? created.setup_code ?? created.claim_token ?? undefined,
+        continueSetupUrl: created.continue_setup_url,
+        setupFinishingUrl: created.setup_finishing_url,
+        expectImage: created.expect_image,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    const params = new URLSearchParams({
+      device_name: input.deviceName,
+      location: input.location ?? "",
+      expect_image: "1",
+    });
+    return {
+      usedMock: true,
+      handoff: {
+        serialNumber: input.serialNumber,
+        setupToken: "mock-claim-token",
+        continueSetupUrl: `http://10.42.0.1:8080/?setup_code=mock-claim-token&sn=${encodeURIComponent(input.serialNumber)}`,
+        setupFinishingUrl: `/devices/setup-finishing?${params.toString()}`,
+        expectImage: true,
       },
     };
   }

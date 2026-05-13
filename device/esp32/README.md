@@ -85,6 +85,75 @@ For the normal Add Device provisioning flow, the website now supplies:
 so the firmware does not rely on hardcoded local-vs-GCP URLs during onboarding.
 The setup page now posts those values back as hidden form fields, which makes the browser handoff more reliable on the ESP32 access-point network.
 
+## BLE provisioning
+
+BLE provisioning is the default setup path for the ESP32 master when no Wi-Fi
+credentials are saved. Long-press the provisioning button on `GPIO14` to enter
+BLE provisioning on an already configured device. The status LED on `GPIO2`
+uses the provisioning blink pattern while BLE setup is active.
+
+The firmware advertises as `PlantLab-Setup-<suffix>` and exposes:
+
+- Service UUID: `c7d36f9a-7b18-4c52-9c4f-93c2f0f6a901`
+- Write characteristic UUID: `c7d36f9a-7b18-4c52-9c4f-93c2f0f6a902`
+- Status characteristic UUID: `c7d36f9a-7b18-4c52-9c4f-93c2f0f6a903`
+
+Write one compact JSON payload to the write characteristic:
+
+```json
+{
+  "ssid": "HomeWiFi",
+  "password": "wifi-password",
+  "plantlab_token": "setup-or-claim-token",
+  "platform_url": "https://platform.example",
+  "backend_url": "https://provisioning.example"
+}
+```
+
+Required fields are `ssid`, `password`, and `plantlab_token`. `platform_url`
+may be omitted only when the firmware has `PLANTLAB_PLATFORM_URL` configured.
+Accepted aliases are `wifi_ssid`, `wifi_password`, `setup_code`, and
+`claim_token`. The token is the PlantLab setup/claim token; direct long-term
+`device_access_token` provisioning is intentionally rejected.
+
+The status characteristic returns JSON such as:
+
+```json
+{"state":"PROVISIONING_BLE","ready":true}
+{"state":"PROVISIONING_FAILED","ready":true,"error":"missing_ssid"}
+{"state":"PROVISIONING_SUCCESS","ready":false,"rebooting":true}
+```
+
+After a valid payload is saved to ESP32 NVS, the device notifies success,
+reboots, connects to Wi-Fi, exchanges the claim token through the existing
+`/api/devices/register-provisioned` backend flow, and resumes hardware
+heartbeats with the returned device token. Wi-Fi passwords and full tokens are
+not printed to serial logs.
+
+You can send the payload with nRF Connect, LightBlue, or Web Bluetooth. Minimal
+Web Bluetooth example:
+
+```js
+const service = "c7d36f9a-7b18-4c52-9c4f-93c2f0f6a901";
+const writeChar = "c7d36f9a-7b18-4c52-9c4f-93c2f0f6a902";
+const device = await navigator.bluetooth.requestDevice({
+  filters: [{ namePrefix: "PlantLab-Setup-" }],
+  optionalServices: [service],
+});
+const server = await device.gatt.connect();
+const svc = await server.getPrimaryService(service);
+const ch = await svc.getCharacteristic(writeChar);
+await ch.writeValue(new TextEncoder().encode(JSON.stringify({
+  ssid: "HomeWiFi",
+  password: "wifi-password",
+  plantlab_token: "setup-or-claim-token",
+  platform_url: "https://platform.example"
+})));
+```
+
+SoftAP provisioning remains compiled in and is used as a fallback if BLE setup
+cannot be started.
+
 ## Main firmware environment selection
 
 The main ESP32 master firmware now has explicit environment targets:

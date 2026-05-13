@@ -17,6 +17,7 @@
 #include "config.h"
 #include "espnow_test_protocol.h"
 #include "platform/platform_client.h"
+#include "provisioning/ble_provisioning.h"
 #include "sensors/dht22_sensor.h"
 #include "sensors/moisture_sensor.h"
 #include "system/power_button.h"
@@ -36,13 +37,16 @@ constexpr char kSoftwareVersion[] = "0.1.0";
 constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
+constexpr uint32_t kBleProvisioningTimeoutMs = 10UL * 60UL * 1000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
 constexpr uint32_t kCameraCaptureFlightTimeoutMs = 30000UL;
+constexpr uint32_t kManualCaptureAttemptTimeoutMs = 8000UL;
 constexpr uint32_t kManualCaptureAckTimeoutMs = 120000UL;
+constexpr uint8_t kManualCaptureMaxDispatchAttempts = 3;
 constexpr uint32_t kCaptureResultRetryMs = 3000UL;
 constexpr bool kCameraScheduledCaptureEnabled = true;
 constexpr bool kVerboseSensorPollingLogs = false;
@@ -115,6 +119,7 @@ PowerButton g_power_button(
 StatusLed g_status_led(PIN_STATUS_LED, STATUS_LED_ON_LEVEL, STATUS_LED_OFF_LEVEL);
 Preferences g_preferences;
 WebServer g_web_server(kProvisioningPort);
+plantlab::BleProvisioningService g_ble_provisioning;
 std::unique_ptr<PlatformClient> g_platform_client;
 MasterCaptureScheduleState g_camera_capture_schedule{};
 
@@ -126,10 +131,14 @@ unsigned long g_last_platform_status_ms = 0;
 unsigned long g_last_command_poll_ms = 0;
 unsigned long g_last_wifi_attempt_ms = 0;
 bool g_provisioning_mode = false;
+bool g_softap_provisioning_active = false;
 bool g_wifi_ready = false;
 bool g_web_routes_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
+plantlab::ProvisioningState g_provisioning_state = plantlab::ProvisioningState::NORMAL;
+unsigned long g_ble_provisioning_started_at_ms = 0;
+bool g_ble_had_previous_config = false;
 String g_pending_claim_token;
 String g_pending_backend_url;
 String g_pending_platform_url;
@@ -171,6 +180,7 @@ void noteEspNowSend(
     int command_id,
     const uint8_t* target_mac,
     unsigned long now);
+void startProvisioningMode();
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -249,6 +259,13 @@ String stableHardwareDeviceId() {
       static_cast<unsigned int>((chip_id >> 32) & 0xFFFF),
       static_cast<unsigned int>(chip_id & 0xFFFFFFFF));
   return String(buffer);
+}
+
+String bleProvisioningDeviceName() {
+  const String hardware_id = stableHardwareDeviceId();
+  const int suffix_length = 6;
+  const int start = std::max(0, static_cast<int>(hardware_id.length()) - suffix_length);
+  return String("PlantLab-Setup-") + hardware_id.substring(start);
 }
 
 String macToString(const uint8_t* mac) {
@@ -982,7 +999,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
     const int failed_command_id = g_camera_capture_in_flight.command_id;
     const uint32_t failed_request_id = g_camera_capture_in_flight.request_id;
     clearCameraCaptureFlight();
-    if (is_pending_backend_capture && g_pending_capture_command.dispatch_attempts < 3) {
+    if (is_pending_backend_capture && g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
       Serial.printf(
           "[platform] capture command %d request=%u send failed, retrying attempt=%u\n",
           g_pending_capture_command.command_id,
@@ -1002,7 +1019,9 @@ void serviceCameraCaptureFlight(unsigned long now) {
         failed_command_id);
     return;
   }
-  if (now - g_camera_capture_in_flight.started_at_ms < kCameraCaptureFlightTimeoutMs) {
+  const uint32_t capture_timeout_ms =
+      g_camera_capture_in_flight.command_id > 0 ? kManualCaptureAttemptTimeoutMs : kCameraCaptureFlightTimeoutMs;
+  if (now - g_camera_capture_in_flight.started_at_ms < capture_timeout_ms) {
     return;
   }
   Serial.printf(
@@ -1015,9 +1034,27 @@ void serviceCameraCaptureFlight(unsigned long now) {
                                           g_pending_capture_command.dispatched &&
                                           g_pending_capture_command.request_id ==
                                               g_camera_capture_in_flight.request_id;
+  const int timed_out_command_id = g_camera_capture_in_flight.command_id;
+  const uint32_t timed_out_request_id = g_camera_capture_in_flight.request_id;
   clearCameraCaptureFlight();
   if (is_pending_backend_capture) {
+    if (g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
+      Serial.printf(
+          "[platform] capture command %d request=%u had no response, retrying attempt=%u\n",
+          g_pending_capture_command.command_id,
+          static_cast<unsigned int>(timed_out_request_id),
+          static_cast<unsigned int>(g_pending_capture_command.dispatch_attempts + 1));
+      g_pending_capture_command.dispatched = false;
+      g_pending_capture_command.request_id = 0;
+      return;
+    }
     queuePendingCaptureCommandResult("failed", "timed out waiting for camera acknowledgement");
+    return;
+  }
+  if (timed_out_command_id > 0) {
+    Serial.printf(
+        "[camera-schedule] manual capture request=%u exhausted retry window without backend command match\n",
+        static_cast<unsigned int>(timed_out_request_id));
   }
 }
 
@@ -1110,6 +1147,19 @@ void pollCameraCaptureSchedule(unsigned long now) {
 }
 
 void updateStatusLed() {
+  if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_BLE) {
+    g_status_led.set_mode(StatusLedMode::kProvisioning);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::WIFI_CONNECTING) {
+    g_status_led.set_mode(StatusLedMode::kBooting);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_FAILED) {
+    g_status_led.set_mode(StatusLedMode::kOff);
+    return;
+  }
+
   switch (g_device_mode) {
     case DeviceMode::kProvisioning:
       g_status_led.set_mode(StatusLedMode::kProvisioning);
@@ -1265,6 +1315,23 @@ String wifiOptionsHtml() {
   }
   options += "<option value=\"__manual__\">My Wi-Fi is not listed</option>";
   return options;
+}
+
+void handleWifiNetworksJson() {
+  JsonDocument payload;
+  JsonArray networks = payload["networks"].to<JsonArray>();
+  for (const WiFiNetworkOption& network : g_cached_wifi_networks) {
+    JsonObject item = networks.add<JsonObject>();
+    item["ssid"] = network.ssid;
+    item["rssi"] = network.rssi;
+  }
+  payload["count"] = networks.size();
+  payload["source"] = "esp32-softap";
+
+  String body;
+  serializeJson(payload, body);
+  g_web_server.sendHeader("Access-Control-Allow-Origin", "*");
+  g_web_server.send(200, "application/json", body);
 }
 
 String connectingPageHtml(const String& return_url) {
@@ -1538,13 +1605,142 @@ void handleProvisioningSubmit() {
   Serial.println("[provisioning] saved Wi-Fi and setup code, reboot scheduled");
 }
 
-void startProvisioningMode() {
-  if (g_provisioning_mode) {
+void applyBleProvisioningPayload(const plantlab::BleProvisioningPayload& payload) {
+  g_config.wifi_ssid = String(payload.ssid.c_str());
+  g_config.wifi_password = String(payload.password.c_str());
+  g_config.claim_token = String(payload.plantlab_token.c_str());
+  g_config.backend_url = String(payload.backend_url.c_str());
+  g_config.platform_url = String(payload.platform_url.c_str());
+  g_config.device_token = "";
+  g_config.platform_device_id = 0;
+
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_acknowledged = false;
+  g_camera_runtime_ready = false;
+  g_last_camera_provisioning_attempt_ms = 0;
+  g_camera_target_mac_known = false;
+  memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
+  g_camera_bootstrap_capture_active = false;
+  g_camera_bootstrap_capture_attempts = 0;
+  g_next_camera_bootstrap_capture_ms = 0;
+  capture_schedule_init(
+      &g_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+}
+
+void stopBleProvisioningMode() {
+  if (g_ble_provisioning.active()) {
+    g_ble_provisioning.stop();
+  }
+  if (!g_softap_provisioning_active) {
+    g_provisioning_mode = false;
+  }
+}
+
+bool startBleProvisioningMode() {
+  if (g_ble_provisioning.active()) {
+    return true;
+  }
+
+  g_ble_had_previous_config = hasWifiCredentials();
+  g_ble_provisioning_started_at_ms = millis();
+  g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_BLE;
+  g_provisioning_mode = true;
+  g_softap_provisioning_active = false;
+  g_wifi_ready = false;
+  g_device_mode = DeviceMode::kProvisioning;
+  updateStatusLed();
+
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+
+  const String advertised_name = bleProvisioningDeviceName();
+  const String fallback_platform_url = runtimePlatformUrl();
+  if (!g_ble_provisioning.begin(advertised_name.c_str(), fallback_platform_url.c_str())) {
+    Serial.println("[provisioning] BLE setup failed, falling back to SoftAP provisioning");
+    g_ble_provisioning.stop();
+    g_provisioning_mode = false;
+    g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
+    startProvisioningMode();
+    return false;
+  }
+
+  Serial.printf(
+      "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s\n",
+      advertised_name.c_str(),
+      plantlab::kBleProvisioningServiceUuid,
+      plantlab::kBleProvisioningWriteCharacteristicUuid,
+      plantlab::kBleProvisioningStatusCharacteristicUuid);
+  return true;
+}
+
+void serviceBleProvisioning(unsigned long now) {
+  if (!g_ble_provisioning.active()) {
     return;
   }
 
-  Serial.println("[provisioning] entering provisioning mode");
+  if (g_ble_provisioning.hasPendingResult()) {
+    const plantlab::ProvisioningParseResult result = g_ble_provisioning.takePendingResult();
+    if (!result.ok) {
+      Serial.printf(
+          "[provisioning] BLE payload rejected: %s\n",
+          plantlab::provisioningParseErrorCode(result.error));
+      return;
+    }
+
+    Serial.printf(
+        "[provisioning] BLE payload accepted: ssid=%s token=%s platform=%s backend=%s\n",
+        result.payload.ssid.c_str(),
+        plantlab::maskSecretForLog(result.payload.plantlab_token).c_str(),
+        result.payload.platform_url.empty() ? "<empty>" : result.payload.platform_url.c_str(),
+        result.payload.backend_url.empty() ? "<empty>" : result.payload.backend_url.c_str());
+
+    applyBleProvisioningPayload(result.payload);
+    if (!saveConfig()) {
+      g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
+      g_ble_provisioning.setStatus(
+          g_provisioning_state,
+          plantlab::ProvisioningParseError::kMalformedPayload);
+      Serial.println("[provisioning] BLE config save failed");
+      return;
+    }
+
+    g_provisioning_state = plantlab::provisioningStateAfterValidPayload();
+    g_ble_provisioning.setStatus(g_provisioning_state);
+    g_restart_scheduled = true;
+    g_restart_at_ms = now + 2500UL;
+    Serial.println("[provisioning] BLE credentials saved, reboot scheduled");
+    return;
+  }
+
+  if (!g_restart_scheduled && now - g_ble_provisioning_started_at_ms >= kBleProvisioningTimeoutMs) {
+    g_provisioning_state = plantlab::provisioningStateAfterTimeout(g_ble_had_previous_config);
+    g_ble_provisioning.setStatus(g_provisioning_state);
+    Serial.printf(
+        "[provisioning] BLE provisioning timed out, next_state=%s\n",
+        plantlab::provisioningStateName(g_provisioning_state));
+    stopBleProvisioningMode();
+    if (g_ble_had_previous_config) {
+      g_device_mode = DeviceMode::kConnecting;
+      g_last_wifi_attempt_ms = 0;
+    } else {
+      g_device_mode = DeviceMode::kWifiFailed;
+    }
+    updateStatusLed();
+  }
+}
+
+void startProvisioningMode() {
+  if (g_softap_provisioning_active) {
+    return;
+  }
+
+  Serial.println("[provisioning] entering SoftAP provisioning mode");
   g_provisioning_mode = true;
+  g_softap_provisioning_active = true;
+  g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_BLE;
   g_wifi_ready = false;
   g_device_mode = DeviceMode::kProvisioning;
   updateStatusLed();
@@ -1589,6 +1785,7 @@ void startProvisioningMode() {
               g_pending_platform_url));
     });
     g_web_server.on("/save", HTTP_POST, handleProvisioningSubmit);
+    g_web_server.on("/wifi/networks", HTTP_GET, handleWifiNetworksJson);
     g_web_routes_registered = true;
   }
 
@@ -1616,6 +1813,7 @@ bool connectToWiFi() {
     if (!g_wifi_ready) {
       g_wifi_ready = true;
       g_device_mode = DeviceMode::kConnected;
+      g_provisioning_state = plantlab::ProvisioningState::NORMAL;
       updateStatusLed();
       Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
     }
@@ -1630,6 +1828,7 @@ bool connectToWiFi() {
   g_last_wifi_attempt_ms = now;
   g_wifi_ready = false;
   g_device_mode = DeviceMode::kConnecting;
+  g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
   updateStatusLed();
 
   Serial.printf("[wifi] connecting to %s\n", g_config.wifi_ssid.c_str());
@@ -1645,6 +1844,7 @@ bool connectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     g_wifi_ready = true;
     g_device_mode = DeviceMode::kConnected;
+    g_provisioning_state = plantlab::ProvisioningState::NORMAL;
     updateStatusLed();
     Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
     return true;
@@ -1652,6 +1852,7 @@ bool connectToWiFi() {
 
   WiFi.disconnect();
   g_device_mode = DeviceMode::kWifiFailed;
+  g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
   updateStatusLed();
   Serial.println("[wifi] connect timed out");
   return false;
@@ -1743,25 +1944,8 @@ bool registerProvisionedDevice() {
 void checkProvisioningButton() {
   const PowerButtonEvent event = g_power_button.update(millis());
   if (event == PowerButtonEvent::kLongPress && !g_provisioning_mode) {
-    Serial.println("[button] long press detected -> provisioning mode");
-    g_config.claim_token = "";
-    g_config.device_token = "";
-    g_config.platform_device_id = 0;
-    g_camera_provisioning_session = MasterProvisioningSession{};
-    g_camera_provisioning_acknowledged = false;
-    g_camera_runtime_ready = false;
-    g_last_camera_provisioning_attempt_ms = 0;
-    g_camera_target_mac_known = false;
-    memset(g_camera_target_mac, 0, sizeof(g_camera_target_mac));
-    g_camera_bootstrap_capture_active = false;
-    g_camera_bootstrap_capture_attempts = 0;
-    g_next_camera_bootstrap_capture_ms = 0;
-    capture_schedule_init(
-        &g_camera_capture_schedule,
-        PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
-        PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
-    saveConfig();
-    startProvisioningMode();
+    Serial.println("[button] long press detected -> BLE provisioning mode");
+    startBleProvisioningMode();
     return;
   }
 }
@@ -1982,8 +2166,8 @@ void setup() {
     Serial.println("[provisioning] saved Wi-Fi config found, connecting to Wi-Fi");
     connectToWiFi();
   } else {
-    Serial.println("[provisioning] no saved Wi-Fi config, starting provisioning mode");
-    startProvisioningMode();
+    Serial.println("[provisioning] no saved Wi-Fi config, starting BLE provisioning mode");
+    startBleProvisioningMode();
   }
 }
 
@@ -1994,13 +2178,19 @@ void loop() {
   g_pump.update();
 
   if (g_provisioning_mode) {
-    g_web_server.handleClient();
+    serviceBleProvisioning(now);
+    if (g_softap_provisioning_active) {
+      g_web_server.handleClient();
+    }
     if (g_restart_scheduled && static_cast<long>(now - g_restart_at_ms) >= 0) {
       Serial.println("[provisioning] rebooting ESP32");
+      stopBleProvisioningMode();
       delay(100);
       ESP.restart();
     }
-    return;
+    if (g_provisioning_mode) {
+      return;
+    }
   }
 
   connectToWiFi();

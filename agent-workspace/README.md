@@ -32,3 +32,21 @@ Usage:
    - `agent-workspace/final_summary.md`
    - `agent-workspace/review.md`
    - `git diff`
+
+Safe preflight:
+
+- `python agent-workspace/scripts/run_pipeline.py --check`
+
+This validates the workspace, model selection, approval marker, and detected test commands without running coder/tester/reviewer agents.
+
+Runtime defaults:
+
+- model: `gpt-5.5`
+- per-agent timeout: `900` seconds
+
+Optional overrides:
+
+- `CODEX_WORKFLOW_MODEL=gpt-5.5`
+- `CODEX_WORKFLOW_TIMEOUT_SECONDS=900`
+
+The scripts treat a timeout as successful only when `codex exec` already wrote the expected output file. Otherwise the run fails and writes the blocker to the relevant workspace log.

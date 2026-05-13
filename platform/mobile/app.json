@@ -6,8 +6,19 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "ios": {
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "PlantLab connects to the device setup network to load nearby Wi-Fi options from the ESP32."
+      }
+    },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PlantLab uses the camera to scan the serial-number QR code on your device label."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

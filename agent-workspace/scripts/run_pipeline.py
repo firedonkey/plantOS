@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
+import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +33,10 @@ TESTER_PROMPT_PATH = PROMPTS / "tester.md"
 REVIEWER_PROMPT_PATH = PROMPTS / "reviewer.md"
 
 MAX_RETRIES = 3
-DEFAULT_CODEX_MODEL = "gpt-5.4"
+DEFAULT_CODEX_MODEL = "gpt-5.5"
+DEFAULT_CODEX_TIMEOUT_SECONDS = 900
+MAX_PROMPT_SECTION_CHARS = 20000
+MAX_PROCESS_OUTPUT_CHARS = 12000
 
 
 @dataclass
@@ -41,12 +46,52 @@ class TestCommand:
     cwd: Path
 
 
+@dataclass
+class AgentRunResult:
+    process: subprocess.CompletedProcess[str]
+    timed_out: bool
+    output_written: bool
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def workflow_timeout_seconds() -> int:
+    raw_value = os.environ.get("CODEX_WORKFLOW_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return DEFAULT_CODEX_TIMEOUT_SECONDS
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        raise SystemExit("CODEX_WORKFLOW_TIMEOUT_SECONDS must be an integer")
+
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def bounded_text(path: Path, max_chars: int = MAX_PROMPT_SECTION_CHARS) -> str:
+    content = read_text(path).strip()
+    if len(content) <= max_chars:
+        return content
+    omitted = len(content) - max_chars
+    return (
+        f"[truncated {omitted} chars from the beginning; showing the most recent {max_chars} chars]\n"
+        + content[-max_chars:]
+    )
+
+
+def truncate_for_log(content: str, max_chars: int = MAX_PROCESS_OUTPUT_CHARS) -> str:
+    if len(content) <= max_chars:
+        return content
+    omitted = len(content) - max_chars
+    return (
+        f"[truncated {omitted} chars from the middle]\n"
+        + content[: max_chars // 2]
+        + "\n...\n"
+        + content[-(max_chars // 2) :]
+    )
 
 
 def write_text(path: Path, content: str) -> None:
@@ -88,6 +133,45 @@ def ensure_workspace() -> str:
     return codex_bin
 
 
+def check_workspace() -> int:
+    codex_bin = ensure_workspace()
+    model = os.environ.get("CODEX_WORKFLOW_MODEL", DEFAULT_CODEX_MODEL)
+    timeout_seconds = workflow_timeout_seconds()
+    commands = detect_test_commands()
+    lines = [
+        "# Final Summary",
+        "",
+        "- Status: CHECK PASSED",
+        "- No agents were run.",
+        "- No production code was changed by this check.",
+        f"- Codex binary: `{codex_bin}`",
+        f"- Model: `{model}`",
+        f"- Agent timeout seconds: `{timeout_seconds}`",
+        "",
+        "## Detected test commands",
+        "",
+    ]
+    if commands:
+        for command in commands:
+            lines.append(f"- {command.label}: `{' '.join(command.cmd)}` in `{command.cwd}`")
+    else:
+        lines.append("- No supported test command detected.")
+    write_text(FINAL_SUMMARY_PATH, "\n".join(lines) + "\n")
+    state = load_state()
+    state["status"] = "approved_ready"
+    state["pipeline"] = {
+        "attempt": 0,
+        "max_retries": MAX_RETRIES,
+        "result": "check_passed",
+        "checked_at": utc_now(),
+        "model": model,
+        "timeout_seconds": timeout_seconds,
+    }
+    write_state(state)
+    print(f"Workflow check passed. Wrote {FINAL_SUMMARY_PATH}")
+    return 0
+
+
 def normalize_test_file(path: Path, title: str) -> None:
     write_text(path, f"# {title}\n\n")
 
@@ -96,10 +180,10 @@ def build_agent_prompt(prompt_path: Path, role_name: str, attempt: int, extra_fe
     task = read_text(TASK_PATH).strip()
     plan = read_text(PLAN_PATH).strip()
     approved = read_text(APPROVED_PLAN_PATH).strip()
-    coder_log = read_text(CODER_LOG_PATH).strip()
-    tester_log = read_text(TESTER_LOG_PATH).strip()
-    test_report = read_text(TEST_REPORT_PATH).strip()
-    review = read_text(REVIEW_PATH).strip()
+    coder_log = bounded_text(CODER_LOG_PATH)
+    tester_log = bounded_text(TESTER_LOG_PATH)
+    test_report = bounded_text(TEST_REPORT_PATH)
+    review = bounded_text(REVIEW_PATH)
     base = read_text(prompt_path).rstrip()
     sections = [
         base,
@@ -135,9 +219,10 @@ def run_codex_agent(
     attempt: int,
     role_name: str,
     extra_feedback: str = "",
-) -> subprocess.CompletedProcess[str]:
+) -> AgentRunResult:
     model = os.environ.get("CODEX_WORKFLOW_MODEL", DEFAULT_CODEX_MODEL)
     prompt = build_agent_prompt(prompt_path, role_name, attempt, extra_feedback)
+    output_before = read_text(output_path) if output_path.exists() else ""
     cmd = [
         codex_bin,
         "exec",
@@ -153,13 +238,42 @@ def run_codex_agent(
         "--color",
         "never",
     ]
-    return subprocess.run(
+    timeout_seconds = workflow_timeout_seconds()
+    process = subprocess.Popen(
         cmd,
-        input=prompt,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        capture_output=True,
         cwd=REPO_ROOT,
+        start_new_session=True,
     )
+    timed_out = False
+    try:
+        stdout, stderr = process.communicate(input=prompt, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+    output_after = read_text(output_path) if output_path.exists() else ""
+    output_written = bool(output_after.strip()) and output_after != output_before
+    process_result = subprocess.CompletedProcess(
+        cmd,
+        process.returncode if process.returncode is not None else -1,
+        stdout or "",
+        stderr or "",
+    )
+    return AgentRunResult(process_result, timed_out, output_written)
 
 
 def append_agent_message(log_path: Path, output_path: Path) -> None:
@@ -172,11 +286,24 @@ def append_attempt_header(path: Path, title: str, attempt: int) -> None:
     append_text(path, f"## Attempt {attempt}\n\n### {title}\n\n")
 
 
-def append_process_output(path: Path, result: subprocess.CompletedProcess[str]) -> None:
-    if result.stdout:
-        append_text(path, "#### stdout\n\n```\n" + result.stdout.rstrip() + "\n```\n\n")
-    if result.stderr:
-        append_text(path, "#### stderr\n\n```\n" + result.stderr.rstrip() + "\n```\n\n")
+def append_process_output(path: Path, result: AgentRunResult | subprocess.CompletedProcess[str]) -> None:
+    process = result.process if isinstance(result, AgentRunResult) else result
+    if isinstance(result, AgentRunResult) and result.timed_out:
+        append_text(
+            path,
+            f"#### timeout\n\ncodex exec exceeded {workflow_timeout_seconds()} seconds. "
+            f"Output written: {'yes' if result.output_written else 'no'}.\n\n",
+        )
+    if process.stdout:
+        append_text(path, "#### stdout\n\n```\n" + truncate_for_log(process.stdout.rstrip()) + "\n```\n\n")
+    if process.stderr:
+        append_text(path, "#### stderr\n\n```\n" + truncate_for_log(process.stderr.rstrip()) + "\n```\n\n")
+
+
+def agent_run_failed(result: AgentRunResult) -> bool:
+    if result.process.returncode == 0:
+        return False
+    return not (result.timed_out and result.output_written)
 
 
 def find_python_for_pytest() -> list[str] | None:
@@ -193,8 +320,28 @@ def load_package_json(path: Path) -> dict:
         return {}
 
 
+def should_ignore_discovered_path(path: Path) -> bool:
+    try:
+        relative = path.relative_to(REPO_ROOT)
+    except ValueError:
+        return True
+    ignored_parts = {
+        ".git",
+        ".pio-core",
+        ".pytest_cache",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "dist",
+        "build",
+    }
+    return any(part in ignored_parts for part in relative.parts)
+
+
 def iter_package_tests() -> Iterable[TestCommand]:
     for package_path in sorted(REPO_ROOT.rglob("package.json")):
+        if should_ignore_discovered_path(package_path):
+            continue
         if "node_modules" in package_path.parts:
             continue
         package = load_package_json(package_path)
@@ -220,16 +367,28 @@ def detect_test_commands() -> list[TestCommand]:
     commands.extend(iter_package_tests())
 
     for cargo_toml in sorted(REPO_ROOT.rglob("Cargo.toml")):
+        if should_ignore_discovered_path(cargo_toml):
+            continue
         if shutil.which("cargo"):
             commands.append(TestCommand(f"cargo test ({cargo_toml.parent.relative_to(REPO_ROOT)})", ["cargo", "test"], cargo_toml.parent))
 
     for go_mod in sorted(REPO_ROOT.rglob("go.mod")):
+        if should_ignore_discovered_path(go_mod):
+            continue
         if shutil.which("go"):
             commands.append(TestCommand(f"go test ./... ({go_mod.parent.relative_to(REPO_ROOT)})", ["go", "test", "./..."], go_mod.parent))
 
     for pio_ini in sorted(REPO_ROOT.rglob("platformio.ini")):
-        if shutil.which("pio"):
-            commands.append(TestCommand(f"platformio test ({pio_ini.parent.relative_to(REPO_ROOT)})", ["pio", "test"], pio_ini.parent))
+        if should_ignore_discovered_path(pio_ini):
+            continue
+        if not (pio_ini.parent / "test").exists():
+            continue
+        pio_bin = shutil.which("pio")
+        repo_pio = REPO_ROOT / ".venv" / "bin" / "pio"
+        if not pio_bin and repo_pio.exists():
+            pio_bin = str(repo_pio)
+        if pio_bin:
+            commands.append(TestCommand(f"platformio test ({pio_ini.parent.relative_to(REPO_ROOT)})", [pio_bin, "test"], pio_ini.parent))
 
     unique: list[TestCommand] = []
     seen: set[tuple[str, str]] = set()
@@ -332,6 +491,21 @@ def summarize_results(
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the local agent pipeline.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate workspace/model/test detection without running agents.",
+    )
+    parser.add_argument(
+        "--resume-after-coder",
+        action="store_true",
+        help="Reuse agent-workspace/.coder_attempt_1.md and continue with Tester/Reviewer.",
+    )
+    args = parser.parse_args()
+    if args.check:
+        return check_workspace()
+
     codex_bin = ensure_workspace()
     normalize_test_file(CODER_LOG_PATH, "Coder Log")
     normalize_test_file(TESTER_LOG_PATH, "Tester Log")
@@ -352,27 +526,38 @@ def main() -> int:
         state["pipeline"]["attempt"] = attempt
         write_state(state)
 
-        append_attempt_header(CODER_LOG_PATH, "Coder Agent", attempt)
         coder_output_path = WORKSPACE / f".coder_attempt_{attempt}.md"
-        coder_result = run_codex_agent(
-            codex_bin,
-            CODER_PROMPT_PATH,
-            coder_output_path,
-            "workspace-write",
-            attempt,
-            "Coder Agent",
-            extra_feedback,
-        )
-        append_agent_message(CODER_LOG_PATH, coder_output_path)
-        append_process_output(CODER_LOG_PATH, coder_result)
-        if coder_result.returncode != 0:
-            state["status"] = "failed"
-            state["pipeline"]["result"] = "coder_failed"
-            write_state(state)
-            summarize_results(False, attempt, False, "BLOCKED", [])
-            sys.stderr.write(coder_result.stdout)
-            sys.stderr.write(coder_result.stderr)
-            return coder_result.returncode
+        if args.resume_after_coder and attempt == 1:
+            if not read_text(coder_output_path).strip():
+                raise SystemExit(f"cannot resume after coder: missing {coder_output_path}")
+            append_attempt_header(CODER_LOG_PATH, "Coder Agent", attempt)
+            append_text(CODER_LOG_PATH, "Reused existing coder output from prior completed attempt.\n\n")
+            append_agent_message(CODER_LOG_PATH, coder_output_path)
+        else:
+            append_attempt_header(CODER_LOG_PATH, "Coder Agent", attempt)
+            coder_result = run_codex_agent(
+                codex_bin,
+                CODER_PROMPT_PATH,
+                coder_output_path,
+                "workspace-write",
+                attempt,
+                "Coder Agent",
+                extra_feedback,
+            )
+            append_agent_message(CODER_LOG_PATH, coder_output_path)
+            append_process_output(CODER_LOG_PATH, coder_result)
+            if agent_run_failed(coder_result):
+                state["status"] = "failed"
+                state["pipeline"]["result"] = "coder_timed_out" if coder_result.timed_out else "coder_failed"
+                write_state(state)
+                summarize_results(False, attempt, False, "BLOCKED", [])
+                sys.stderr.write(coder_result.process.stdout)
+                sys.stderr.write(coder_result.process.stderr)
+                if coder_result.timed_out:
+                    sys.stderr.write(
+                        f"\ncoder agent timed out after {workflow_timeout_seconds()} seconds without writing output.\n"
+                    )
+                return coder_result.process.returncode or 1
 
         append_attempt_header(TESTER_LOG_PATH, "Tester Agent", attempt)
         tester_output_path = WORKSPACE / f".tester_attempt_{attempt}.md"
@@ -387,14 +572,18 @@ def main() -> int:
         )
         append_agent_message(TESTER_LOG_PATH, tester_output_path)
         append_process_output(TESTER_LOG_PATH, tester_result)
-        if tester_result.returncode != 0:
+        if agent_run_failed(tester_result):
             state["status"] = "failed"
-            state["pipeline"]["result"] = "tester_failed"
+            state["pipeline"]["result"] = "tester_timed_out" if tester_result.timed_out else "tester_failed"
             write_state(state)
             summarize_results(False, attempt, False, "BLOCKED", [])
-            sys.stderr.write(tester_result.stdout)
-            sys.stderr.write(tester_result.stderr)
-            return tester_result.returncode
+            sys.stderr.write(tester_result.process.stdout)
+            sys.stderr.write(tester_result.process.stderr)
+            if tester_result.timed_out:
+                sys.stderr.write(
+                    f"\ntester agent timed out after {workflow_timeout_seconds()} seconds without writing output.\n"
+                )
+            return tester_result.process.returncode or 1
 
         tests_ok, test_results = run_test_commands(attempt)
         final_tests_ok = tests_ok
@@ -416,14 +605,18 @@ def main() -> int:
         )
         append_agent_message(REVIEW_PATH, reviewer_output_path)
         append_process_output(REVIEW_PATH, reviewer_result)
-        if reviewer_result.returncode != 0:
+        if agent_run_failed(reviewer_result):
             state["status"] = "failed"
-            state["pipeline"]["result"] = "reviewer_failed"
+            state["pipeline"]["result"] = "reviewer_timed_out" if reviewer_result.timed_out else "reviewer_failed"
             write_state(state)
             summarize_results(False, attempt, tests_ok, "BLOCKED", test_results)
-            sys.stderr.write(reviewer_result.stdout)
-            sys.stderr.write(reviewer_result.stderr)
-            return reviewer_result.returncode
+            sys.stderr.write(reviewer_result.process.stdout)
+            sys.stderr.write(reviewer_result.process.stderr)
+            if reviewer_result.timed_out:
+                sys.stderr.write(
+                    f"\nreviewer agent timed out after {workflow_timeout_seconds()} seconds without writing output.\n"
+                )
+            return reviewer_result.process.returncode or 1
 
         review_status = parse_review_status()
         final_review_status = review_status

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,26 @@ STATE_PATH = WORKSPACE / "state.json"
 TASK_PATH = WORKSPACE / "task.md"
 PLAN_PATH = WORKSPACE / "plan.md"
 PLANNER_PROMPT_PATH = PROMPTS / "planner.md"
-DEFAULT_CODEX_MODEL = "gpt-5.4"
+DEFAULT_CODEX_MODEL = "gpt-5.5"
+DEFAULT_CODEX_TIMEOUT_SECONDS = 900
+
+
+class CodexRunError(RuntimeError):
+    def __init__(self, message: str, returncode: int, stdout: str = "", stderr: str = ""):
+        super().__init__(message)
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def workflow_timeout_seconds() -> int:
+    raw_value = os.environ.get("CODEX_WORKFLOW_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return DEFAULT_CODEX_TIMEOUT_SECONDS
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        raise SystemExit("CODEX_WORKFLOW_TIMEOUT_SECONDS must be an integer")
 
 
 def utc_now() -> str:
@@ -71,7 +91,7 @@ def build_prompt(task: str) -> str:
     )
 
 
-def run_codex(codex_bin: str, prompt: str) -> subprocess.CompletedProcess[str]:
+def run_codex(codex_bin: str, prompt: str) -> tuple[subprocess.CompletedProcess[str], bool]:
     model = os.environ.get("CODEX_WORKFLOW_MODEL", DEFAULT_CODEX_MODEL)
     cmd = [
         codex_bin,
@@ -88,23 +108,51 @@ def run_codex(codex_bin: str, prompt: str) -> subprocess.CompletedProcess[str]:
         "--color",
         "never",
     ]
-    return subprocess.run(
+    timeout_seconds = workflow_timeout_seconds()
+    process = subprocess.Popen(
         cmd,
-        input=prompt,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        capture_output=True,
         cwd=REPO_ROOT,
+        start_new_session=True,
     )
+    try:
+        stdout, stderr = process.communicate(input=prompt, timeout=timeout_seconds)
+        return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr), False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        result = subprocess.CompletedProcess(cmd, process.returncode or -1, stdout or "", stderr or "")
+        return result, True
 
 
 def main() -> int:
     codex_bin = ensure_prereqs()
     task = read_text(TASK_PATH).strip()
     prompt = build_prompt(task)
-    result = run_codex(codex_bin, prompt)
-    if result.returncode != 0:
+    plan_before = read_text(PLAN_PATH) if PLAN_PATH.exists() else ""
+    result, timed_out = run_codex(codex_bin, prompt)
+    plan_after = read_text(PLAN_PATH) if PLAN_PATH.exists() else ""
+    output_written = bool(plan_after.strip()) and plan_after != plan_before
+    if result.returncode != 0 and not (timed_out and output_written):
         sys.stderr.write(result.stdout)
         sys.stderr.write(result.stderr)
+        if timed_out:
+            sys.stderr.write(
+                f"\ncodex exec timed out after {workflow_timeout_seconds()} seconds without writing a new plan.\n"
+            )
         return result.returncode
     state = load_state()
     state["status"] = "waiting_for_approval"
@@ -112,10 +160,14 @@ def main() -> int:
         "completed_at": utc_now(),
         "task_file": str(TASK_PATH),
         "plan_file": str(PLAN_PATH),
+        "model": os.environ.get("CODEX_WORKFLOW_MODEL", DEFAULT_CODEX_MODEL),
+        "timed_out_after_output": timed_out and output_written,
     }
     state["pipeline"] = {"attempt": 0, "max_retries": 3, "result": None}
     write_state(state)
     print(f"Wrote plan to {PLAN_PATH}")
+    if timed_out and output_written:
+        print("Planner output was written before codex exec timed out; treated as successful.")
     print("Planner stopped after plan generation. Review the plan and create APPROVED_PLAN to continue.")
     return 0
 

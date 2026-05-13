@@ -13,6 +13,7 @@ export default function DevicesLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "Devices" }} />
+      <Stack.Screen name="add" options={{ title: "Add device" }} />
       <Stack.Screen name="[deviceId]/index" options={{ title: "Device" }} />
       <Stack.Screen name="[deviceId]/history" options={{ title: "History" }} />
       <Stack.Screen name="[deviceId]/settings" options={{ title: "Device settings" }} />

@@ -46,3 +46,10 @@ Entry points:
 4. Approve by creating `agent-workspace/APPROVED_PLAN`
 5. Run `python agent-workspace/scripts/run_pipeline.py`
 6. Review `agent-workspace/final_summary.md`, `agent-workspace/review.md`, and `git diff`
+
+Runtime defaults:
+
+- `CODEX_WORKFLOW_MODEL` defaults to `gpt-5.5`
+- `CODEX_WORKFLOW_TIMEOUT_SECONDS` defaults to `900`
+
+The runner fails closed when an agent times out without writing its expected output file.

@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useDevices } from "@/hooks/useDevices";
@@ -13,14 +14,17 @@ export function DeviceListScreen() {
   return (
     <Screen onRefresh={refresh} refreshing={isLoading}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>PLANTLAB</Text>
-        <Text style={styles.title}>Devices</Text>
-        <Text style={styles.subtitle}>
-          {usedMock ? "Showing bundled mock devices because the backend is unavailable." : "Showing devices from your local PlantLab backend."}
-        </Text>
-        <Text style={styles.meta}>
-          {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh when you are ready."}
-        </Text>
+        <View style={styles.headerText}>
+          <Text style={styles.eyebrow}>PLANTLAB</Text>
+          <Text style={styles.title}>Devices</Text>
+          <Text style={styles.subtitle}>
+            {usedMock ? "Showing bundled mock devices because the backend is unavailable." : "Showing devices from your local PlantLab backend."}
+          </Text>
+          <Text style={styles.meta}>
+            {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh when you are ready."}
+          </Text>
+        </View>
+        <PrimaryButton label="Add device" onPress={() => router.push("/(app)/devices/add")} />
       </View>
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
@@ -29,7 +33,8 @@ export function DeviceListScreen() {
       {!isLoading && !error && devices.length === 0 ? (
         <Card>
           <Text style={styles.cardTitle}>No devices yet</Text>
-          <Text style={styles.cardSubtitle}>Add a PlantLab from the existing backend-rendered flow, then come back here to monitor it.</Text>
+          <Text style={styles.cardSubtitle}>Start onboarding here, then come back to monitor it once the device reports.</Text>
+          <PrimaryButton label="Add device" onPress={() => router.push("/(app)/devices/add")} />
         </Card>
       ) : null}
 
@@ -61,7 +66,8 @@ export function DeviceListScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 8 },
+  header: { gap: 12 },
+  headerText: { gap: 8 },
   eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
   title: { fontSize: 34, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: 16, color: theme.colors.textSecondary },
