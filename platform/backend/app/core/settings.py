@@ -30,6 +30,7 @@ class Settings:
     google_client_id: str | None = None
     google_client_secret: str | None = None
     provisioning_api_url: str = "https://plantlab-provision-api-418533861080.us-central1.run.app"
+    provisioning_public_url: str | None = None
     provisioning_service_secret: str | None = None
     local_setup_url: str = "http://10.42.0.1:8080/"
     device_platform_url: str | None = None
@@ -43,6 +44,10 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def effective_provisioning_public_url(self) -> str:
+        return (self.provisioning_public_url or self.provisioning_api_url).rstrip("/")
 
     def validate(self) -> None:
         if self.is_production and self.database_url.startswith("sqlite"):
@@ -75,6 +80,7 @@ def get_settings() -> Settings:
         google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),
         provisioning_api_url=os.getenv("PLANTLAB_PROVISIONING_API_URL", Settings.provisioning_api_url).rstrip("/"),
+        provisioning_public_url=_optional_env("PLANTLAB_PROVISIONING_PUBLIC_URL"),
         provisioning_service_secret=_optional_env("PLANTLAB_PROVISIONING_SHARED_SECRET"),
         local_setup_url=os.getenv("PLANTLAB_LOCAL_SETUP_URL", Settings.local_setup_url).rstrip("/") + "/",
         device_platform_url=_optional_env("PLANTLAB_DEVICE_PLATFORM_URL"),

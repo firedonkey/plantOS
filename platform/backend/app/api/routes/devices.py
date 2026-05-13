@@ -128,7 +128,7 @@ async def create_device_setup_code(
         claim_token=upstream_payload.get("claim_token"),
         setup_token=setup_token,
         local_setup_url=settings.local_setup_url,
-        provisioning_api_url=settings.provisioning_api_url,
+        provisioning_api_url=settings.effective_provisioning_public_url,
         platform_url=settings.device_platform_url,
         setup_finishing_url=setup_finishing_url,
         continue_setup_url=continue_setup_url,
@@ -498,7 +498,7 @@ def _build_continue_setup_url(*, settings, setup_token: str | None, serial_numbe
     query_params = {
         "sn": serial_number,
         "device_name": device_name,
-        "backend_url": settings.provisioning_api_url,
+        "backend_url": settings.effective_provisioning_public_url,
         "return_url": setup_finishing_url,
     }
     if setup_token:

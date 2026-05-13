@@ -23,6 +23,9 @@ services:
       dockerfile: Dockerfile
     container_name: plantlab-local-platform
     restart: unless-stopped
+    env_file:
+      - path: .env.local
+        required: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,7 +40,6 @@ services:
       PLANTLAB_PROVISIONING_API_URL: http://provision-backend:3000
       PLANTLAB_PROVISIONING_SHARED_SECRET: ${PLANTLAB_PROVISIONING_SHARED_SECRET:-local-dev-provisioning-secret}
       PLANTLAB_LOCAL_SETUP_URL: ${PLANTLAB_LOCAL_SETUP_URL:-http://10.42.0.1:8080}
-      PLANTLAB_DEVICE_PLATFORM_URL: ${PLANTLAB_DEVICE_PLATFORM_URL:-}
       PORT: 8080
     ports:
       - "8000:8080"

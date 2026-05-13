@@ -391,13 +391,20 @@ Current standalone response shape:
   "claim_token": "claim-esp32-001",
   "setup_token": "claim-esp32-001",
   "local_setup_url": "http://10.42.0.1:8080/",
-  "provisioning_api_url": "http://localhost:3000",
-  "platform_url": "http://localhost:8000",
+  "provisioning_api_url": "http://192.168.0.55:3000",
+  "platform_url": "http://192.168.0.55:8000",
   "setup_finishing_url": "http://localhost:5173/devices/setup-finishing?device_name=Device+1&location=Kitchen&expect_image=1",
-  "continue_setup_url": "http://10.42.0.1:8080/?setup_code=claim-esp32-001&sn=SN-ESP32-001&device_name=Device+1&location=Kitchen&backend_url=http%3A%2F%2Flocalhost%3A3000&platform_url=http%3A%2F%2Flocalhost%3A8000&return_url=http%3A%2F%2Flocalhost%3A5173%2Fdevices%2Fsetup-finishing%3Fdevice_name%3DDevice%2B1%26location%3DKitchen%26expect_image%3D1",
+  "continue_setup_url": "http://10.42.0.1:8080/?setup_code=claim-esp32-001&sn=SN-ESP32-001&device_name=Device+1&location=Kitchen&backend_url=http%3A%2F%2F192.168.0.55%3A3000&platform_url=http%3A%2F%2F192.168.0.55%3A8000&return_url=http%3A%2F%2Flocalhost%3A5173%2Fdevices%2Fsetup-finishing%3Fdevice_name%3DDevice%2B1%26location%3DKitchen%26expect_image%3D1",
   "expect_image": true
 }
 ```
+
+Notes:
+
+- `provisioning_api_url` in the standalone setup-code response should be a LAN-reachable provisioning URL for the physical device, not a Docker-internal hostname.
+- local Docker development should set:
+  - `PLANTLAB_PROVISIONING_PUBLIC_URL=http://<your-mac-lan-ip>:3000`
+  - `PLANTLAB_DEVICE_PLATFORM_URL=http://<your-mac-lan-ip>:8000`
 
 ### `GET /api/setup/status`
 

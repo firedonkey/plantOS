@@ -368,6 +368,9 @@ def test_device_command_wrapper_apis():
 
 def test_device_setup_code_api_returns_handoff_urls(monkeypatch):
     client, _ = build_client_with_user()
+    monkeypatch.setenv("PLANTLAB_DEVICE_PLATFORM_URL", "http://192.168.0.55:8000")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_PUBLIC_URL", "http://192.168.0.55:3000")
+    get_settings.cache_clear()
 
     class FakeResponse:
         status_code = 200
@@ -416,12 +419,17 @@ def test_device_setup_code_api_returns_handoff_urls(monkeypatch):
         assert payload["serial_number"] == "SN-ESP32-001"
         assert payload["claim_token"] == "claim-esp32-001"
         assert payload["setup_token"] == "claim-esp32-001"
+        assert payload["provisioning_api_url"] == "http://192.168.0.55:3000"
+        assert payload["platform_url"] == "http://192.168.0.55:8000"
         assert payload["setup_finishing_url"].startswith("http://localhost:5173/devices/setup-finishing?")
         assert "device_name=Kitchen+Rose" in payload["setup_finishing_url"]
         assert payload["continue_setup_url"].startswith("http://10.42.0.1:8080/?")
         assert "setup_code=claim-esp32-001" in payload["continue_setup_url"]
+        assert "backend_url=http%3A%2F%2F192.168.0.55%3A3000" in payload["continue_setup_url"]
+        assert "platform_url=http%3A%2F%2F192.168.0.55%3A8000" in payload["continue_setup_url"]
         assert "return_url=http%3A%2F%2Flocalhost%3A5173%2Fdevices%2Fsetup-finishing" in payload["continue_setup_url"]
     finally:
+        get_settings.cache_clear()
         teardown_overrides()
 
 
