@@ -44,6 +44,8 @@ constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
 constexpr uint32_t kCameraCaptureFlightTimeoutMs = 30000UL;
 constexpr uint32_t kManualCaptureAckTimeoutMs = 120000UL;
 constexpr uint32_t kCaptureResultRetryMs = 3000UL;
+constexpr bool kCameraScheduledCaptureEnabled = true;
+constexpr bool kVerboseSensorPollingLogs = false;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -138,12 +140,16 @@ uint8_t g_camera_bootstrap_capture_attempts = 0;
 unsigned long g_next_camera_bootstrap_capture_ms = 0;
 PendingCaptureCommand g_pending_capture_command{};
 CameraCaptureFlight g_camera_capture_in_flight{};
+bool g_camera_schedule_paused_for_manual = false;
 
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
 void clearPendingCaptureCommand();
 void clearCameraCaptureFlight();
 void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now);
-void reportPendingCaptureCommandResult(const char* status, const String& message);
+bool sendEspNowPauseCaptureCommand(bool paused);
+void setCameraSchedulePausedForManual(bool paused);
+void queuePendingCaptureCommandResult(const char* status, const String& message);
+void flushPendingCaptureCommandResult();
 void markPendingCaptureCommandInProgress(int command_id);
 bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now);
 bool dispatchPendingCaptureCommand(unsigned long now);
@@ -401,7 +407,7 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
           static_cast<unsigned int>(packet.request_id),
           static_cast<unsigned long>(flags),
           static_cast<unsigned long>(packet.value_u32_2));
-      reportPendingCaptureCommandResult("completed", "camera uploaded a new image");
+      queuePendingCaptureCommandResult("completed", "camera uploaded a new image");
     }
     return;
   }
@@ -466,7 +472,7 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
         static_cast<unsigned long>(packet.value_u32_2),
         espnowAckToString(ack_status),
         static_cast<unsigned long>(capture_wait_ms));
-    reportPendingCaptureCommandResult(
+    queuePendingCaptureCommandResult(
         ack_status == EspNowAckStatus::kOk ? "completed" : "failed",
         manualCaptureAckMessage(ack_status));
   }
@@ -672,6 +678,56 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
   return true;
 }
 
+bool sendEspNowPauseCaptureCommand(bool paused) {
+  if (!g_espnow_ready) {
+    return false;
+  }
+
+  EspNowPacket packet{};
+  packet.magic = ESPNOW_TEST_MAGIC;
+  packet.version = ESPNOW_TEST_VERSION;
+  packet.kind = static_cast<uint8_t>(EspNowMessageKind::kCommand);
+  packet.command = static_cast<uint8_t>(EspNowCommandType::kPauseCapture);
+  packet.ack_status = static_cast<uint8_t>(EspNowAckStatus::kOk);
+  packet.request_id = g_next_espnow_request_id++;
+  packet.timestamp_ms = millis();
+  packet.value_u32_1 = paused ? 1u : 0u;
+  packet.value_u32_2 = 0u;
+
+  const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
+  if (!ensureEspNowPeer(target_mac)) {
+    return false;
+  }
+
+  const esp_err_t err = esp_now_send(
+      target_mac,
+      reinterpret_cast<const uint8_t*>(&packet),
+      sizeof(packet));
+  if (err != ESP_OK) {
+    Serial.printf("[camera-schedule] pause command send failed err=%d paused=%u\n", static_cast<int>(err), paused ? 1u : 0u);
+    return false;
+  }
+
+  Serial.printf(
+      "[camera-schedule] pause command sent request=%u paused=%u target=%s\n",
+      static_cast<unsigned int>(packet.request_id),
+      paused ? 1u : 0u,
+      macToString(target_mac).c_str());
+  return true;
+}
+
+void setCameraSchedulePausedForManual(bool paused) {
+  if (g_camera_schedule_paused_for_manual == paused) {
+    return;
+  }
+  g_camera_schedule_paused_for_manual = paused;
+  if (!sendEspNowPauseCaptureCommand(paused)) {
+    Serial.printf(
+        "[camera-schedule] failed to notify camera about paused=%u; local schedule state still updated\n",
+        paused ? 1u : 0u);
+  }
+}
+
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status) {
   switch (ack_status) {
     case EspNowAckStatus::kOk:
@@ -705,36 +761,56 @@ void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned lon
   g_camera_capture_in_flight.last_delivery_failure_ms = 0;
 }
 
-void reportPendingCaptureCommandResult(const char* status, const String& message) {
-  if (!g_pending_capture_command.active || !platform_enabled()) {
+void queuePendingCaptureCommandResult(const char* status, const String& message) {
+  if (!g_pending_capture_command.active) {
+    return;
+  }
+
+  const String next_status = status == nullptr ? "failed" : String(status);
+  if (g_pending_capture_command.result_ready &&
+      g_pending_capture_command.result_status == next_status &&
+      g_pending_capture_command.result_message == message) {
+    return;
+  }
+
+  g_pending_capture_command.result_ready = true;
+  g_pending_capture_command.result_status = next_status;
+  g_pending_capture_command.result_message = message;
+  g_pending_capture_command.last_result_attempt_ms = 0;
+}
+
+void flushPendingCaptureCommandResult() {
+  if (!g_pending_capture_command.active) {
+    return;
+  }
+  if (!platform_enabled()) {
     clearPendingCaptureCommand();
     return;
   }
 
+  setCameraSchedulePausedForManual(false);
+
   String ack_error;
   if (!g_platform_client->report_hardware_command_result(
           g_pending_capture_command.command_id,
-          status,
-          message.c_str(),
+          g_pending_capture_command.result_status.c_str(),
+          g_pending_capture_command.result_message.c_str(),
           g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
-    g_pending_capture_command.result_ready = true;
-    g_pending_capture_command.result_status = status;
-    g_pending_capture_command.result_message = message;
     g_pending_capture_command.last_result_attempt_ms = millis();
     Serial.printf(
         "[platform] capture command result update failed: %s (will retry %s: %s)\n",
         ack_error.c_str(),
-        status,
-        message.c_str());
+        g_pending_capture_command.result_status.c_str(),
+        g_pending_capture_command.result_message.c_str());
     return;
   }
   Serial.printf(
       "[platform] capture command %d marked %s: %s\n",
       g_pending_capture_command.command_id,
-      status,
-      message.c_str());
+      g_pending_capture_command.result_status.c_str(),
+      g_pending_capture_command.result_message.c_str());
   clearPendingCaptureCommand();
 }
 
@@ -776,6 +852,7 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
     return false;
   }
 
+  setCameraSchedulePausedForManual(true);
   markPendingCaptureCommandInProgress(command.id);
 
   g_pending_capture_command.active = true;
@@ -824,6 +901,7 @@ bool dispatchPendingCaptureCommand(unsigned long now) {
         "[platform] capture command %d failed to start: %s\n",
         g_pending_capture_command.command_id,
         message.c_str());
+    setCameraSchedulePausedForManual(false);
     clearPendingCaptureCommand();
     return false;
   }
@@ -865,7 +943,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
       return;
     }
     if (is_pending_backend_capture) {
-      reportPendingCaptureCommandResult("failed", "camera request delivery failed");
+      queuePendingCaptureCommandResult("failed", "camera request delivery failed");
       return;
     }
     Serial.printf(
@@ -889,7 +967,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
                                               g_camera_capture_in_flight.request_id;
   clearCameraCaptureFlight();
   if (is_pending_backend_capture) {
-    reportPendingCaptureCommandResult("failed", "timed out waiting for camera acknowledgement");
+    queuePendingCaptureCommandResult("failed", "timed out waiting for camera acknowledgement");
   }
 }
 
@@ -898,10 +976,9 @@ void servicePendingCaptureCommand(unsigned long now) {
     return;
   }
   if (g_pending_capture_command.result_ready) {
-    if (now - g_pending_capture_command.last_result_attempt_ms >= kCaptureResultRetryMs) {
-      reportPendingCaptureCommandResult(
-          g_pending_capture_command.result_status.c_str(),
-          g_pending_capture_command.result_message);
+    if (g_pending_capture_command.last_result_attempt_ms == 0 ||
+        now - g_pending_capture_command.last_result_attempt_ms >= kCaptureResultRetryMs) {
+      flushPendingCaptureCommandResult();
     }
     return;
   }
@@ -919,7 +996,7 @@ void servicePendingCaptureCommand(unsigned long now) {
         "[platform] capture command %d timed out after %lu ms waiting for camera availability\n",
         g_pending_capture_command.command_id,
         static_cast<unsigned long>(now - g_pending_capture_command.started_at_ms));
-    reportPendingCaptureCommandResult("failed", "timed out waiting for camera availability");
+    queuePendingCaptureCommandResult("failed", "timed out waiting for camera availability");
     return;
   }
   if (now - g_pending_capture_command.started_at_ms < kManualCaptureAckTimeoutMs) {
@@ -930,10 +1007,13 @@ void servicePendingCaptureCommand(unsigned long now) {
       g_pending_capture_command.command_id,
       static_cast<unsigned int>(g_pending_capture_command.request_id),
       static_cast<unsigned long>(now - g_pending_capture_command.started_at_ms));
-  reportPendingCaptureCommandResult("failed", "timed out waiting for camera upload acknowledgement");
+  queuePendingCaptureCommandResult("failed", "timed out waiting for camera upload acknowledgement");
 }
 
 void maybeSendBootstrapCapture(unsigned long now) {
+  if (!kCameraScheduledCaptureEnabled) {
+    return;
+  }
   if (!g_camera_bootstrap_capture_active || g_provisioning_mode || !g_espnow_ready || !g_wifi_ready ||
       !platform_enabled() || g_pending_capture_command.active || g_camera_capture_in_flight.active) {
     return;
@@ -962,7 +1042,11 @@ void maybeSendBootstrapCapture(unsigned long now) {
 }
 
 void pollCameraCaptureSchedule(unsigned long now) {
-  if (g_pending_capture_command.active || g_camera_capture_in_flight.active) {
+  if (!kCameraScheduledCaptureEnabled) {
+    return;
+  }
+  if (g_camera_schedule_paused_for_manual || g_pending_capture_command.active ||
+      g_camera_capture_in_flight.active) {
     return;
   }
   maybeSendBootstrapCapture(now);
@@ -1640,25 +1724,31 @@ PlatformReading read_platform_reading() {
   if (!reading.valid) {
     Serial.println("[dht22] read failed (NaN)");
   } else {
-    Serial.printf(
-        "[dht22] temp_c=%.1f humidity=%.1f%%\n",
-        reading.temperature_c,
-        reading.humidity_percent);
+    if (kVerboseSensorPollingLogs) {
+      Serial.printf(
+          "[dht22] temp_c=%.1f humidity=%.1f%%\n",
+          reading.temperature_c,
+          reading.humidity_percent);
+    }
   }
 
   if (!moisture.valid) {
     Serial.println("[moisture] read failed");
   } else {
-    Serial.printf(
-        "[moisture] raw=%d percent=%.1f%%\n",
-        moisture.raw_adc,
-        moisture.moisture_percent);
+    if (kVerboseSensorPollingLogs) {
+      Serial.printf(
+          "[moisture] raw=%d percent=%.1f%%\n",
+          moisture.raw_adc,
+          moisture.moisture_percent);
+    }
   }
 
-  Serial.printf(
-      "[actuators] growing_light=%s pump=%s\n",
-      g_growing_light.is_on() ? "on" : "off",
-      g_pump.is_on() ? "on" : "off");
+  if (kVerboseSensorPollingLogs) {
+    Serial.printf(
+        "[actuators] growing_light=%s pump=%s\n",
+        g_growing_light.is_on() ? "on" : "off",
+        g_pump.is_on() ? "on" : "off");
+  }
 
   PlatformReading platform_reading{};
   platform_reading.hardware_device_id = stableHardwareDeviceId();
@@ -1694,10 +1784,12 @@ void send_platform_reading(unsigned long now) {
   const PlatformReading reading = read_platform_reading();
   String error;
   if (g_platform_client->send_hardware_reading(reading, &error)) {
-    Serial.printf(
-        "[platform] reading sent to %s/api/hardware/readings (device_id=%d)\n",
-        g_platform_client->base_url().c_str(),
-        g_platform_client->device_id());
+    if (kVerboseSensorPollingLogs) {
+      Serial.printf(
+          "[platform] reading sent to %s/api/hardware/readings (device_id=%d)\n",
+          g_platform_client->base_url().c_str(),
+          g_platform_client->device_id());
+    }
   } else {
     Serial.printf("[platform] reading upload failed: %s\n", error.c_str());
   }

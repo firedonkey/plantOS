@@ -50,6 +50,7 @@ bool g_wifi_ready = false;
 bool g_wifi_power_save_configured = false;
 bool g_camera_initialized = false;
 bool g_capture_in_progress = false;
+bool g_scheduled_capture_paused = false;
 bool g_node_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
@@ -222,6 +223,10 @@ const char* commandToString(EspNowCommandType command) {
       return "provision_start";
     case EspNowCommandType::kHealthCheck:
       return "health_check";
+    case EspNowCommandType::kPauseCapture:
+      return "pause_capture";
+    case EspNowCommandType::kUpdateCaptureInterval:
+      return "update_capture_interval";
     default:
       return "unknown";
   }
@@ -674,8 +679,27 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
     return;
   }
 
+  if (command == EspNowCommandType::kPauseCapture) {
+    g_scheduled_capture_paused = packet.value_u32_1 != 0;
+    Serial.printf(
+        "[camera-node] scheduled capture pause set to %s request=%u\n",
+        g_scheduled_capture_paused ? "paused" : "resumed",
+        static_cast<unsigned int>(packet.request_id));
+    sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk, packet.value_u32_1, 0);
+    return;
+  }
+
   if (command != EspNowCommandType::kCaptureImage) {
     sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kUnsupported);
+    return;
+  }
+
+  const bool is_manual_capture = packet.value_u32_1 > 0;
+  if (g_scheduled_capture_paused && !is_manual_capture) {
+    Serial.printf(
+        "[camera-node] ignoring scheduled capture while paused request=%u\n",
+        static_cast<unsigned int>(packet.request_id));
+    sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kBusy, 0, 0);
     return;
   }
 
