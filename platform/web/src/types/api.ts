@@ -1,4 +1,4 @@
-export type DeviceConnectionState = "online" | "offline" | "unknown";
+export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded";
 
 export type SensorReading = {
   timestamp: string;
@@ -27,16 +27,50 @@ export type Device = {
   latestImage?: LatestImage;
 };
 
+export type HardwareNodeHealth = {
+  hardwareDeviceId: string;
+  nodeRole?: string;
+  nodeIndex?: number;
+  displayName?: string;
+  status: DeviceConnectionState | "provisioning" | "error";
+  lastSeenAt?: string;
+};
+
+export type DeviceCommandStatus = "pending" | "sent" | "in_progress" | "completed" | "failed";
+
 export type DeviceCommand = {
   id: string;
   deviceId: string;
   action: "light_on" | "light_off" | "pump_run" | "capture_image";
   createdAt: string;
-  status: "pending" | "sent" | "in_progress" | "acknowledged" | "failed";
+  status: DeviceCommandStatus;
+  detail?: string;
+  updatedAt?: string;
+};
+
+export type HardwareCommandHealth = {
+  id: string;
+  action: DeviceCommand["action"];
+  status: DeviceCommandStatus;
+  message?: string;
+  timestamp: string;
+};
+
+export type HardwareHealth = {
+  overallStatus: DeviceConnectionState | "provisioning" | "error";
+  masterStatus?: DeviceConnectionState | "provisioning" | "error";
+  masterOnline: boolean;
+  primary?: HardwareNodeHealth;
+  cameras: HardwareNodeHealth[];
+  lastHeartbeatAt?: string;
+  lastReadingAt?: string;
+  lastImageAt?: string;
+  lastCommand?: HardwareCommandHealth;
 };
 
 export type DeviceDashboard = {
   device: Device;
+  hardwareHealth?: HardwareHealth;
   recentImages: LatestImage[];
   recentCommands: DeviceCommand[];
   history: SensorReading[];

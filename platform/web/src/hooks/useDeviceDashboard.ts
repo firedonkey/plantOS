@@ -18,6 +18,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
+  const [activeCommandAction, setActiveCommandAction] = useState<DeviceCommand["action"] | null>(null);
   const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
@@ -56,6 +57,20 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     };
   }, [autoRefreshEnabled, deviceId, refresh]);
 
+  const isActionBlocked = useCallback(
+    (action: DeviceCommand["action"]) => {
+      if (isCommandRunning && activeCommandAction === action) {
+        return true;
+      }
+      return Boolean(
+        dashboard?.recentCommands.some(
+          (command) => command.action === action && ["pending", "sent", "in_progress"].includes(command.status),
+        ),
+      );
+    },
+    [activeCommandAction, dashboard?.recentCommands, isCommandRunning],
+  );
+
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {
       if (action === "capture_image") {
@@ -63,6 +78,12 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setCommandMessage("Image capture is coming later. For now, use the latest image already uploaded by the device.");
         return;
       }
+      if (isActionBlocked(action)) {
+        setCommandTone("info");
+        setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);
+        return;
+      }
+      setActiveCommandAction(action);
       setIsCommandRunning(true);
       setError(null);
       setCommandMessage(null);
@@ -87,9 +108,10 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setCommandMessage("The command did not go through. Please try again.");
       } finally {
         setIsCommandRunning(false);
+        setActiveCommandAction(null);
       }
     },
-    [deviceId, selectedRange, token],
+    [deviceId, isActionBlocked, selectedRange, token],
   );
 
   const imageAuthHeaders = useMemo(() => {
@@ -113,6 +135,8 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     imageAuthHeaders,
     selectedRange,
     setSelectedRange,
+    isActionBlocked,
+    activeCommandAction,
   };
 }
 

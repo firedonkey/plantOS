@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { CommandActivityPanel } from "@/components/CommandActivityPanel";
+import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { MetricCard } from "@/components/MetricCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
@@ -31,6 +32,8 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     runCommand,
     selectedRange,
     setSelectedRange,
+    isActionBlocked,
+    activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const { token, session } = useSession();
 
@@ -97,18 +100,37 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             imageHeaders={session?.mode === "api" && token ? { Authorization: `Bearer ${token}` } : undefined}
           />
 
+          <HardwareHealthPanel health={dashboard.hardwareHealth} />
+
           <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <Card>
             <Text style={styles.sectionTitle}>Manual controls</Text>
             <View style={styles.buttonRow}>
-              <PrimaryButton disabled={isCommandRunning} label={isCommandRunning ? "Working..." : "Light on"} onPress={() => runCommand("light_on")} />
-              <PrimaryButton disabled={isCommandRunning} label="Light off" onPress={() => runCommand("light_off")} />
+              <PrimaryButton
+                disabled={isCommandRunning || isActionBlocked("light_on")}
+                label={activeCommandAction === "light_on" || isActionBlocked("light_on") ? "Light on pending" : isCommandRunning ? "Working..." : "Light on"}
+                onPress={() => runCommand("light_on")}
+              />
+              <PrimaryButton
+                disabled={isCommandRunning || isActionBlocked("light_off")}
+                label={activeCommandAction === "light_off" || isActionBlocked("light_off") ? "Light off pending" : "Light off"}
+                onPress={() => runCommand("light_off")}
+              />
             </View>
             <View style={styles.buttonRow}>
-              <PrimaryButton disabled={isCommandRunning} label="Pump run" onPress={() => runCommand("pump_run")} />
+              <PrimaryButton
+                disabled={isCommandRunning || isActionBlocked("pump_run")}
+                label={activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
+                onPress={() => runCommand("pump_run")}
+              />
               <PrimaryButton disabled label="Capture later" tone="secondary" onPress={() => {}} />
             </View>
+            {dashboard.hardwareHealth?.lastCommand ? (
+              <Text style={styles.meta}>
+                Last command: {formatActionLabel(dashboard.hardwareHealth.lastCommand.action)} {formatStatusLabel(dashboard.hardwareHealth.lastCommand.status).toLowerCase()}.
+              </Text>
+            ) : null}
             <Text style={styles.meta}>Manual image capture is postponed while the shared backend capture contract stays in 501 mode.</Text>
           </Card>
 
@@ -121,6 +143,36 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
       )}
     </Screen>
   );
+}
+
+function formatActionLabel(action: string) {
+  switch (action) {
+    case "light_on":
+      return "Light on";
+    case "light_off":
+      return "Light off";
+    case "pump_run":
+      return "Pump run";
+    default:
+      return "Capture image";
+  }
+}
+
+function formatStatusLabel(status: string) {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "in_progress":
+      return "In progress";
+    case "pending":
+      return "Pending";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    default:
+      return "Unknown";
+  }
 }
 
 const styles = StyleSheet.create({

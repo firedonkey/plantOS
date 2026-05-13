@@ -23,9 +23,10 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.label}>{formatAction(command.action)}</Text>
                 <Text style={styles.meta}>{new Date(command.createdAt).toLocaleString()}</Text>
+                {command.detail ? <Text style={styles.meta}>{command.detail}</Text> : null}
               </View>
-              <View style={[styles.badge, command.status === "acknowledged" ? styles.badgeSuccess : command.status === "failed" ? styles.badgeError : styles.badgeNeutral]}>
-                <Text style={[styles.badgeText, command.status === "acknowledged" ? styles.badgeTextSuccess : command.status === "failed" ? styles.badgeTextError : styles.badgeTextNeutral]}>
+              <View style={[styles.badge, command.status === "completed" ? styles.badgeSuccess : command.status === "failed" ? styles.badgeError : styles.badgeNeutral]}>
+                <Text style={[styles.badgeText, command.status === "completed" ? styles.badgeTextSuccess : command.status === "failed" ? styles.badgeTextError : styles.badgeTextNeutral]}>
                   {formatStatus(command.status)}
                 </Text>
               </View>
@@ -52,14 +53,14 @@ function formatAction(action: DeviceCommand["action"]): string {
 
 function formatStatus(status: DeviceCommand["status"]): string {
   switch (status) {
-    case "acknowledged":
-      return "Done";
+    case "completed":
+      return "Completed";
     case "pending":
       return "Pending";
     case "sent":
       return "Sent";
     case "in_progress":
-      return "Running";
+      return "In progress";
     case "failed":
       return "Failed";
   }

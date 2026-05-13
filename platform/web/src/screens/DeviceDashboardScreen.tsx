@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { CommandActivityPanel } from "@/components/CommandActivityPanel";
+import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
@@ -24,8 +25,9 @@ export function DeviceDashboardScreen() {
     imageAuthHeaders,
     selectedRange,
     setSelectedRange,
-  } =
-    useDeviceDashboard(deviceId);
+    isActionBlocked,
+    activeCommandAction,
+  } = useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -132,20 +134,31 @@ export function DeviceDashboardScreen() {
             }))}
           />
 
+          <HardwareHealthPanel health={dashboard.hardwareHealth} />
+
           <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <div className="card">
             <h3>Manual controls</h3>
             <div className="button-row">
-              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("light_on")}>
-                {isCommandRunning ? "Working..." : "Light on"}
+              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("light_on")} onClick={() => runCommand("light_on")}>
+                {activeCommandAction === "light_on" || isActionBlocked("light_on") ? "Light on pending" : isCommandRunning ? "Working..." : "Light on"}
               </button>
-              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("light_off")}>Light off</button>
-              <button className="primary-button" disabled={isCommandRunning} onClick={() => runCommand("pump_run")}>Pump run</button>
+              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("light_off")} onClick={() => runCommand("light_off")}>
+                {activeCommandAction === "light_off" || isActionBlocked("light_off") ? "Light off pending" : "Light off"}
+              </button>
+              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("pump_run")} onClick={() => runCommand("pump_run")}>
+                {activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
+              </button>
               <button className="secondary-button" disabled title="Image capture is coming later.">
                 Capture coming later
               </button>
             </div>
+            {dashboard.hardwareHealth?.lastCommand ? (
+              <p className="meta-text">
+                Last command: {formatActionLabel(dashboard.hardwareHealth.lastCommand.action)} {formatStatusLabel(dashboard.hardwareHealth.lastCommand.status).toLowerCase()}.
+              </p>
+            ) : null}
           </div>
 
           <Link className="text-link" to={`/devices/${deviceId}/history`}>
@@ -160,4 +173,34 @@ export function DeviceDashboardScreen() {
       )}
     </section>
   );
+}
+
+function formatActionLabel(action: string) {
+  switch (action) {
+    case "light_on":
+      return "Light on";
+    case "light_off":
+      return "Light off";
+    case "pump_run":
+      return "Pump run";
+    default:
+      return "Capture image";
+  }
+}
+
+function formatStatusLabel(status: string) {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "in_progress":
+      return "In progress";
+    case "pending":
+      return "Pending";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    default:
+      return "Unknown";
+  }
 }

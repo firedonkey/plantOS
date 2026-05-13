@@ -1,6 +1,6 @@
 import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard } from "@/types";
+import { Device, DeviceCommand, DeviceDashboard, HardwareHealth, HardwareNodeHealth } from "@/types";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 
 type ApiDevice = {
@@ -12,6 +12,7 @@ type ApiDevice = {
   latest_reading?: ApiDeviceSummary["latest_reading"] | null;
   latest_image?: ApiDeviceSummary["latest_image"] | null;
   node_summary?: ApiDeviceSummary["node_summary"] | null;
+  hardware_health?: ApiDeviceSummary["hardware_health"] | null;
 };
 
 type ApiDeviceSummary = {
@@ -33,10 +34,40 @@ type ApiDeviceSummary = {
     timestamp: string;
   } | null;
   node_summary?: {
+    overall_status?: string | null;
     primary?: {
       status?: string | null;
     } | null;
   } | null;
+  hardware_health?: {
+    overall_status: string;
+    master_status?: string | null;
+    master_online: boolean;
+    primary?: ApiHealthNode | null;
+    cameras?: ApiHealthNode[] | null;
+    last_heartbeat_at?: string | null;
+    last_reading_at?: string | null;
+    last_image_at?: string | null;
+    last_command?: ApiHealthCommand | null;
+  } | null;
+};
+
+type ApiHealthNode = {
+  hardware_device_id: string;
+  node_role?: string | null;
+  node_index?: number | null;
+  display_name?: string | null;
+  status: string;
+  last_seen_at?: string | null;
+};
+
+type ApiHealthCommand = {
+  id: number;
+  target: "light" | "pump";
+  action: "on" | "off" | "run";
+  status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
+  message?: string | null;
+  timestamp: string;
 };
 
 type ApiSensorReading = {
@@ -90,7 +121,7 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
     case "timed_out":
       return "failed";
     case "completed":
-      return "acknowledged";
+      return "completed";
     default:
       return "pending";
   }
@@ -98,8 +129,12 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
 
 function mapStatus(summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading">, explicitStatus?: string | null): Device["status"] {
   const normalizedExplicit = explicitStatus?.toLowerCase();
-  if (normalizedExplicit === "online" || normalizedExplicit === "offline" || normalizedExplicit === "unknown") {
+  if (normalizedExplicit === "online" || normalizedExplicit === "offline" || normalizedExplicit === "unknown" || normalizedExplicit === "degraded") {
     return normalizedExplicit;
+  }
+  const overallStatus = summary?.node_summary?.overall_status?.toLowerCase();
+  if (overallStatus === "degraded") {
+    return "degraded";
   }
   const primaryStatus = summary?.node_summary?.primary?.status?.toLowerCase();
   if (primaryStatus === "online") {
@@ -135,6 +170,8 @@ function mapCommand(command: ApiCommandRead): DeviceCommand {
     action: mapCommandAction(command.target, command.action),
     createdAt: command.completed_at ?? command.sent_at ?? command.created_at,
     status: mapCommandStatus(command.status),
+    detail: command.message ?? undefined,
+    updatedAt: command.completed_at ?? command.sent_at ?? undefined,
   };
 }
 
@@ -149,6 +186,60 @@ function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRe
     return "pump_run";
   }
   return "capture_image";
+}
+
+function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | undefined {
+  if (!node) {
+    return undefined;
+  }
+  return {
+    hardwareDeviceId: node.hardware_device_id,
+    nodeRole: node.node_role ?? undefined,
+    nodeIndex: node.node_index ?? undefined,
+    displayName: node.display_name ?? undefined,
+    status: normalizeHealthStatus(node.status),
+    lastSeenAt: node.last_seen_at ?? undefined,
+  };
+}
+
+function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null): HardwareHealth | undefined {
+  if (!health) {
+    return undefined;
+  }
+  return {
+    overallStatus: normalizeHealthStatus(health.overall_status),
+    masterStatus: health.master_status ? normalizeHealthStatus(health.master_status) : undefined,
+    masterOnline: health.master_online,
+    primary: mapHardwareNode(health.primary),
+    cameras: (health.cameras ?? []).map((camera) => mapHardwareNode(camera)!).filter(Boolean),
+    lastHeartbeatAt: health.last_heartbeat_at ?? undefined,
+    lastReadingAt: health.last_reading_at ?? undefined,
+    lastImageAt: health.last_image_at ?? undefined,
+    lastCommand: health.last_command
+      ? {
+          id: String(health.last_command.id),
+          action: mapCommandAction(health.last_command.target, health.last_command.action),
+          status: mapCommandStatus(health.last_command.status),
+          message: health.last_command.message ?? undefined,
+          timestamp: health.last_command.timestamp,
+        }
+      : undefined,
+  };
+}
+
+function normalizeHealthStatus(status?: string | null): HardwareNodeHealth["status"] {
+  const normalized = status?.toLowerCase();
+  if (
+    normalized === "online" ||
+    normalized === "offline" ||
+    normalized === "unknown" ||
+    normalized === "degraded" ||
+    normalized === "provisioning" ||
+    normalized === "error"
+  ) {
+    return normalized;
+  }
+  return "unknown";
 }
 
 export async function listDevices(token?: string): Promise<{ devices: Device[]; usedMock: boolean }> {
@@ -168,6 +259,7 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
           location: device.location ?? undefined,
           plantType: device.plant_type ?? undefined,
           status: mapStatus(summary, device.status),
+          lastSeenAt: device.hardware_health?.last_heartbeat_at ?? device.latest_reading?.timestamp ?? undefined,
           latestReading: mapReading(device.latest_reading),
           latestImage: device.latest_image
             ? {
@@ -231,9 +323,11 @@ export async function getDeviceDashboard(
           location: summary.location ?? undefined,
           plantType: summary.plant_type ?? undefined,
           status: mapStatus(summary),
+          lastSeenAt: summary.hardware_health?.last_heartbeat_at ?? summary.latest_reading?.timestamp ?? undefined,
           latestReading: mapReading(summary.latest_reading),
           latestImage,
         },
+        hardwareHealth: mapHardwareHealth(summary.hardware_health),
         recentImages: galleryImages,
         recentCommands: commands.slice(0, 6).map(mapCommand),
         history: history.map((reading) => mapReading(reading)!),
@@ -306,6 +400,7 @@ export async function sendDeviceCommand(
         action,
         createdAt: created.created_at ?? new Date().toISOString(),
         status: created.command_status ? mapCommandStatus(created.command_status) : created.queued ? "pending" : "failed",
+        detail: created.message,
       },
     };
   } catch (error) {
@@ -319,7 +414,8 @@ export async function sendDeviceCommand(
         deviceId,
         action,
         createdAt: new Date().toISOString(),
-        status: "acknowledged",
+        status: "completed",
+        detail: "Mock mode command completed immediately.",
       },
     };
   }

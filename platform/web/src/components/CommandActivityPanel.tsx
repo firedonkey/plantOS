@@ -23,8 +23,9 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
               <div>
                 <strong>{formatAction(command.action)}</strong>
                 <p className="meta-text">{new Date(command.createdAt).toLocaleString()}</p>
+                {command.detail ? <p className="meta-text">{command.detail}</p> : null}
               </div>
-              <span className={`chip chip-${command.status === "acknowledged" ? "online" : command.status === "failed" ? "offline" : "unknown"}`}>
+              <span className={`chip chip-${chipTone(command.status)}`}>
                 {formatStatus(command.status)}
               </span>
             </div>
@@ -50,15 +51,25 @@ function formatAction(action: DeviceCommand["action"]): string {
 
 function formatStatus(status: DeviceCommand["status"]): string {
   switch (status) {
-    case "acknowledged":
-      return "Done";
+    case "completed":
+      return "Completed";
     case "pending":
       return "Pending";
     case "sent":
       return "Sent";
     case "in_progress":
-      return "Running";
+      return "In progress";
     case "failed":
       return "Failed";
   }
+}
+
+function chipTone(status: DeviceCommand["status"]) {
+  if (status === "completed") {
+    return "online";
+  }
+  if (status === "failed") {
+    return "offline";
+  }
+  return "unknown";
 }

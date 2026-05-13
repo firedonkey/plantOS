@@ -1,4 +1,4 @@
-import { Device, DeviceDashboard, DeviceCommand, LatestImage, SensorReading } from "@/types";
+import { Device, DeviceDashboard, DeviceCommand, HardwareHealth, LatestImage, SensorReading } from "@/types";
 
 const now = new Date();
 
@@ -36,9 +36,10 @@ const recentCommands: DeviceCommand[] = [
   {
     id: "web-cmd-1",
     deviceId: "1",
-    action: "capture_image",
+    action: "pump_run",
     createdAt: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
-    status: "acknowledged",
+    status: "in_progress",
+    detail: "Pump is currently running for 5 seconds.",
   },
 ];
 
@@ -65,9 +66,43 @@ export const mockDevices: Device[] = [
   },
 ];
 
+const hardwareHealth: HardwareHealth = {
+  overallStatus: "degraded",
+  masterStatus: "online",
+  masterOnline: true,
+  primary: {
+    hardwareDeviceId: "pl-esp32-mock",
+    nodeRole: "master",
+    displayName: "Master",
+    status: "online",
+    lastSeenAt: new Date(now.getTime() - 20 * 1000).toISOString(),
+  },
+  cameras: [
+    {
+      hardwareDeviceId: "pl-cam-mock",
+      nodeRole: "camera",
+      nodeIndex: 1,
+      displayName: "Camera 1",
+      status: "offline",
+      lastSeenAt: new Date(now.getTime() - 6 * 60 * 1000).toISOString(),
+    },
+  ],
+  lastHeartbeatAt: new Date(now.getTime() - 20 * 1000).toISOString(),
+  lastReadingAt: latestReading.timestamp,
+  lastImageAt: latestImage.capturedAt,
+  lastCommand: {
+    id: "web-cmd-1",
+    action: "pump_run",
+    status: "in_progress",
+    message: "Pump is currently running for 5 seconds.",
+    timestamp: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
+  },
+};
+
 export const mockDashboards: Record<string, DeviceDashboard> = {
   "1": {
     device: mockDevices[0],
+    hardwareHealth,
     recentImages,
     recentCommands,
     history,

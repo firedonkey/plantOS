@@ -33,6 +33,7 @@ const toneStyles = StyleSheet.create({
   online: { backgroundColor: "#dff7e8" },
   offline: { backgroundColor: "#fde4e4" },
   unknown: { backgroundColor: "#eceff3" },
+  degraded: { backgroundColor: "#fff1d6" },
   mock: { backgroundColor: "#efe7ff" },
 });
 
@@ -40,5 +41,6 @@ const textStyles = StyleSheet.create({
   online: { color: "#157347" },
   offline: { color: "#b42318" },
   unknown: { color: theme.colors.textSecondary },
+  degraded: { color: "#9a6700" },
   mock: { color: "#6941c6" },
 });

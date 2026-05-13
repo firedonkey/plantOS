@@ -1,4 +1,4 @@
-import { Device, DeviceDashboard, DeviceCommand, LatestImage, SensorReading } from "@/types";
+import { Device, DeviceDashboard, DeviceCommand, HardwareHealth, LatestImage, SensorReading } from "@/types";
 
 const now = new Date();
 
@@ -38,14 +38,16 @@ const recentCommands: DeviceCommand[] = [
     deviceId: "1",
     action: "light_off",
     createdAt: new Date(now.getTime() - 15 * 60 * 1000).toISOString(),
-    status: "acknowledged",
+    status: "completed",
+    detail: "Light turned off successfully.",
   },
   {
-    id: "cmd-capture",
+    id: "cmd-pump",
     deviceId: "1",
-    action: "capture_image",
+    action: "pump_run",
     createdAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
-    status: "acknowledged",
+    status: "pending",
+    detail: "Pump run is queued for the device.",
   },
 ];
 
@@ -72,9 +74,43 @@ export const mockDevices: Device[] = [
   },
 ];
 
+const hardwareHealth: HardwareHealth = {
+  overallStatus: "online",
+  masterStatus: "online",
+  masterOnline: true,
+  primary: {
+    hardwareDeviceId: "pl-esp32-mock",
+    nodeRole: "master",
+    displayName: "Master",
+    status: "online",
+    lastSeenAt: new Date(now.getTime() - 15 * 1000).toISOString(),
+  },
+  cameras: [
+    {
+      hardwareDeviceId: "pl-cam-mock",
+      nodeRole: "camera",
+      nodeIndex: 1,
+      displayName: "Camera 1",
+      status: "online",
+      lastSeenAt: new Date(now.getTime() - 45 * 1000).toISOString(),
+    },
+  ],
+  lastHeartbeatAt: new Date(now.getTime() - 15 * 1000).toISOString(),
+  lastReadingAt: latestReading.timestamp,
+  lastImageAt: latestImage.capturedAt,
+  lastCommand: {
+    id: "cmd-pump",
+    action: "pump_run",
+    status: "pending",
+    message: "Pump run is queued for the device.",
+    timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+  },
+};
+
 export const mockDashboards: Record<string, DeviceDashboard> = {
   "1": {
     device: mockDevices[0],
+    hardwareHealth,
     recentImages,
     recentCommands,
     history,
