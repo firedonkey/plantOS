@@ -720,19 +720,36 @@ void handleCaptureRequest() {
   const unsigned long capture_elapsed_ms = millis() - g_capture_request_received_at_ms;
 
   if (g_capture_request_has_sender) {
-    Serial.printf(
-        "[camera-node] sending capture ACK command_id=%lu request=%u status=%s elapsed_ms=%lu\n",
-        static_cast<unsigned long>(g_capture_command_id),
-        static_cast<unsigned int>(g_capture_request_id),
-        success ? "ok" : "failed",
-        static_cast<unsigned long>(capture_elapsed_ms));
-    sendAck(
-        g_capture_request_mac,
-        EspNowCommandType::kCaptureImage,
-        g_capture_request_id,
-        success ? EspNowAckStatus::kOk : EspNowAckStatus::kFailed,
-        g_capture_command_id,
-        capture_elapsed_ms);
+    constexpr uint8_t kCaptureCompletionSignalAttempts = 3;
+    for (uint8_t attempt = 1; attempt <= kCaptureCompletionSignalAttempts; ++attempt) {
+      if (success) {
+        Serial.printf(
+            "[camera-node] sending capture HEALTH command_id=%lu request=%u attempt=%u/%u after successful upload\n",
+            static_cast<unsigned long>(g_capture_command_id),
+            static_cast<unsigned int>(g_capture_request_id),
+            static_cast<unsigned int>(attempt),
+            static_cast<unsigned int>(kCaptureCompletionSignalAttempts));
+        sendHealthReport(g_capture_request_mac, g_capture_request_id);
+      }
+      Serial.printf(
+          "[camera-node] sending capture ACK command_id=%lu request=%u status=%s elapsed_ms=%lu attempt=%u/%u\n",
+          static_cast<unsigned long>(g_capture_command_id),
+          static_cast<unsigned int>(g_capture_request_id),
+          success ? "ok" : "failed",
+          static_cast<unsigned long>(capture_elapsed_ms),
+          static_cast<unsigned int>(attempt),
+          static_cast<unsigned int>(kCaptureCompletionSignalAttempts));
+      sendAck(
+          g_capture_request_mac,
+          EspNowCommandType::kCaptureImage,
+          g_capture_request_id,
+          success ? EspNowAckStatus::kOk : EspNowAckStatus::kFailed,
+          g_capture_command_id,
+          capture_elapsed_ms);
+      if (attempt < kCaptureCompletionSignalAttempts) {
+        delay(120);
+      }
+    }
   }
   g_capture_request_has_sender = false;
 

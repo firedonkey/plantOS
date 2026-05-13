@@ -41,7 +41,9 @@ constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
+constexpr uint32_t kCameraCaptureFlightTimeoutMs = 30000UL;
 constexpr uint32_t kManualCaptureAckTimeoutMs = 120000UL;
+constexpr uint32_t kCaptureResultRetryMs = 3000UL;
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -55,9 +57,24 @@ struct DeviceConfig {
 
 struct PendingCaptureCommand {
   bool active = false;
+  bool dispatched = false;
+  bool result_ready = false;
+  uint8_t dispatch_attempts = 0;
   int command_id = 0;
   uint32_t request_id = 0;
   unsigned long started_at_ms = 0;
+  unsigned long last_result_attempt_ms = 0;
+  String result_status;
+  String result_message;
+};
+
+struct CameraCaptureFlight {
+  bool active = false;
+  bool delivery_failed = false;
+  int command_id = 0;
+  uint32_t request_id = 0;
+  unsigned long started_at_ms = 0;
+  unsigned long last_delivery_failure_ms = 0;
 };
 
 struct WiFiNetworkOption {
@@ -120,12 +137,17 @@ bool g_camera_bootstrap_capture_active = false;
 uint8_t g_camera_bootstrap_capture_attempts = 0;
 unsigned long g_next_camera_bootstrap_capture_ms = 0;
 PendingCaptureCommand g_pending_capture_command{};
+CameraCaptureFlight g_camera_capture_in_flight{};
 
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
 void clearPendingCaptureCommand();
+void clearCameraCaptureFlight();
+void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now);
 void reportPendingCaptureCommandResult(const char* status, const String& message);
 void markPendingCaptureCommandInProgress(int command_id);
 bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now);
+bool dispatchPendingCaptureCommand(unsigned long now);
+void serviceCameraCaptureFlight(unsigned long now);
 void servicePendingCaptureCommand(unsigned long now);
 
 String html_escape(const String& value) {
@@ -301,32 +323,60 @@ bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
 
 void onEspNowDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
   if (status != ESP_NOW_SEND_SUCCESS) {
+    if (g_camera_capture_in_flight.active) {
+      g_camera_capture_in_flight.delivery_failed = true;
+      g_camera_capture_in_flight.last_delivery_failure_ms = millis();
+    }
     Serial.printf(
-        "[camera-schedule] ESP-NOW send failed status=%d target=%s\n",
+        "[camera-schedule] ESP-NOW send failed status=%d request=%u command_id=%d target=%s\n",
         static_cast<int>(status),
+        static_cast<unsigned int>(g_camera_capture_in_flight.request_id),
+        g_camera_capture_in_flight.command_id,
         mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
   }
 }
 
 void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len) {
   if (len != static_cast<int>(sizeof(EspNowPacket))) {
+    Serial.printf(
+        "[camera-schedule] ignored ESP-NOW packet length=%d from %s\n",
+        len,
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
     return;
   }
 
   EspNowPacket packet{};
   memcpy(&packet, data, sizeof(packet));
   if (packet.magic != ESPNOW_TEST_MAGIC || packet.version != ESPNOW_TEST_VERSION) {
+    Serial.printf(
+        "[camera-schedule] ignored invalid ESP-NOW packet magic=%lu version=%u from %s\n",
+        static_cast<unsigned long>(packet.magic),
+        static_cast<unsigned int>(packet.version),
+        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
     return;
   }
 
   const EspNowMessageKind kind = static_cast<EspNowMessageKind>(packet.kind);
   const EspNowCommandType command = static_cast<EspNowCommandType>(packet.command);
 
+  Serial.printf(
+      "[camera-schedule] RX kind=%u command=%s request=%u ack=%u from %s\n",
+      static_cast<unsigned int>(packet.kind),
+      espnowCommandToString(command),
+      static_cast<unsigned int>(packet.request_id),
+      static_cast<unsigned int>(packet.ack_status),
+      mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+
   if (kind == EspNowMessageKind::kHealthReport) {
     const uint32_t flags = packet.value_u32_1;
     const bool wifi_ready = (flags & ESPNOW_HEALTH_FLAG_WIFI_READY) != 0;
     const bool node_registered = (flags & ESPNOW_HEALTH_FLAG_NODE_REGISTERED) != 0;
     const bool config_ready = (flags & ESPNOW_HEALTH_FLAG_CONFIG_READY) != 0;
+    const bool is_camera_capture_health =
+        g_camera_capture_in_flight.active && packet.request_id == g_camera_capture_in_flight.request_id;
+    const bool is_pending_capture_health = g_pending_capture_command.active &&
+                                           g_pending_capture_command.dispatched &&
+                                           packet.request_id == g_pending_capture_command.request_id;
     if (mac_addr != nullptr) {
       memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
       g_camera_target_mac_known = true;
@@ -340,6 +390,18 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
     if (wifi_ready && node_registered && config_ready && !g_camera_runtime_ready) {
       g_camera_runtime_ready = true;
       Serial.println("[camera-provisioning] camera runtime is ready; first capture can start now");
+    }
+    if (is_camera_capture_health) {
+      clearCameraCaptureFlight();
+    }
+    if (is_pending_capture_health && wifi_ready && node_registered && config_ready) {
+      Serial.printf(
+          "[platform] capture health fallback command_id=%d request=%u flags=%lu camera_index=%lu\n",
+          g_pending_capture_command.command_id,
+          static_cast<unsigned int>(packet.request_id),
+          static_cast<unsigned long>(flags),
+          static_cast<unsigned long>(packet.value_u32_2));
+      reportPendingCaptureCommandResult("completed", "camera uploaded a new image");
     }
     return;
   }
@@ -373,8 +435,11 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
   }
 
   const EspNowAckStatus ack_status = static_cast<EspNowAckStatus>(packet.ack_status);
-  const bool is_pending_capture_ack =
-      g_pending_capture_command.active && packet.request_id == g_pending_capture_command.request_id;
+  const bool is_camera_capture_ack =
+      g_camera_capture_in_flight.active && packet.request_id == g_camera_capture_in_flight.request_id;
+  const bool is_pending_capture_ack = g_pending_capture_command.active &&
+                                      g_pending_capture_command.dispatched &&
+                                      packet.request_id == g_pending_capture_command.request_id;
   const unsigned long capture_wait_ms =
       is_pending_capture_ack ? millis() - g_pending_capture_command.started_at_ms : 0;
   if (ack_status == EspNowAckStatus::kOk) {
@@ -387,6 +452,9 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       Serial.println("[camera-schedule] capture ACK confirms camera runtime is ready");
     }
     g_camera_bootstrap_capture_active = false;
+  }
+  if (is_camera_capture_ack) {
+    clearCameraCaptureFlight();
   }
 
   if (is_pending_capture_ack) {
@@ -523,7 +591,7 @@ void serviceCameraProvisioning(unsigned long now) {
 }
 
 bool sendEspNowCaptureCommand(uint32_t now) {
-  if (!g_espnow_ready) {
+  if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
 
@@ -552,6 +620,7 @@ bool sendEspNowCaptureCommand(uint32_t now) {
   }
 
   capture_schedule_mark_requested(&g_camera_capture_schedule, now);
+  markCameraCaptureInFlight(packet.request_id, 0, now);
   Serial.printf(
       "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
       static_cast<unsigned int>(packet.request_id),
@@ -561,7 +630,7 @@ bool sendEspNowCaptureCommand(uint32_t now) {
 }
 
 bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int command_id = 0) {
-  if (!g_espnow_ready) {
+  if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
 
@@ -592,6 +661,7 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
   if (request_id_out != nullptr) {
     *request_id_out = packet.request_id;
   }
+  markCameraCaptureInFlight(packet.request_id, command_id, now);
 
   Serial.printf(
       "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu target=%s\n",
@@ -622,6 +692,19 @@ void clearPendingCaptureCommand() {
   g_pending_capture_command = PendingCaptureCommand{};
 }
 
+void clearCameraCaptureFlight() {
+  g_camera_capture_in_flight = CameraCaptureFlight{};
+}
+
+void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now) {
+  g_camera_capture_in_flight.active = true;
+  g_camera_capture_in_flight.delivery_failed = false;
+  g_camera_capture_in_flight.request_id = request_id;
+  g_camera_capture_in_flight.command_id = command_id;
+  g_camera_capture_in_flight.started_at_ms = now;
+  g_camera_capture_in_flight.last_delivery_failure_ms = 0;
+}
+
 void reportPendingCaptureCommandResult(const char* status, const String& message) {
   if (!g_pending_capture_command.active || !platform_enabled()) {
     clearPendingCaptureCommand();
@@ -636,14 +719,22 @@ void reportPendingCaptureCommandResult(const char* status, const String& message
           g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
-    Serial.printf("[platform] capture command result update failed: %s\n", ack_error.c_str());
-  } else {
+    g_pending_capture_command.result_ready = true;
+    g_pending_capture_command.result_status = status;
+    g_pending_capture_command.result_message = message;
+    g_pending_capture_command.last_result_attempt_ms = millis();
     Serial.printf(
-        "[platform] capture command %d marked %s: %s\n",
-        g_pending_capture_command.command_id,
+        "[platform] capture command result update failed: %s (will retry %s: %s)\n",
+        ack_error.c_str(),
         status,
         message.c_str());
+    return;
   }
+  Serial.printf(
+      "[platform] capture command %d marked %s: %s\n",
+      g_pending_capture_command.command_id,
+      status,
+      message.c_str());
   clearPendingCaptureCommand();
 }
 
@@ -687,13 +778,41 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
 
   markPendingCaptureCommandInProgress(command.id);
 
+  g_pending_capture_command.active = true;
+  g_pending_capture_command.dispatched = false;
+  g_pending_capture_command.result_ready = false;
+  g_pending_capture_command.dispatch_attempts = 0;
+  g_pending_capture_command.command_id = command.id;
+  g_pending_capture_command.request_id = 0;
+  g_pending_capture_command.started_at_ms = now;
+  g_pending_capture_command.last_result_attempt_ms = 0;
+  g_pending_capture_command.result_status = "";
+  g_pending_capture_command.result_message = "";
+
+  if (g_camera_capture_in_flight.active) {
+    Serial.printf(
+        "[platform] capture command %d waiting for in-flight camera request=%u command_id=%d\n",
+        command.id,
+        static_cast<unsigned int>(g_camera_capture_in_flight.request_id),
+        g_camera_capture_in_flight.command_id);
+    return true;
+  }
+
+  return dispatchPendingCaptureCommand(now);
+}
+
+bool dispatchPendingCaptureCommand(unsigned long now) {
+  if (!g_pending_capture_command.active || g_pending_capture_command.dispatched) {
+    return false;
+  }
+
   uint32_t request_id = 0;
-  if (!sendEspNowCaptureCommand(now, &request_id, command.id)) {
+  if (!sendEspNowCaptureCommand(now, &request_id, g_pending_capture_command.command_id)) {
     const String message =
         g_camera_target_mac_known ? "failed to send capture request to camera" : "camera node is not reachable";
     String ack_error;
     if (!g_platform_client->report_hardware_command_result(
-            command.id,
+            g_pending_capture_command.command_id,
             "failed",
             message.c_str(),
             g_growing_light.is_on(),
@@ -701,25 +820,106 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
             &ack_error)) {
       Serial.printf("[platform] capture command failure update failed: %s\n", ack_error.c_str());
     }
-    Serial.printf("[platform] capture command %d failed to start: %s\n", command.id, message.c_str());
+    Serial.printf(
+        "[platform] capture command %d failed to start: %s\n",
+        g_pending_capture_command.command_id,
+        message.c_str());
+    clearPendingCaptureCommand();
     return false;
   }
 
-  g_pending_capture_command.active = true;
-  g_pending_capture_command.command_id = command.id;
+  g_pending_capture_command.dispatch_attempts =
+      static_cast<uint8_t>(g_pending_capture_command.dispatch_attempts + 1);
+  g_pending_capture_command.dispatched = true;
   g_pending_capture_command.request_id = request_id;
-  g_pending_capture_command.started_at_ms = now;
   Serial.printf(
       "[platform] capture command %d forwarded to camera request=%u target=%s at_ms=%lu\n",
-      command.id,
+      g_pending_capture_command.command_id,
       static_cast<unsigned int>(request_id),
       g_camera_target_mac_known ? macToString(g_camera_target_mac).c_str() : "broadcast",
       static_cast<unsigned long>(now));
   return true;
 }
 
+void serviceCameraCaptureFlight(unsigned long now) {
+  if (!g_camera_capture_in_flight.active) {
+    return;
+  }
+  if (g_camera_capture_in_flight.delivery_failed &&
+      now - g_camera_capture_in_flight.last_delivery_failure_ms >= 500UL) {
+    const bool is_pending_backend_capture = g_pending_capture_command.active &&
+                                            g_pending_capture_command.dispatched &&
+                                            g_pending_capture_command.request_id ==
+                                                g_camera_capture_in_flight.request_id;
+    const int failed_command_id = g_camera_capture_in_flight.command_id;
+    const uint32_t failed_request_id = g_camera_capture_in_flight.request_id;
+    clearCameraCaptureFlight();
+    if (is_pending_backend_capture && g_pending_capture_command.dispatch_attempts < 3) {
+      Serial.printf(
+          "[platform] capture command %d request=%u send failed, retrying attempt=%u\n",
+          g_pending_capture_command.command_id,
+          static_cast<unsigned int>(failed_request_id),
+          static_cast<unsigned int>(g_pending_capture_command.dispatch_attempts + 1));
+      g_pending_capture_command.dispatched = false;
+      g_pending_capture_command.request_id = 0;
+      return;
+    }
+    if (is_pending_backend_capture) {
+      reportPendingCaptureCommandResult("failed", "camera request delivery failed");
+      return;
+    }
+    Serial.printf(
+        "[camera-schedule] capture request=%u command_id=%d delivery failed, clearing in-flight state\n",
+        static_cast<unsigned int>(failed_request_id),
+        failed_command_id);
+    return;
+  }
+  if (now - g_camera_capture_in_flight.started_at_ms < kCameraCaptureFlightTimeoutMs) {
+    return;
+  }
+  Serial.printf(
+      "[camera-schedule] capture request=%u command_id=%d timed out after %lu ms without ACK/health\n",
+      static_cast<unsigned int>(g_camera_capture_in_flight.request_id),
+      g_camera_capture_in_flight.command_id,
+      static_cast<unsigned long>(now - g_camera_capture_in_flight.started_at_ms));
+
+  const bool is_pending_backend_capture = g_pending_capture_command.active &&
+                                          g_pending_capture_command.dispatched &&
+                                          g_pending_capture_command.request_id ==
+                                              g_camera_capture_in_flight.request_id;
+  clearCameraCaptureFlight();
+  if (is_pending_backend_capture) {
+    reportPendingCaptureCommandResult("failed", "timed out waiting for camera acknowledgement");
+  }
+}
+
 void servicePendingCaptureCommand(unsigned long now) {
   if (!g_pending_capture_command.active) {
+    return;
+  }
+  if (g_pending_capture_command.result_ready) {
+    if (now - g_pending_capture_command.last_result_attempt_ms >= kCaptureResultRetryMs) {
+      reportPendingCaptureCommandResult(
+          g_pending_capture_command.result_status.c_str(),
+          g_pending_capture_command.result_message);
+    }
+    return;
+  }
+  if (!g_pending_capture_command.dispatched) {
+    if (!g_camera_capture_in_flight.active) {
+      dispatchPendingCaptureCommand(now);
+    }
+    if (g_pending_capture_command.dispatched) {
+      return;
+    }
+    if (now - g_pending_capture_command.started_at_ms < kManualCaptureAckTimeoutMs) {
+      return;
+    }
+    Serial.printf(
+        "[platform] capture command %d timed out after %lu ms waiting for camera availability\n",
+        g_pending_capture_command.command_id,
+        static_cast<unsigned long>(now - g_pending_capture_command.started_at_ms));
+    reportPendingCaptureCommandResult("failed", "timed out waiting for camera availability");
     return;
   }
   if (now - g_pending_capture_command.started_at_ms < kManualCaptureAckTimeoutMs) {
@@ -735,7 +935,7 @@ void servicePendingCaptureCommand(unsigned long now) {
 
 void maybeSendBootstrapCapture(unsigned long now) {
   if (!g_camera_bootstrap_capture_active || g_provisioning_mode || !g_espnow_ready || !g_wifi_ready ||
-      !platform_enabled() || g_pending_capture_command.active) {
+      !platform_enabled() || g_pending_capture_command.active || g_camera_capture_in_flight.active) {
     return;
   }
   if (g_camera_runtime_ready) {
@@ -762,7 +962,7 @@ void maybeSendBootstrapCapture(unsigned long now) {
 }
 
 void pollCameraCaptureSchedule(unsigned long now) {
-  if (g_pending_capture_command.active) {
+  if (g_pending_capture_command.active || g_camera_capture_in_flight.active) {
     return;
   }
   maybeSendBootstrapCapture(now);
@@ -1674,9 +1874,10 @@ void loop() {
 
   if (platform_enabled()) {
     serviceCameraProvisioning(now);
+    serviceCameraCaptureFlight(now);
     servicePendingCaptureCommand(now);
-    pollCameraCaptureSchedule(now);
     poll_platform_commands(now);
+    pollCameraCaptureSchedule(now);
     send_platform_status(now);
     send_platform_reading(now);
   }
