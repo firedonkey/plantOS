@@ -123,6 +123,11 @@ type ApiSetupCodeResponse = {
   provisioning_api_url: string;
 };
 
+type ApiDeleteResponse = {
+  device_id: number;
+  message: string;
+};
+
 export type DeviceSetupHandoff = {
   serialNumber: string;
   setupToken?: string;
@@ -502,6 +507,35 @@ export async function requestDeviceSetupCode(
         setupFinishingUrl: `/devices/setup-finishing?${params.toString()}`,
         expectImage: true,
       },
+    };
+  }
+}
+
+export async function deleteDevice(
+  deviceId: string,
+  token?: string,
+): Promise<{ deviceId: string; usedMock: boolean; message: string }> {
+  try {
+    const response = await apiRequest<ApiDeleteResponse>(
+      `/api/devices/${deviceId}`,
+      {
+        method: "DELETE",
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      deviceId: String(response.device_id),
+      message: response.message,
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      deviceId,
+      message: "Mock mode does not persist device removal, but the flow is available for layout testing.",
     };
   }
 }

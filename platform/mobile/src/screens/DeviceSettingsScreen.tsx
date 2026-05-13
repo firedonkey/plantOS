@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
-import { Link } from "expo-router";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Link, router } from "expo-router";
 
-import { getDeviceSettingsDetails, updateDeviceSettings } from "@/api/devices";
+import { deleteDevice, getDeviceSettingsDetails, updateDeviceSettings } from "@/api/devices";
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { Card } from "@/components/Card";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -26,6 +26,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [plantType, setPlantType] = useState("");
+  const [isRemoving, setIsRemoving] = useState(false);
 
   useEffect(() => {
     if (!deviceId) {
@@ -88,6 +89,31 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const removeDevice = async () => {
+    if (!deviceId) {
+      return;
+    }
+    setIsRemoving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteDevice(deviceId, token ?? undefined);
+      router.replace("/(app)/devices");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove device.");
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const onRemovePress = () => {
+    const deviceName = details?.device.name ?? "this device";
+    Alert.alert("Remove device?", `Remove ${deviceName} from your account. The physical device may need to be factory reset before adding it again.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: removeDevice },
+    ]);
   };
 
   if (!deviceId) {
@@ -153,6 +179,12 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
           <Text style={styles.meta}>• If the device stops reporting, confirm power, Wi-Fi, and the current device token before deleting or re-adding it.</Text>
           <Text style={styles.meta}>• No remote reboot or re-provision action is wired in yet, by design.</Text>
         </View>
+      </Card>
+
+      <Card>
+        <Text style={styles.sectionTitle}>Remove device</Text>
+        <Text style={styles.meta}>Remove this device from your account. Use this only when replacing hardware or preparing to add the device again.</Text>
+        <PrimaryButton label={isRemoving ? "Removing..." : "Remove device"} tone="danger" disabled={isRemoving || isLoading} onPress={onRemovePress} />
       </Card>
 
       <Link href={`/(app)/devices/${deviceId}`} style={styles.backLink}>

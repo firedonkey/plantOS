@@ -6,7 +6,7 @@ type PrimaryButtonProps = {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  tone?: "primary" | "secondary";
+  tone?: "primary" | "secondary" | "danger";
 };
 
 export function PrimaryButton({ label, onPress, disabled = false, tone = "primary" }: PrimaryButtonProps) {
@@ -16,7 +16,7 @@ export function PrimaryButton({ label, onPress, disabled = false, tone = "primar
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        tone === "secondary" ? styles.secondaryButton : styles.primaryButton,
+        tone === "secondary" ? styles.secondaryButton : tone === "danger" ? styles.dangerButton : styles.primaryButton,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
       ]}
@@ -41,6 +41,10 @@ const styles = StyleSheet.create({
   secondaryButton: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
+  },
+  dangerButton: {
+    backgroundColor: "#d92d20",
+    borderColor: "#d92d20",
   },
   pressed: {
     opacity: 0.85,
