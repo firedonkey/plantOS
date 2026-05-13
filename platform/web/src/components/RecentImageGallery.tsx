@@ -2,16 +2,29 @@ import { LatestImage } from "@/types";
 
 type RecentImageGalleryProps = {
   images: LatestImage[];
+  captureDisabled?: boolean;
+  captureLabel?: string;
+  onCapture?: () => void;
 };
 
-export function RecentImageGallery({ images }: RecentImageGalleryProps) {
+export function RecentImageGallery({
+  images,
+  captureDisabled = false,
+  captureLabel = "Capture image",
+  onCapture,
+}: RecentImageGalleryProps) {
   return (
     <div className="card stack-form">
       <div className="section-header">
         <div>
           <h3>Recent image gallery</h3>
-          <p className="subtitle">Recent uploads from the device appear here newest first. Manual capture is still coming later, so this gallery reflects images the device already sent.</p>
+          <p className="subtitle">Recent uploads from the device appear here newest first.</p>
         </div>
+        {onCapture ? (
+          <button className="primary-button" disabled={captureDisabled} onClick={onCapture}>
+            {captureLabel}
+          </button>
+        ) : null}
       </div>
 
       {!images.length ? (

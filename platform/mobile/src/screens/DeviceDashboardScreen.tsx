@@ -98,6 +98,15 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           <RecentImageGallery
             images={dashboard.recentImages}
             imageHeaders={session?.mode === "api" && token ? { Authorization: `Bearer ${token}` } : undefined}
+            captureDisabled={isCommandRunning || isActionBlocked("capture_image")}
+            captureLabel={
+              activeCommandAction === "capture_image" || isActionBlocked("capture_image")
+                ? "Capture pending"
+                : isCommandRunning
+                  ? "Working..."
+                  : "Capture image"
+            }
+            onCapture={() => runCommand("capture_image")}
           />
 
           <HardwareHealthPanel health={dashboard.hardwareHealth} />
@@ -123,18 +132,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                 disabled={isCommandRunning || isActionBlocked("pump_run")}
                 label={activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
                 onPress={() => runCommand("pump_run")}
-              />
-              <PrimaryButton
-                disabled={isCommandRunning || isActionBlocked("capture_image")}
-                label={
-                  activeCommandAction === "capture_image" || isActionBlocked("capture_image")
-                    ? "Capture pending"
-                    : isCommandRunning
-                      ? "Working..."
-                      : "Capture image"
-                }
-                tone="secondary"
-                onPress={() => runCommand("capture_image")}
               />
             </View>
             {dashboard.hardwareHealth?.lastCommand ? (

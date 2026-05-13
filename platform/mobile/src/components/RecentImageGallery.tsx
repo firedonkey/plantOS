@@ -1,21 +1,38 @@
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { LatestImage } from "@/types";
 import { theme } from "@/styles/theme";
 
 type RecentImageGalleryProps = {
   images: LatestImage[];
   imageHeaders?: Record<string, string>;
+  captureDisabled?: boolean;
+  captureLabel?: string;
+  onCapture?: () => void;
 };
 
-export function RecentImageGallery({ images, imageHeaders }: RecentImageGalleryProps) {
+export function RecentImageGallery({
+  images,
+  imageHeaders,
+  captureDisabled = false,
+  captureLabel = "Capture image",
+  onCapture,
+}: RecentImageGalleryProps) {
   return (
     <Card>
-      <Text style={styles.title}>Recent image gallery</Text>
-      <Text style={styles.subtitle}>
-        Recent uploads from the device appear here newest first. Manual capture is still coming later, so this gallery reflects images the device already sent.
-      </Text>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Recent image gallery</Text>
+          <Text style={styles.subtitle}>Recent uploads from the device appear here newest first.</Text>
+        </View>
+        {onCapture ? (
+          <View style={styles.captureButton}>
+            <PrimaryButton label={captureLabel} onPress={onCapture} disabled={captureDisabled} />
+          </View>
+        ) : null}
+      </View>
 
       {!images.length ? (
         <Text style={styles.subtitle}>No image available yet. The gallery will populate after the device uploads its next image.</Text>
@@ -34,6 +51,9 @@ export function RecentImageGallery({ images, imageHeaders }: RecentImageGalleryP
 }
 
 const styles = StyleSheet.create({
+  header: { gap: 12 },
+  headerText: { gap: 4 },
+  captureButton: { alignSelf: "flex-start", minWidth: 160 },
   title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
   subtitle: { fontSize: 14, color: theme.colors.textSecondary },
   grid: { gap: 12 },

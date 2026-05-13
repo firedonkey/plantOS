@@ -132,6 +132,15 @@ export function DeviceDashboardScreen() {
               ...image,
               url: protectedImageUrls[image.id] ?? image.url,
             }))}
+            captureDisabled={isCommandRunning || isActionBlocked("capture_image")}
+            captureLabel={
+              activeCommandAction === "capture_image" || isActionBlocked("capture_image")
+                ? "Capture pending"
+                : isCommandRunning
+                  ? "Working..."
+                  : "Capture image"
+            }
+            onCapture={() => runCommand("capture_image")}
           />
 
           <HardwareHealthPanel health={dashboard.hardwareHealth} />
@@ -149,17 +158,6 @@ export function DeviceDashboardScreen() {
               </button>
               <button className="primary-button" disabled={isCommandRunning || isActionBlocked("pump_run")} onClick={() => runCommand("pump_run")}>
                 {activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
-              </button>
-              <button
-                className="secondary-button"
-                disabled={isCommandRunning || isActionBlocked("capture_image")}
-                onClick={() => runCommand("capture_image")}
-              >
-                {activeCommandAction === "capture_image" || isActionBlocked("capture_image")
-                  ? "Capture pending"
-                  : isCommandRunning
-                    ? "Working..."
-                    : "Capture image"}
               </button>
             </div>
             {dashboard.hardwareHealth?.lastCommand ? (
