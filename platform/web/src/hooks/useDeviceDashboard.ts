@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RangeKey } from "@/components/ReadingTrendSection";
 import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
-export function useDeviceDashboard(deviceId: string) {
+export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
   const autoRefreshMs = 10000;
+  const autoRefreshEnabled = options?.autoRefresh ?? true;
   const { token } = useSession();
   const [dashboard, setDashboard] = useState<DeviceDashboard | null>(null);
   const [usedMock, setUsedMock] = useState(false);
@@ -17,9 +18,10 @@ export function useDeviceDashboard(deviceId: string) {
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
+  const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
-    if (!options?.background || !dashboard) {
+    if (!options?.background || !hasLoadedRef.current) {
       setIsLoading(true);
     }
     setError(null);
@@ -28,26 +30,31 @@ export function useDeviceDashboard(deviceId: string) {
       setDashboard(result.dashboard);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
+      hasLoadedRef.current = true;
     } catch (err) {
       setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
     } finally {
       setIsLoading(false);
     }
-  }, [dashboard, deviceId, selectedRange, token]);
+  }, [deviceId, selectedRange, token]);
 
   useEffect(() => {
     if (!deviceId) {
       return;
     }
+    hasLoadedRef.current = false;
     refresh();
+    if (!autoRefreshEnabled) {
+      return;
+    }
     const intervalId = window.setInterval(() => {
       void refresh({ background: true });
     }, autoRefreshMs);
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [deviceId, refresh]);
+  }, [autoRefreshEnabled, deviceId, refresh]);
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"]) => {

@@ -9,7 +9,7 @@ export function RemoveDeviceScreen() {
   const { deviceId = "" } = useParams();
   const navigate = useNavigate();
   const { token } = useSession();
-  const { dashboard, usedMock: dashboardUsedMock, isLoading, error } = useDeviceDashboard(deviceId);
+  const { dashboard, usedMock: dashboardUsedMock, isLoading, error } = useDeviceDashboard(deviceId, { autoRefresh: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 

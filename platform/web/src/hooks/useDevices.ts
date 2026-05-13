@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listDevices } from "@/api/devices";
 import { Device } from "@/types";
@@ -12,9 +12,10 @@ export function useDevices() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
-    if (!options?.background || devices.length === 0) {
+    if (!options?.background || !hasLoadedRef.current) {
       setIsLoading(true);
     }
     setError(null);
@@ -23,15 +24,17 @@ export function useDevices() {
       setDevices(result.devices);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
+      hasLoadedRef.current = true;
     } catch (err) {
       setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load devices.");
     } finally {
       setIsLoading(false);
     }
-  }, [devices.length, token]);
+  }, [token]);
 
   useEffect(() => {
+    hasLoadedRef.current = false;
     void refresh();
     const intervalId = window.setInterval(() => {
       void refresh({ background: true });
