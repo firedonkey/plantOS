@@ -21,7 +21,7 @@ export function HistoryScreen() {
             {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
           </p>
         </div>
-        <button className="secondary-button" disabled={isLoading} onClick={refresh}>
+        <button className="secondary-button" disabled={isLoading} onClick={() => void refresh()}>
           {isLoading ? "Refreshing..." : "Refresh"}
         </button>
       </div>

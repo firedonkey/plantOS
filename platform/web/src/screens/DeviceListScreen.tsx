@@ -35,7 +35,7 @@ export function DeviceListScreen() {
           <Link className="primary-button" to="/devices/add">
             Add device
           </Link>
-          <button className="secondary-button" disabled={isLoading} onClick={refresh}>
+          <button className="secondary-button" disabled={isLoading} onClick={() => void refresh()}>
             {isLoading ? "Refreshing..." : "Refresh"}
           </button>
         </div>

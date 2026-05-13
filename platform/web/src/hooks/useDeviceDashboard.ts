@@ -6,6 +6,7 @@ import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
 export function useDeviceDashboard(deviceId: string) {
+  const autoRefreshMs = 10000;
   const { token } = useSession();
   const [dashboard, setDashboard] = useState<DeviceDashboard | null>(null);
   const [usedMock, setUsedMock] = useState(false);
@@ -17,8 +18,10 @@ export function useDeviceDashboard(deviceId: string) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
+  const refresh = useCallback(async (options?: { background?: boolean }) => {
+    if (!options?.background || !dashboard) {
+      setIsLoading(true);
+    }
     setError(null);
     try {
       const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
@@ -31,13 +34,19 @@ export function useDeviceDashboard(deviceId: string) {
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, selectedRange, token]);
+  }, [dashboard, deviceId, selectedRange, token]);
 
   useEffect(() => {
     if (!deviceId) {
       return;
     }
     refresh();
+    const intervalId = window.setInterval(() => {
+      void refresh({ background: true });
+    }, autoRefreshMs);
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [deviceId, refresh]);
 
   const runCommand = useCallback(

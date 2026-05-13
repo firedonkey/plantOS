@@ -96,6 +96,9 @@ export function AddDeviceScreen() {
           <p className="subtitle">
             We verified <strong>{handoff.serialNumber}</strong>. Open the device Wi-Fi setup page, finish Wi-Fi provisioning, then keep the setup-finishing page open until the first reading is ready.
           </p>
+          <p className="meta-text">
+            After joining <strong>PlantLab-Setup</strong>, your laptop may need 20-30 seconds to finish switching networks before the setup page becomes reachable.
+          </p>
           {handoff.setupToken ? <p className="meta-text">Setup token: {handoff.setupToken}</p> : null}
           <div className="button-row">
             <a className="primary-button" href={handoff.continueSetupUrl} rel="noreferrer" target="_blank">

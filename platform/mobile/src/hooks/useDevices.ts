@@ -5,6 +5,7 @@ import { Device } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
 export function useDevices() {
+  const autoRefreshMs = 10000;
   const { token } = useSession();
   const [devices, setDevices] = useState<Device[]>([]);
   const [usedMock, setUsedMock] = useState(false);
@@ -12,10 +13,12 @@ export function useDevices() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { background?: boolean }) => {
     try {
       setError(null);
-      setIsLoading(true);
+      if (!options?.background || devices.length === 0) {
+        setIsLoading(true);
+      }
       const result = await listDevices(token ?? undefined);
       setDevices(result.devices);
       setUsedMock(result.usedMock);
@@ -25,10 +28,16 @@ export function useDevices() {
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [devices.length, token]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
+    const intervalId = setInterval(() => {
+      void refresh({ background: true });
+    }, autoRefreshMs);
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [refresh]);
 
   return {

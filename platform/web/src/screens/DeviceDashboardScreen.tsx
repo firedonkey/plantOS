@@ -94,7 +94,7 @@ export function DeviceDashboardScreen() {
             </div>
             <div className="header-actions">
               {usedMock ? <span className="chip chip-mock">Mock mode</span> : null}
-              <button className="secondary-button" disabled={isLoading || isCommandRunning} onClick={refresh}>
+              <button className="secondary-button" disabled={isLoading || isCommandRunning} onClick={() => void refresh()}>
                 {isLoading ? "Refreshing..." : "Refresh"}
               </button>
             </div>
