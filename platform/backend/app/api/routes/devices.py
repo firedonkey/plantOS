@@ -21,6 +21,9 @@ from app.schemas.commands import (
 from app.schemas.devices import (
     DeviceCreate,
     DeviceDeleteRead,
+    DeviceHardwareHealthRead,
+    DeviceHealthCommandRead,
+    DeviceHealthNodeRead,
     DeviceRead,
     DeviceSummaryImageRead,
     DeviceSummaryRead,
@@ -28,8 +31,8 @@ from app.schemas.devices import (
 )
 from app.schemas.setup import DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
-from app.services.commands import create_command
-from app.services.device_nodes import build_node_summary, list_nodes_for_device
+from app.services.commands import create_command, list_commands_for_device
+from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
 from app.services.devices import (
     create_device_for_user,
     delete_device_for_user,
@@ -202,6 +205,12 @@ def get_device_summary(
             else None
         ),
         node_summary=build_node_summary(nodes),
+        hardware_health=_build_hardware_health(
+            nodes=nodes,
+            latest_reading=latest_reading,
+            latest_image=latest_image,
+            latest_command=_latest_command(session, device.id),
+        ),
     )
 
 
@@ -416,7 +425,9 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
     latest_reading = get_latest_reading_for_device(session, device.id)
     latest_images = list_recent_images_for_device(session, device.id, limit=1)
     latest_image = latest_images[0] if latest_images else None
-    node_summary = build_node_summary(list_nodes_for_device(session, device.id))
+    nodes = list_nodes_for_device(session, device.id)
+    node_summary = build_node_summary(nodes)
+    latest_command = _latest_command(session, device.id)
     return DeviceRead(
         id=device.id,
         name=device.name,
@@ -441,6 +452,12 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
             else None
         ),
         node_summary=node_summary,
+        hardware_health=_build_hardware_health(
+            nodes=nodes,
+            latest_reading=latest_reading,
+            latest_image=latest_image,
+            latest_command=latest_command,
+        ),
     )
 
 
@@ -475,6 +492,52 @@ def _queued_command_response(
         command_status=command.status,
         created_at=command.created_at,
         value=command.value,
+    )
+
+
+def _latest_command(session: Session, device_id: int):
+    commands = list_commands_for_device(session, device_id, limit=1)
+    return commands[0] if commands else None
+
+
+def _build_hardware_health(*, nodes: list, latest_reading, latest_image, latest_command) -> DeviceHardwareHealthRead:
+    node_summary = build_node_summary(nodes)
+    primary = node_summary.get("primary")
+    primary_status = (primary or {}).get("status")
+    camera_summaries = node_summary.get("cameras") or []
+    return DeviceHardwareHealthRead(
+        overall_status=node_summary.get("overall_status") or "offline",
+        master_status=primary_status,
+        master_online=primary_status == "online",
+        primary=_build_health_node(primary),
+        cameras=[health_node for health_node in (_build_health_node(item) for item in camera_summaries) if health_node is not None],
+        last_heartbeat_at=latest_node_heartbeat_at(nodes),
+        last_reading_at=getattr(latest_reading, "timestamp", None),
+        last_image_at=getattr(latest_image, "timestamp", None),
+        last_command=_build_health_command(latest_command),
+    )
+
+
+def _build_health_node(node_summary_item: dict | None) -> DeviceHealthNodeRead | None:
+    if not node_summary_item:
+        return None
+    return DeviceHealthNodeRead.model_validate(node_summary_item)
+
+
+def _build_health_command(command) -> DeviceHealthCommandRead | None:
+    if command is None:
+        return None
+    timestamp = command.completed_at or command.sent_at or command.created_at
+    return DeviceHealthCommandRead(
+        id=command.id,
+        target=command.target,
+        action=command.action,
+        status=command.status,
+        message=command.message,
+        created_at=command.created_at,
+        completed_at=command.completed_at,
+        sent_at=command.sent_at,
+        timestamp=timestamp,
     )
 
 

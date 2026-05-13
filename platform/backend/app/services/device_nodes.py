@@ -30,6 +30,19 @@ def build_node_summary(nodes: list[DeviceNode]) -> dict:
     }
 
 
+def latest_node_heartbeat_at(nodes: list[DeviceNode]) -> datetime | None:
+    primary = next(
+        (node for node in nodes if node.node_role in {"single_board", "master"}),
+        None,
+    )
+    if primary is not None and primary.last_seen_at is not None:
+        return primary.last_seen_at
+    timestamps = [node.last_seen_at for node in nodes if node.last_seen_at is not None]
+    if not timestamps:
+        return None
+    return max(timestamps)
+
+
 def list_nodes_for_device(session: Session, device_id: int) -> list[DeviceNode]:
     nodes = list(
         session.scalars(

@@ -17,6 +17,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Image, SensorReading, User
 from app.models.base import Base
+from app.services.device_nodes import upsert_device_node
 from app.web.routes import _latest_device_activity, _latest_completed_command_state, _reading_chart
 
 
@@ -95,6 +96,12 @@ def test_create_list_and_get_device_api():
         assert listed[0]["node_summary"]["overall_status"] == "offline"
         assert listed[0]["node_summary"]["primary"] is None
         assert listed[0]["node_summary"]["cameras"] == []
+        assert listed[0]["hardware_health"]["overall_status"] == "offline"
+        assert listed[0]["hardware_health"]["master_online"] is False
+        assert listed[0]["hardware_health"]["last_heartbeat_at"] is None
+        assert listed[0]["hardware_health"]["last_reading_at"] is None
+        assert listed[0]["hardware_health"]["last_image_at"] is None
+        assert listed[0]["hardware_health"]["last_command"] is None
 
         get_response = client.get(f"/api/devices/{created['id']}")
         assert get_response.status_code == 200
@@ -141,6 +148,9 @@ def test_device_summary_readings_and_latest_image_api():
         assert summary["name"] == "Kitchen Rose"
         assert summary["latest_reading"]["moisture"] == 42.5
         assert summary["latest_image"]["content_url"].endswith("/api/images/1/content")
+        assert summary["hardware_health"]["last_reading_at"] == summary["latest_reading"]["timestamp"]
+        assert summary["hardware_health"]["last_image_at"] == summary["latest_image"]["timestamp"]
+        assert summary["hardware_health"]["overall_status"] == "offline"
 
         readings_response = client.get(f"/api/devices/{device_id}/readings")
         assert readings_response.status_code == 200
@@ -158,6 +168,8 @@ def test_device_summary_readings_and_latest_image_api():
         assert listed[0]["latest_reading"]["temperature"] == 22.2
         assert listed[0]["latest_image"]["content_url"].endswith("/api/images/1/content")
         assert listed[0]["status"] == "online"
+        assert listed[0]["hardware_health"]["last_reading_at"] == listed[0]["latest_reading"]["timestamp"]
+        assert listed[0]["hardware_health"]["last_image_at"] == listed[0]["latest_image"]["timestamp"]
     finally:
         teardown_overrides()
 
@@ -362,6 +374,92 @@ def test_device_command_wrapper_apis():
         assert capture_payload["error"]["code"] == "capture_not_supported"
         assert "not yet supported" in capture_payload["error"]["message"]
         assert capture_payload["error"]["details"]["future_response"]["status"] == "accepted"
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_exposes_hardware_health_and_last_command():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device = create_response.json()
+        device_id = device["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc),
+            )
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-cam-1",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="offline",
+                last_seen_at=datetime(2026, 5, 12, 11, 59, tzinfo=timezone.utc),
+            )
+
+        data_response = client.post(
+            "/api/data",
+            json={
+                "device_id": device_id,
+                "hardware_device_id": "pl-esp32-master",
+                "moisture": 41.0,
+                "temperature": 23.4,
+                "humidity": 52.5,
+                "light_on": False,
+                "pump_on": False,
+            },
+        )
+        assert data_response.status_code == 201
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/test.jpg",
+                    timestamp=datetime(2026, 5, 12, 12, 1, tzinfo=timezone.utc),
+                )
+            )
+            session.commit()
+
+        command_response = client.post(f"/api/devices/{device_id}/commands/light", json={"state": "on"})
+        assert command_response.status_code == 201
+        command_id = command_response.json()["command_id"]
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        ack_response = client.post(
+            f"/api/devices/{device_id}/commands/{command_id}/ack",
+            json={"status": "completed", "message": "light turned on", "light_on": True, "pump_on": False},
+            headers={"X-Device-Token": device["api_token"]},
+        )
+        assert ack_response.status_code == 200
+
+        app.dependency_overrides[get_current_user] = lambda: User(id=1, email="grower@example.com", name="Grower")
+        app.dependency_overrides[get_optional_current_user] = app.dependency_overrides[get_current_user]
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+
+        assert summary_response.status_code == 200
+        payload = summary_response.json()
+        assert payload["hardware_health"]["overall_status"] == "degraded"
+        assert payload["hardware_health"]["master_status"] == "online"
+        assert payload["hardware_health"]["master_online"] is True
+        assert payload["hardware_health"]["primary"]["status"] == "online"
+        assert payload["hardware_health"]["cameras"][0]["status"] == "offline"
+        assert payload["hardware_health"]["last_heartbeat_at"].startswith("2026-05-12T12:00:00")
+        assert payload["hardware_health"]["last_reading_at"] == payload["latest_reading"]["timestamp"]
+        assert payload["hardware_health"]["last_image_at"].startswith("2026-05-12T12:01:00")
+        assert payload["hardware_health"]["last_command"]["id"] == command_id
+        assert payload["hardware_health"]["last_command"]["status"] == "completed"
+        assert payload["hardware_health"]["last_command"]["message"] == "light turned on"
     finally:
         teardown_overrides()
 

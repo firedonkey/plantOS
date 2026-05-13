@@ -80,6 +80,23 @@ Current shape note:
   - `latest_reading`
   - `latest_image`
   - `node_summary`
+  - `hardware_health`
+
+Current hardware health note:
+
+- `hardware_health` is an additive summary for observability-oriented clients
+- it keeps older clients compatible by leaving `status`, `latest_reading`, `latest_image`, and `node_summary` untouched
+- current fields include:
+  - `overall_status`
+  - `master_status`
+  - `master_online`
+  - `primary`
+  - `cameras`
+  - `last_heartbeat_at`
+  - `last_reading_at`
+  - `last_image_at`
+  - `last_command`
+- `last_command` reports the latest command result/status that the backend knows about, including pending and in-progress commands
 
 Readings history note:
 
@@ -429,6 +446,56 @@ Interpretation notes:
 - `has_reading=false` after `device_found=true` usually means the device joined Wi-Fi but has not completed its first sensor upload.
 - `has_image=false` while `expect_image=true` means the master board is online but the camera node has not uploaded its first image yet.
 - standalone clients should poll this endpoint quietly and explain the current waiting reason rather than treating each poll like a full-screen loading event.
+
+### `hardware_health`
+
+Current additive summary shape on `GET /api/devices` and `GET /api/devices/{id}/summary`:
+
+```json
+{
+  "overall_status": "online",
+  "master_status": "online",
+  "master_online": true,
+  "primary": {
+    "hardware_device_id": "pl-esp32-64e0a80af6e8",
+    "node_role": "master",
+    "node_index": null,
+    "display_name": "Master",
+    "status": "online",
+    "last_seen_at": "2026-05-13T01:25:24.974864Z"
+  },
+  "cameras": [
+    {
+      "hardware_device_id": "pl-cam-1c1df816a398",
+      "node_role": "camera",
+      "node_index": 1,
+      "display_name": "Camera 1",
+      "status": "online",
+      "last_seen_at": "2026-05-13T01:25:09.829072Z"
+    }
+  ],
+  "last_heartbeat_at": "2026-05-13T01:25:24.974864Z",
+  "last_reading_at": "2026-05-13T01:25:25.071861Z",
+  "last_image_at": "2026-05-13T01:25:29.870833Z",
+  "last_command": {
+    "id": 42,
+    "target": "light",
+    "action": "on",
+    "status": "completed",
+    "message": "light turned on",
+    "created_at": "2026-05-13T01:20:00Z",
+    "sent_at": "2026-05-13T01:20:02Z",
+    "completed_at": "2026-05-13T01:20:05Z",
+    "timestamp": "2026-05-13T01:20:05Z"
+  }
+}
+```
+
+Interpretation notes:
+
+- `overall_status` can be `degraded` when the master is online but one or more camera nodes are offline.
+- `last_heartbeat_at` tracks the most recent master heartbeat when a master node exists, otherwise the freshest node heartbeat.
+- `last_reading_at` and `last_image_at` are timestamps only; standalone clients should render human-friendly ages locally.
 
 ## Standard API error envelope
 
