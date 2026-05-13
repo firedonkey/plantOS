@@ -891,6 +891,10 @@ String provisioningPageHtml(
               </div>
             </label>
             <input id="resolved-ssid" name="wifi_ssid" type="hidden" value="">
+            <input name="setup_code" type="hidden" value="__CLAIM_TOKEN__">
+            <input name="backend_url" type="hidden" value="__BACKEND_URL__">
+            <input name="platform_url" type="hidden" value="__PLATFORM_URL__">
+            <input name="return_url" type="hidden" value="__RETURN_URL__">
             <button class="submit-button" id="submit-button" type="submit" __DISABLED_ATTR__>Save and connect</button>
           </form>
           __SETUP_WARNING__
@@ -938,12 +942,29 @@ void handleProvisioningSubmit() {
   const String ssid = wifi_ssid.length() > 0 ? wifi_ssid : g_web_server.arg("ssid");
   const String wifi_password = g_web_server.arg("wifi_password");
   const String password = wifi_password.length() > 0 ? wifi_password : g_web_server.arg("password");
-  const String claim_token = g_pending_claim_token;
-  const String backend_url = g_pending_backend_url;
-  const String platform_url = g_pending_platform_url;
+  const String form_claim_token = g_web_server.arg("setup_code");
+  const String form_backend_url = g_web_server.arg("backend_url");
+  const String form_platform_url = g_web_server.arg("platform_url");
+  const String form_return_url = g_web_server.arg("return_url");
+  const String claim_token = form_claim_token.length() > 0 ? form_claim_token : g_pending_claim_token;
+  const String backend_url = form_backend_url.length() > 0 ? form_backend_url : g_pending_backend_url;
+  const String platform_url = form_platform_url.length() > 0 ? form_platform_url : g_pending_platform_url;
   const String return_url = withExpectedImageSetting(
-      g_pending_return_url,
+      form_return_url.length() > 0 ? form_return_url : g_pending_return_url,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0);
+
+  if (claim_token.length() > 0) {
+    g_pending_claim_token = claim_token;
+  }
+  if (backend_url.length() > 0) {
+    g_pending_backend_url = backend_url;
+  }
+  if (platform_url.length() > 0) {
+    g_pending_platform_url = platform_url;
+  }
+  if (return_url.length() > 0) {
+    g_pending_return_url = return_url;
+  }
 
   if (ssid.length() == 0 || claim_token.length() == 0 || platform_url.length() == 0) {
     Serial.println("[provisioning] submission rejected: Wi-Fi SSID, setup code, or platform URL missing");

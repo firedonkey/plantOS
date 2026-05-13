@@ -78,10 +78,12 @@ Then edit `platform_secrets.h` with:
 For the normal Add Device provisioning flow, the website now supplies:
 
 - setup code
+- provisioning backend URL
 - platform URL
 - return URL
 
 so the firmware does not rely on hardcoded local-vs-GCP URLs during onboarding.
+The setup page now posts those values back as hidden form fields, which makes the browser handoff more reliable on the ESP32 access-point network.
 
 ## Main firmware environment selection
 
