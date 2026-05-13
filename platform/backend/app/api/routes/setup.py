@@ -76,11 +76,21 @@ def _setup_finishing_expect_image(nodes: list, requested_expect_image: bool) -> 
         for node in nodes
         if getattr(node, "node_role", None) is not None
     }
-    if "camera" in roles:
+    if any(_node_has_camera_capability(node) for node in nodes):
         return True
+    if "master" in roles:
+        return False
     if "single_board" in roles:
         return True
     return requested_expect_image
+
+
+def _node_has_camera_capability(node) -> bool:
+    role = str(getattr(node, "node_role", "") or "").strip().lower()
+    if role == "camera":
+        return True
+    capabilities = getattr(node, "capabilities", None) or {}
+    return bool(capabilities.get("camera"))
 
 
 def _no_store_json(payload: dict) -> JSONResponse:

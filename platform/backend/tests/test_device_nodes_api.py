@@ -499,7 +499,7 @@ def test_setup_status_for_master_only_device_is_ready_after_first_reading_withou
         teardown_overrides()
 
 
-def test_setup_status_for_master_only_device_keeps_explicit_image_expectation():
+def test_setup_status_for_master_only_device_does_not_wait_for_image_without_camera_capability():
     client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
     try:
         with TestingSessionLocal() as session:
@@ -517,6 +517,52 @@ def test_setup_status_for_master_only_device_keeps_explicit_image_expectation():
                 node_role="master",
                 display_name="Master",
                 status="online",
+            )
+            session.add(
+                SensorReading(
+                    device_id=device_id,
+                    moisture=39.2,
+                    temperature=22.4,
+                    humidity=54.0,
+                )
+            )
+            session.commit()
+
+        response = client.get(
+            "/setup/status.json",
+            params={"device_name": "Device 1", "location": "Grow Tent", "expect_image": "1"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_found"] is True
+        assert payload["has_reading"] is True
+        assert payload["has_image"] is False
+        assert payload["expect_image"] is False
+        assert payload["ready"] is True
+    finally:
+        teardown_overrides()
+
+
+def test_setup_status_waits_for_image_when_master_advertises_camera_capability():
+    client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
+    try:
+        with TestingSessionLocal() as session:
+            device = session.get(Device, device_id)
+            device.name = "Device 1"
+            device.location = "Grow Tent"
+            device.user_id = user_id
+            session.add(device)
+            session.commit()
+
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="master-01",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                capabilities={"camera": True},
             )
             session.add(
                 SensorReading(
