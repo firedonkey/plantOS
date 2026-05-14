@@ -7,9 +7,12 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.plantlab.mobile",
+      "buildNumber": "1",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "PlantLab uses Bluetooth to read nearby Wi-Fi network names from your ESP32 during setup.",
-        "NSLocalNetworkUsageDescription": "PlantLab can connect to the device setup network for the compatibility SoftAP setup flow."
+        "NSLocalNetworkUsageDescription": "PlantLab can connect to the device setup network for the compatibility SoftAP setup flow.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -33,7 +36,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "backendApiBaseUrl": ""
+      "backendApiBaseUrl": "",
+      "router": {},
+      "eas": {
+        "projectId": "b503ff8e-be67-46b0-a3eb-b0224a1fdc18"
+      }
     }
   }
 }

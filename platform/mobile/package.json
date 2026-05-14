@@ -5,8 +5,13 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "start:dev": "bash scripts/mobile/start_dev_client.sh --host lan",
     "ios": "expo start --ios",
     "android": "expo start --android",
+    "build:ios:dev": "bash scripts/mobile/build_ios_dev.sh",
+    "build:ios:sim": "bash scripts/mobile/build_ios_dev.sh --profile development-simulator",
+    "clean:metro": "bash scripts/mobile/clean_metro_cache.sh",
+    "register:ios": "bash scripts/mobile/register_ios_device.sh",
     "typecheck": "tsc --noEmit",
     "lint:todo": "node -e \"console.log('TODO: add mobile linting after scaffold stabilizes')\""
   },
@@ -15,6 +20,7 @@
     "base-64": "^1.0.0",
     "expo": "~54.0.0",
     "expo-camera": "~17.0.10",
+    "expo-dev-client": "~6.0.21",
     "expo-router": "~6.0.0",
     "expo-status-bar": "~3.0.0",
     "react": "19.1.0",

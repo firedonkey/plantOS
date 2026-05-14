@@ -25,6 +25,104 @@ Local dev:
 - The `PlantLab-Setup` SoftAP page remains available as a compatibility fallback. Manual SSID entry remains available in both flows.
 - iOS simulator can use `http://127.0.0.1:8000`
 - physical devices should use your Mac's LAN IP, for example `http://192.168.x.x:8000`
+- Restart Metro after changing `EXPO_PUBLIC_*` values. Rebuild the development client after changing native dependencies, app permissions, bundle ID, or config plugins.
+
+Expo Go vs native development builds:
+
+- `npm start` keeps the Expo Go workflow available for UI-only development.
+- BLE, installed-app scheme handling, native permission prompts, and real iPhone behavior require an installed development build.
+- Start Metro for the installed development build with `npm run start:dev`.
+
+iOS development build prerequisites:
+
+- Apple Developer Program access is required for installing on a real iPhone.
+- Use an Apple account with permission to create or use the App ID, signing certificate, provisioning profile, and registered device UDID.
+- The iOS bundle identifier is `com.plantlab.mobile`.
+- The app scheme remains `plantlab` for callbacks such as `plantlab://auth/callback`.
+- EAS-managed credentials are the default path. Local Xcode builds are optional for developers with Xcode, CocoaPods, and signing already configured.
+
+First-time EAS setup:
+
+```bash
+cd platform/mobile
+npm install
+npx eas login
+npx eas init
+```
+
+`npx eas init` links this app to an Expo/EAS project and may add `extra.eas.projectId` to `app.json`. Do not add a placeholder project ID manually.
+
+Register a real iPhone for internal development builds:
+
+```bash
+cd platform/mobile
+npm run register:ios
+```
+
+Open the EAS registration link or QR code on the iPhone, install the device registration profile, then return to the terminal.
+
+Build and install on a real iPhone:
+
+```bash
+cd platform/mobile
+npm run build:ios:dev
+```
+
+The build script verifies EAS CLI access, EAS login, `eas.json`, `expo-dev-client`, typecheck when available, and Expo config before starting `eas build --profile development --platform ios`.
+
+To validate the local setup without starting a cloud build:
+
+```bash
+cd platform/mobile
+bash scripts/mobile/build_ios_dev.sh --check-only
+```
+
+Follow the EAS prompts to register the iPhone if needed, then install the internal build from the EAS result page. After installation, start Metro for the installed development client:
+
+```bash
+cd platform/mobile
+npm run start:dev
+```
+
+`npm run start:dev` clears Watchman/Metro cache state, raises the file descriptor limit for the shell when possible, and runs Expo with `--dev-client --host lan`.
+
+Open the installed PlantLab development build on the iPhone, not Expo Go, and connect it to the LAN Metro server. For physical-device backend QA, set `EXPO_PUBLIC_API_BASE_URL` to the Mac's LAN address, not `127.0.0.1`.
+
+Recover from Metro watcher/cache issues:
+
+```bash
+cd platform/mobile
+npm run clean:metro
+npm run start:dev
+```
+
+See [`docs/mobile_troubleshooting.md`](docs/mobile_troubleshooting.md) for EMFILE, Watchman, Metro cache, Expo Go vs development build, iOS Developer Mode, Apple signing, and EAS login issues.
+
+Optional simulator build:
+
+```bash
+cd platform/mobile
+npm run build:ios:sim
+```
+
+Optional local iOS run for developers with native tooling:
+
+```bash
+cd platform/mobile
+npx expo run:ios --device
+```
+
+Native capability validation checklist:
+
+- App startup: installed development build launches to the expected login/navigation flow.
+- API config: physical iPhone points at the intended LAN backend URL.
+- Auth/session: dev login works; Google handoff returns through `plantlab://auth/callback`; logout clears the session.
+- Storage: AsyncStorage-backed dev sessions behave as before; production refresh-token persistence remains disabled until secure storage is added.
+- BLE provisioning: native build loads `react-native-ble-plx`, requests Bluetooth permission, scans for `PlantLab-Setup`, reads nearby Wi-Fi names, and preserves manual SSID and SoftAP fallback paths.
+- Camera/QR: camera permission prompt appears and the QR scanner can populate the device serial number.
+- Image gallery: remote recent images still load with auth headers when required.
+- SoftAP/local network: fallback setup page can be opened and the local network prompt is validated if iOS shows it.
+- Rebuild rule: native dependency or permission changes require a rebuilt development client.
 
 Mobile local QA setup:
 
