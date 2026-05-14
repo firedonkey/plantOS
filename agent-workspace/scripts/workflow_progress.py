@@ -5,6 +5,7 @@ import os
 import re
 import selectors
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -14,10 +15,26 @@ from pathlib import Path
 
 
 HEARTBEAT_INTERVAL_SECONDS = 30
-DEFAULT_MAX_PROGRESS_LOG_BYTES = 1_000_000
-DEFAULT_MAX_TERMINAL_OUTPUT_CHARS = 60_000
-DEFAULT_MAX_CAPTURED_OUTPUT_CHARS = 160_000
-DEFAULT_MAX_PROGRESS_MESSAGE_CHARS = 8_000
+DEFAULT_MAX_PROGRESS_LOG_BYTES = 150_000
+DEFAULT_MAX_TERMINAL_OUTPUT_CHARS = 20_000
+DEFAULT_MAX_CAPTURED_OUTPUT_CHARS = 80_000
+DEFAULT_MAX_PROGRESS_MESSAGE_CHARS = 1_000
+
+CORE_OUTPUT_FILES = {
+    "APPROVED_PLAN",
+    "coder_log.md",
+    "current_stage.txt",
+    "final_summary.md",
+    "heartbeat.json",
+    "plan.md",
+    "progress.log",
+    "review.md",
+    "state.json",
+    "test_report.md",
+    "tester_log.md",
+    "timeout_recovery.md",
+}
+TMP_OUTPUT_DIRNAME = "tmp"
 
 SECRET_PATTERNS = [
     re.compile(r'("?(?:password|wifi_password|device_token|plantlab_token|claim_token|token|x-device-token)"?\s*[:=]\s*")([^"]+)(")', re.IGNORECASE),
@@ -87,6 +104,43 @@ def _append_capped(parts: list[str], text: str, max_chars: int) -> None:
         parts.append(text[:remaining] + f"\n[captured output truncated {len(text) - remaining} chars]\n")
 
 
+def ensure_tmp_dir(output_dir: Path) -> Path:
+    tmp_dir = output_dir / TMP_OUTPUT_DIRNAME
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir
+
+
+def temp_output_path(output_dir: Path, filename: str) -> Path:
+    return ensure_tmp_dir(output_dir) / filename
+
+
+def _unique_destination(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    for index in range(1, 10_000):
+        candidate = path.with_name(f"{stem}.{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"could not find unique destination for {path}")
+
+
+def cleanup_output_root(output_dir: Path) -> list[tuple[Path, Path]]:
+    """Move non-canonical task output files into outputs/<task_id>/tmp/."""
+    if not output_dir.exists():
+        return []
+    tmp_dir = ensure_tmp_dir(output_dir)
+    moved: list[tuple[Path, Path]] = []
+    for child in sorted(output_dir.iterdir(), key=lambda item: item.name):
+        if child.name == TMP_OUTPUT_DIRNAME or child.name in CORE_OUTPUT_FILES:
+            continue
+        destination = _unique_destination(tmp_dir / child.name)
+        shutil.move(str(child), str(destination))
+        moved.append((child, destination))
+    return moved
+
+
 def _cap_progress_log(progress_path: Path) -> None:
     max_bytes = _max_progress_log_bytes()
     if not progress_path.exists():
@@ -152,6 +206,7 @@ def update_stage(output_dir: Path, stage: str) -> None:
 
 def ensure_monitoring_files(output_dir: Path, task_id: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_tmp_dir(output_dir)
     progress_path = output_dir / "progress.log"
     if not progress_path.exists():
         write_text(progress_path, "")
@@ -221,6 +276,9 @@ def run_streaming_process(
     timed_out = False
     terminal_output_chars = 0
     terminal_output_truncated = False
+    stream_line_counts = {"stdout": 0, "stderr": 0}
+    stream_char_counts = {"stdout": 0, "stderr": 0}
+    stream_progress_noted = {"stdout": False, "stderr": False}
     max_terminal_chars = _max_terminal_output_chars()
     max_captured_chars = _max_captured_output_chars()
 
@@ -288,14 +346,17 @@ def run_streaming_process(
                 continue
             text = chunk.decode("utf-8", errors="replace")
             safe_text = redact_secrets(text)
+            stream_line_counts[key.data] += 1
+            stream_char_counts[key.data] += len(safe_text)
+            if not stream_progress_noted[key.data]:
+                append_progress(output_dir, f"{agent}:{key.data}", "subprocess output streaming; raw lines suppressed")
+                stream_progress_noted[key.data] = True
             if key.data == "stdout":
                 _append_capped(stdout_parts, safe_text, max_captured_chars)
                 write_terminal(safe_text, stream_name="stdout")
-                append_progress(output_dir, f"{agent}:stdout", safe_text)
             else:
                 _append_capped(stderr_parts, safe_text, max_captured_chars)
                 write_terminal(safe_text, stream_name="stderr")
-                append_progress(output_dir, f"{agent}:stderr", safe_text)
 
     if timed_out:
         try:
@@ -321,17 +382,30 @@ def run_streaming_process(
         remaining = stream.read() or b""
         if remaining:
             text = redact_secrets(remaining.decode("utf-8", errors="replace"))
+            stream_line_counts[stream_name] += text.count("\n") or 1
+            stream_char_counts[stream_name] += len(text)
+            if not stream_progress_noted[stream_name]:
+                append_progress(output_dir, f"{agent}:{stream_name}", "subprocess output streaming; raw lines suppressed")
+                stream_progress_noted[stream_name] = True
             if stream_name == "stdout":
                 _append_capped(stdout_parts, text, max_captured_chars)
                 write_terminal(text, stream_name="stdout")
-                append_progress(output_dir, f"{agent}:stdout", text)
             else:
                 _append_capped(stderr_parts, text, max_captured_chars)
                 write_terminal(text, stream_name="stderr")
-                append_progress(output_dir, f"{agent}:stderr", text)
 
     returncode = process.returncode if process.returncode is not None else -1
     status = "completed" if returncode == 0 and not timed_out else "failed"
+    if stream_char_counts["stdout"] or stream_char_counts["stderr"]:
+        append_progress(
+            output_dir,
+            agent,
+            (
+                "subprocess output summary: "
+                f"stdout_lines={stream_line_counts['stdout']} stdout_chars={stream_char_counts['stdout']} "
+                f"stderr_lines={stream_line_counts['stderr']} stderr_chars={stream_char_counts['stderr']}"
+            ),
+        )
     write_heartbeat(output_dir, task_id, agent, stage, status, f"{stage} {status}")
     append_progress(output_dir, agent, f"{stage} {status} with returncode={returncode}")
     return subprocess.CompletedProcess(cmd, returncode, "".join(stdout_parts), "".join(stderr_parts)), timed_out

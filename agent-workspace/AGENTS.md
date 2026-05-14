@@ -52,6 +52,7 @@ agent-workspace/
       progress.log
       heartbeat.json
       current_stage.txt
+      tmp/
   prompts/
     planner.md
     coder.md
@@ -64,7 +65,9 @@ agent-workspace/
     run_pipeline.py
 ```
 
-`APPROVED_PLAN`, per-attempt scratch logs, and runtime monitoring files are local ignored files.
+`APPROVED_PLAN`, runtime monitoring files, and `tmp/` are local ignored files.
+
+The output folder root is for durable, human-facing artifacts only. Per-attempt agent outputs, command logs, status files, and other scratch files belong in `outputs/<task_id>/tmp/`. The orchestrator moves non-canonical files from the output root into `tmp/` when the pipeline starts and again when it finishes.
 
 ## Progress And Heartbeat Files
 
@@ -121,16 +124,17 @@ Long-running subprocess output is streamed live. The pipeline also prints period
 [tester] still running; current stage: running tests: pytest
 ```
 
-Subprocess stdout/stderr is also appended to `progress.log`, with basic secret redaction.
+Subprocess stdout/stderr is streamed to the terminal with basic secret redaction, but raw lines are not appended to `progress.log`. `progress.log` records stage changes, liveness heartbeats, and compact output summaries such as line/character counts. Detailed command output is captured in the normal agent/test logs and capped there.
+
 Terminal display is capped so a noisy agent cannot flood the terminal. The progress log is also capped and keeps the recent tail when it grows too large.
 
 The output caps can be overridden with:
 
 ```bash
-CODEX_WORKFLOW_MAX_TERMINAL_OUTPUT_CHARS=60000
-CODEX_WORKFLOW_MAX_PROGRESS_LOG_BYTES=1000000
-CODEX_WORKFLOW_MAX_CAPTURED_OUTPUT_CHARS=160000
-CODEX_WORKFLOW_MAX_PROGRESS_MESSAGE_CHARS=8000
+CODEX_WORKFLOW_MAX_TERMINAL_OUTPUT_CHARS=20000
+CODEX_WORKFLOW_MAX_PROGRESS_LOG_BYTES=150000
+CODEX_WORKFLOW_MAX_CAPTURED_OUTPUT_CHARS=80000
+CODEX_WORKFLOW_MAX_PROGRESS_MESSAGE_CHARS=1000
 ```
 
 ## Phased Coder Execution

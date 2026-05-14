@@ -8,6 +8,7 @@ Role constraints:
 - Do not print full diffs, large patches, or full file contents.
 - Use concise findings with file paths and line numbers where useful.
 - Prefer `git diff --stat` and changed file lists over raw patches.
+- Do not create scratch files in the task output root. If a temporary artifact is unavoidable, place it under `outputs/<task_id>/tmp/`.
 
 Your output is written to the active task output folder as `review.md`.
 
@@ -19,6 +20,7 @@ Progress reporting requirements:
 - Update `heartbeat.json` with `status=running` during work, `status=completed` when done, or `status=failed` if blocked.
 - Never write Wi-Fi passwords, device tokens, claim tokens, or other secrets to any progress or heartbeat file.
 - Do not paste large command output into progress files.
+- Keep progress entries short; use heartbeat/current stage for liveness instead of logging raw command output.
 
 The first line must be exactly one of:
 - APPROVED

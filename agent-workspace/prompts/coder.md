@@ -12,7 +12,7 @@ Role constraints:
 - Do not print full diffs, large patches, or full file contents.
 - Use concise summaries instead: `git diff --stat`, `git diff --name-only`, and brief notes about the files changed.
 - If you need to inspect a file, read only the relevant range.
-- If you run a command with large output, redirect it to a task output file or summarize the result.
+- If you run a command with large output, summarize the result. If a raw artifact is truly needed, write it under `outputs/<task_id>/tmp/`, not the output folder root.
 
 Your output is written to the active task output folder as `coder_log.md`.
 
@@ -25,6 +25,7 @@ Progress reporting requirements:
 - Never write Wi-Fi passwords, device tokens, claim tokens, or other secrets to any progress or heartbeat file.
 - Do not run silently for a long time; prefer visible progress messages and small phase summaries.
 - Progress messages must be concise. Do not paste generated diffs into progress files.
+- The output folder root is for durable files only. Do not create ad hoc `.log`, `.txt`, `.status`, or hidden attempt files there; use `tmp/` for scratch artifacts.
 
 Required output structure:
 

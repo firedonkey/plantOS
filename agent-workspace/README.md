@@ -92,6 +92,7 @@ state.json
 progress.log
 heartbeat.json
 current_stage.txt
+tmp/
 ```
 
 The approval marker is:
@@ -100,7 +101,7 @@ The approval marker is:
 outputs/<task_id>/APPROVED_PLAN
 ```
 
-`APPROVED_PLAN`, per-attempt scratch logs, and runtime monitoring files are ignored by git.
+`APPROVED_PLAN`, runtime monitoring files, and `tmp/` are ignored by git. The root of each output folder is reserved for human-facing artifacts. Agent scratch files, per-attempt outputs, command logs, and other temporary artifacts are moved under `outputs/<task_id>/tmp/` after pipeline completion or failure.
 
 ## Monitoring A Run
 
@@ -123,6 +124,8 @@ cat agent-workspace/outputs/<task_id>/heartbeat.json
 ```
 
 The orchestrator updates heartbeat and progress at least every 30 seconds while an agent or test command is active. Coder runs in visible phases: repo analysis, file identification, implementation, build, tests, and fix pass.
+
+`progress.log` is intentionally compact. It records stage changes, heartbeat messages, command start/end summaries, and subprocess output counts. Raw stdout/stderr lines are not written there; detailed output is capped into `coder_log.md`, `tester_log.md`, `test_report.md`, `review.md`, or files under `tmp/`.
 
 ## Runtime Defaults
 
@@ -161,9 +164,9 @@ git diff --name-only
 The orchestrator also caps terminal display and `progress.log` growth. Useful output-cap overrides:
 
 ```bash
-CODEX_WORKFLOW_MAX_TERMINAL_OUTPUT_CHARS=60000
-CODEX_WORKFLOW_MAX_PROGRESS_LOG_BYTES=1000000
-CODEX_WORKFLOW_MAX_CAPTURED_OUTPUT_CHARS=160000
+CODEX_WORKFLOW_MAX_TERMINAL_OUTPUT_CHARS=20000
+CODEX_WORKFLOW_MAX_PROGRESS_LOG_BYTES=150000
+CODEX_WORKFLOW_MAX_CAPTURED_OUTPUT_CHARS=80000
 ```
 
 ## Dirty Workspace And Commits

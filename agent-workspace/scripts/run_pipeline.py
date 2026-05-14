@@ -15,9 +15,11 @@ from typing import Iterable
 
 from workflow_progress import (
     append_progress,
+    cleanup_output_root,
     ensure_monitoring_files,
     mark_stage,
     run_streaming_process,
+    temp_output_path,
     update_stage,
     write_heartbeat,
 )
@@ -217,6 +219,7 @@ def task_context() -> TaskContext:
     output_dir = OUTPUTS_DIR / task_id
     output_dir.mkdir(parents=True, exist_ok=True)
     ensure_monitoring_files(output_dir, task_id)
+    cleanup_output_root(output_dir)
     return TaskContext(
         task_id=task_id,
         task_path=task_path,
@@ -258,6 +261,7 @@ def ensure_output_files(context: TaskContext) -> None:
         if not path.exists():
             write_text(path, content)
     ensure_monitoring_files(context.output_dir, context.task_id)
+    cleanup_output_root(context.output_dir)
 
 
 def ensure_workspace(context: TaskContext) -> str:
@@ -594,7 +598,7 @@ def run_coder_phases(
         append_progress(context.output_dir, "coder", f"starting phase {phase_name}: {display_stage}")
         update_stage(context.output_dir, display_stage)
         write_heartbeat(context.output_dir, context.task_id, "coder", display_stage, "running", f"starting phase {phase_name}")
-        phase_output_path = context.output_dir / f".coder_attempt_{attempt}_{phase_name}.md"
+        phase_output_path = temp_output_path(context.output_dir, f"coder_attempt_{attempt}_{phase_name}.md")
         phase_feedback = extra_feedback
         if last_result and agent_run_failed(last_result):
             phase_feedback = (
@@ -628,10 +632,22 @@ def run_coder_phases(
         append_progress(context.output_dir, "coder", f"phase {phase_name} completed")
 
     assert last_result is not None
-    write_text(context.output_dir / f".coder_attempt_{attempt}.md", "\n".join(aggregate_parts).strip() + "\n")
+    write_text(temp_output_path(context.output_dir, f"coder_attempt_{attempt}.md"), "\n".join(aggregate_parts).strip() + "\n")
     write_heartbeat(context.output_dir, context.task_id, "coder", "coder phases completed", "completed", "all coder phases completed")
     update_stage(context.output_dir, "coder phases completed")
     return last_result
+
+
+def existing_coder_attempt_path(context: TaskContext, attempt: int) -> Path:
+    candidates = [
+        temp_output_path(context.output_dir, f"coder_attempt_{attempt}.md"),
+        temp_output_path(context.output_dir, f".coder_attempt_{attempt}.md"),
+        context.output_dir / f".coder_attempt_{attempt}.md",
+    ]
+    for candidate in candidates:
+        if read_text(candidate).strip():
+            return candidate
+    return candidates[0]
 
 
 def find_python_for_pytest() -> list[str]:
@@ -850,7 +866,7 @@ def main() -> int:
         state["pipeline"]["attempt"] = attempt
         write_state(context, state)
 
-        coder_output_path = context.output_dir / f".coder_attempt_{attempt}.md"
+        coder_output_path = existing_coder_attempt_path(context, attempt)
         if args.resume_after_coder and attempt == 1:
             if not read_text(coder_output_path).strip():
                 raise SystemExit(f"cannot resume after coder: missing {coder_output_path}")
@@ -867,6 +883,7 @@ def main() -> int:
                 write_heartbeat(context.output_dir, context.task_id, "coder", "coder failed", "failed", "coder agent failed")
                 append_progress(context.output_dir, "coder", "coder agent failed")
                 summarize_results(context, False, attempt, False, "BLOCKED", [])
+                cleanup_output_root(context.output_dir)
                 sys.stderr.write(truncate_for_log(coder_result.process.stdout))
                 sys.stderr.write(truncate_for_log(coder_result.process.stderr))
                 if coder_result.timed_out:
@@ -875,7 +892,7 @@ def main() -> int:
 
         mark_stage(context.output_dir, context.task_id, "tester", "tester agent", "starting tester agent")
         append_attempt_header(context.tester_log_path, "Tester Agent", attempt)
-        tester_output_path = context.output_dir / f".tester_attempt_{attempt}.md"
+        tester_output_path = temp_output_path(context.output_dir, f"tester_attempt_{attempt}.md")
         tester_result = run_codex_agent(
             context,
             codex_bin,
@@ -897,6 +914,7 @@ def main() -> int:
             write_heartbeat(context.output_dir, context.task_id, "tester", "tester failed", "failed", "tester agent failed")
             append_progress(context.output_dir, "tester", "tester agent failed")
             summarize_results(context, False, attempt, False, "BLOCKED", [])
+            cleanup_output_root(context.output_dir)
             sys.stderr.write(truncate_for_log(tester_result.process.stdout))
             sys.stderr.write(truncate_for_log(tester_result.process.stderr))
             if tester_result.timed_out:
@@ -909,7 +927,7 @@ def main() -> int:
 
         mark_stage(context.output_dir, context.task_id, "reviewer", "reviewer agent", "starting reviewer agent")
         append_attempt_header(context.review_path, "Reviewer Agent", attempt)
-        reviewer_output_path = context.output_dir / f".review_attempt_{attempt}.md"
+        reviewer_output_path = temp_output_path(context.output_dir, f"review_attempt_{attempt}.md")
         reviewer_feedback = extra_feedback
         if not tests_ok:
             reviewer_feedback = (reviewer_feedback + "\n\nTests failed. Review with that failure in mind.").strip()
@@ -934,6 +952,7 @@ def main() -> int:
             write_heartbeat(context.output_dir, context.task_id, "reviewer", "reviewer failed", "failed", "reviewer agent failed")
             append_progress(context.output_dir, "reviewer", "reviewer agent failed")
             summarize_results(context, False, attempt, tests_ok, "BLOCKED", test_results)
+            cleanup_output_root(context.output_dir)
             sys.stderr.write(truncate_for_log(reviewer_result.process.stdout))
             sys.stderr.write(truncate_for_log(reviewer_result.process.stderr))
             if reviewer_result.timed_out:
@@ -952,6 +971,7 @@ def main() -> int:
             write_heartbeat(context.output_dir, context.task_id, "orchestrator", "pipeline completed", "completed", "pipeline completed successfully")
             append_progress(context.output_dir, "orchestrator", f"pipeline completed successfully after attempt {attempt}")
             summarize_results(context, True, attempt, tests_ok, review_status, test_results)
+            cleanup_output_root(context.output_dir)
             print(f"Pipeline completed successfully for {context.task_id} after attempt {attempt}")
             return 0
 
@@ -971,6 +991,7 @@ def main() -> int:
     write_heartbeat(context.output_dir, context.task_id, "orchestrator", "pipeline failed", "failed", "max retries exhausted")
     append_progress(context.output_dir, "orchestrator", "pipeline failed after max retries")
     summarize_results(context, success, MAX_RETRIES, final_tests_ok, final_review_status, final_test_results)
+    cleanup_output_root(context.output_dir)
     print(f"Pipeline failed for {context.task_id} after max retries.")
     return 1
 
