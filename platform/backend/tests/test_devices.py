@@ -695,6 +695,109 @@ def test_device_setup_code_api_returns_handoff_urls(monkeypatch):
         teardown_overrides()
 
 
+def test_device_claim_token_api_proxies_ble_identity_and_returns_handoff(monkeypatch):
+    client, _ = build_client_with_user()
+    monkeypatch.setenv("PLANTLAB_DEVICE_PLATFORM_URL", "http://192.168.0.55:8000")
+    monkeypatch.setenv("PLANTLAB_PROVISIONING_PUBLIC_URL", "http://192.168.0.55:3000")
+    get_settings.cache_clear()
+
+    class FakeResponse:
+        status_code = 201
+
+        @staticmethod
+        def json():
+            return {
+                "claim_token": "claim-ble-001",
+                "setup_code": "claim-ble-001",
+                "expected_device_id": "pl-esp32-a1b2c3",
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json, headers):
+            assert url.endswith("/api/devices/claim-token")
+            assert json["device_name"] == "Kitchen Rose"
+            assert json["location"] == "Kitchen"
+            assert json["device_identity"]["device_id"] == "pl-esp32-a1b2c3"
+            assert json["device_identity"]["hardware_device_id"] == "pl-esp32-a1b2c3"
+            assert json["device_identity"]["software_version"] == "1.2.3"
+            assert json["device_identity"]["ble_name"] == "PlantLab-Setup-a1b2c3"
+            assert headers["x-plantlab-user-id"] == "1"
+            return FakeResponse()
+
+    monkeypatch.setattr(device_routes.httpx, "AsyncClient", FakeAsyncClient)
+
+    try:
+        response = client.post(
+            "/api/devices/claim-token",
+            headers={"Origin": "http://localhost:5173"},
+            json={
+                "device_name": "Kitchen Rose",
+                "location": "Kitchen",
+                "device_identity": {
+                    "source": "esp32-ble",
+                    "schema_version": 1,
+                    "device_id": " pl-esp32-a1b2c3 ",
+                    "hardware_device_id": " pl-esp32-a1b2c3 ",
+                    "hardware_model": "esp32_master",
+                    "hardware_version": "ESP32-S3-DevKitC-1-N32R16V",
+                    "software_version": "1.2.3",
+                    "node_role": "master",
+                    "display_name": "Master",
+                    "ble_name": "PlantLab-Setup-a1b2c3",
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["serial_number"] is None
+        assert payload["expected_device_id"] == "pl-esp32-a1b2c3"
+        assert payload["claim_token"] == "claim-ble-001"
+        assert payload["setup_token"] == "claim-ble-001"
+        assert payload["provisioning_api_url"] == "http://192.168.0.55:3000"
+        assert payload["platform_url"] == "http://192.168.0.55:8000"
+        assert "serial_number=pl-esp32-a1b2c3" in payload["continue_setup_url"]
+    finally:
+        get_settings.cache_clear()
+        teardown_overrides()
+
+
+def test_register_provisioned_log_sanitizer_redacts_tokens_and_wifi_fields():
+    sanitized = device_routes._sanitize_registration_log_payload(
+        {
+            "device_id": "pl-esp32-a1b2c3",
+            "claim_token": "claim-secret",
+            "device_access_token": "device-secret",
+            "wifi_ssid": "HomeNetwork",
+            "wifi_password": "wifi-secret",
+            "nested": {
+                "setup_token": "setup-secret",
+                "password": "nested-secret",
+                "ssid": "NestedNetwork",
+            },
+        }
+    )
+
+    assert sanitized["device_id"] == "pl-esp32-a1b2c3"
+    assert sanitized["claim_token"] == "[redacted]"
+    assert sanitized["device_access_token"] == "[redacted]"
+    assert sanitized["wifi_ssid"] == "[omitted]"
+    assert sanitized["wifi_password"] == "[redacted]"
+    assert sanitized["nested"]["setup_token"] == "[redacted]"
+    assert sanitized["nested"]["password"] == "[redacted]"
+    assert sanitized["nested"]["ssid"] == "[omitted]"
+
+
 def test_device_setup_code_api_surfaces_upstream_error(monkeypatch):
     client, _ = build_client_with_user()
 

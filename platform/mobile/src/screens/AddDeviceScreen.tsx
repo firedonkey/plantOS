@@ -1,23 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { Keyboard, Linking, Modal, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 
-import { requestDeviceSetupCode } from "@/api/devices";
+import { requestDeviceClaimToken, requestDeviceSetupCode } from "@/api/devices";
 import type { DeviceSetupHandoff } from "@/api/devices";
-import { getApiBaseUrl, getConfiguredWifiSsidOptions } from "@/api/config";
+import { getApiBaseUrl } from "@/api/config";
 import {
-  BLE_PROVISIONING_SERVICE_UUID,
-  BLE_PROVISIONING_STATUS_CHARACTERISTIC_UUID,
-  BLE_PROVISIONING_WIFI_NETWORKS_CHARACTERISTIC_UUID,
-  BLE_PROVISIONING_WIFI_SCAN_CONTROL_CHARACTERISTIC_UUID,
-  BLE_PROVISIONING_WRITE_CHARACTERISTIC_UUID,
   BleProvisioningError,
   type BleProvisioningDevice,
+  type BleProvisioningProgress,
   type BleWifiNetworksResult,
   loadBleWifiNetworks,
+  provisionDeviceOverBle,
+  readBleDeviceIdentity,
   readBleWifiNetworksFromDevice,
+  scanForBleProvisioningDevices,
 } from "@/ble/bleProvisioning";
+import { maskSecret } from "@/ble/bleProvisioningPayload";
 import { Card } from "@/components/Card";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -27,6 +27,7 @@ import { theme } from "@/styles/theme";
 
 const DEFAULT_DEVICE_NAME = "esp32";
 const DEFAULT_DEVICE_LOCATION = "1";
+type AddDeviceStep = "find_device" | "wifi_provisioning";
 
 export function AddDeviceScreen() {
   const { token } = useSession();
@@ -36,8 +37,7 @@ export function AddDeviceScreen() {
   const [wifiSsid, setWifiSsid] = useState("");
   const [isManualWifiSsid, setIsManualWifiSsid] = useState(false);
   const [wifiPassword, setWifiPassword] = useState("");
-  const [wifiDetailsConfirmed, setWifiDetailsConfirmed] = useState(false);
-  const [isBlePayloadModalOpen, setIsBlePayloadModalOpen] = useState(false);
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usedMock, setUsedMock] = useState(false);
@@ -48,57 +48,34 @@ export function AddDeviceScreen() {
   const [wifiScanMessage, setWifiScanMessage] = useState<string | null>(null);
   const [isLoadingWifiNetworks, setIsLoadingWifiNetworks] = useState(false);
   const [bleDeviceOptions, setBleDeviceOptions] = useState<BleProvisioningDevice[]>([]);
+  const [selectedBleDevice, setSelectedBleDevice] = useState<BleProvisioningDevice | null>(null);
   const [isBleDevicePickerOpen, setIsBleDevicePickerOpen] = useState(false);
+  const [bleDevicePickerMode, setBleDevicePickerMode] = useState<"identity" | "wifi">("identity");
+  const [isFindingBleDevice, setIsFindingBleDevice] = useState(false);
+  const [isProvisioningOverBle, setIsProvisioningOverBle] = useState(false);
+  const [bleProvisioningMessage, setBleProvisioningMessage] = useState<string | null>(null);
+  const [bleProvisioningTone, setBleProvisioningTone] = useState<"idle" | "success" | "error">("idle");
   const [wifiPickerOpenSignal, setWifiPickerOpenSignal] = useState(0);
+  const [step, setStep] = useState<AddDeviceStep>("find_device");
+  const [showSerialFallback, setShowSerialFallback] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const wifiSsidOptions = useMemo(
-    () => mergeWifiSsidOptions([...discoveredWifiSsids, ...getConfiguredWifiSsidOptions()]),
-    [discoveredWifiSsids],
-  );
-
-  const blePayload = useMemo(() => {
-    if (!handoff?.setupToken) {
-      return "";
-    }
-    return JSON.stringify(
-      {
-        ssid: wifiSsid,
-        password: wifiPassword,
-        plantlab_token: handoff.setupToken,
-        platform_url: getApiBaseUrl(),
-      },
-      null,
-      2,
-    );
-  }, [handoff, wifiPassword, wifiSsid]);
+  const wifiSsidOptions = useMemo(() => mergeWifiSsidOptions(discoveredWifiSsids), [discoveredWifiSsids]);
 
   const canSubmit = serialNumber.trim().length > 0 && !isSubmitting;
   const canConfirmWifiDetails = wifiSsid.trim().length > 0 && wifiPassword.length > 0;
+  const blePlatformUrl = handoff?.platformUrl?.trim() || getApiBaseUrl().trim();
+  const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle);
 
   function updateWifiSsid(value: string) {
     setWifiSsid(value);
-    setWifiDetailsConfirmed(false);
+    setBleProvisioningTone("idle");
+    setBleProvisioningMessage(null);
   }
 
   function updateWifiPassword(value: string) {
     setWifiPassword(value);
-    setWifiDetailsConfirmed(false);
-  }
-
-  function confirmWifiDetails() {
-    if (!canConfirmWifiDetails) {
-      return;
-    }
-    Keyboard.dismiss();
-    setWifiDetailsConfirmed(true);
-    setIsBlePayloadModalOpen(true);
-  }
-
-  async function shareBlePayload() {
-    if (!blePayload) {
-      return;
-    }
-    await Share.share({ message: blePayload });
+    setBleProvisioningTone("idle");
+    setBleProvisioningMessage(null);
   }
 
   async function onSubmit() {
@@ -115,10 +92,83 @@ export function AddDeviceScreen() {
       );
       setUsedMock(result.usedMock);
       setHandoff(result.handoff);
+      setSelectedBleDevice(null);
+      setBleProvisioningMessage(null);
+      setBleProvisioningTone("idle");
+      setStep("wifi_provisioning");
     } catch (err) {
       setUsedMock(false);
       setHandoff(null);
       setError(err instanceof Error ? err.message : "Unable to start device setup.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function startBleIdentityOnboarding() {
+    setError(null);
+    setWifiScanMessage(null);
+    setBleProvisioningMessage(null);
+    setBleProvisioningTone("idle");
+    setShowSerialFallback(false);
+    setIsFindingBleDevice(true);
+    try {
+      const devices = await scanForBleProvisioningDevices();
+      if (devices.length === 0) {
+        throw new BleProvisioningError(
+          "no_devices",
+          "No PlantLab BLE setup device was found. Keep the master in BLE provisioning mode and try again.",
+        );
+      }
+      if (devices.length > 1) {
+        setBleDeviceOptions(devices);
+        setBleDevicePickerMode("identity");
+        setIsBleDevicePickerOpen(true);
+        setWifiScanMessage("Choose the PlantLab device in setup mode. Use the name suffix or strongest signal if needed.");
+        return;
+      }
+      await createClaimTokenFromBleDevice(devices[0]);
+    } catch (err) {
+      setShowSerialFallback(true);
+      setError(err instanceof Error ? err.message : "Could not find a PlantLab BLE setup device.");
+    } finally {
+      setIsFindingBleDevice(false);
+    }
+  }
+
+  async function createClaimTokenFromBleDevice(device: BleProvisioningDevice) {
+    setIsBleDevicePickerOpen(false);
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const identity = await readBleDeviceIdentity(device.id);
+      const deviceWithIdentity = {
+        ...device,
+        name: identity.bleName || device.name,
+        displaySuffix: shortHardwareSuffix(identity.hardwareDeviceId) ?? device.displaySuffix,
+        identity,
+      };
+      const result = await requestDeviceClaimToken(
+        {
+          deviceName: deviceName.trim() || DEFAULT_DEVICE_NAME,
+          location: location.trim() || DEFAULT_DEVICE_LOCATION,
+          deviceIdentity: identity,
+        },
+        token ?? undefined,
+      );
+      setUsedMock(result.usedMock);
+      setHandoff(result.handoff);
+      setSelectedBleDevice(deviceWithIdentity);
+      setBleProvisioningTone("idle");
+      setBleProvisioningMessage(`Connected to ${deviceWithIdentity.name}.`);
+      setStep("wifi_provisioning");
+      void loadSelectedBleDeviceWifiNetworks(deviceWithIdentity);
+    } catch (err) {
+      setUsedMock(false);
+      setHandoff(null);
+      setSelectedBleDevice(null);
+      setShowSerialFallback(true);
+      setError(err instanceof Error ? err.message : "Unable to read device identity over BLE.");
     } finally {
       setIsSubmitting(false);
     }
@@ -155,12 +205,17 @@ export function AddDeviceScreen() {
   }
 
   async function loadDeviceWifiNetworks() {
+    if (selectedBleDevice) {
+      await loadSelectedBleDeviceWifiNetworks(selectedBleDevice);
+      return;
+    }
     setWifiScanMessage(null);
     setIsLoadingWifiNetworks(true);
     try {
       const result = await loadBleWifiNetworks();
       if ("devices" in result) {
         setBleDeviceOptions(result.devices);
+        setBleDevicePickerMode("wifi");
         setIsBleDevicePickerOpen(true);
         setWifiScanMessage("Multiple PlantLab BLE setup devices were found. Select the device to read nearby Wi-Fi.");
         return;
@@ -175,11 +230,11 @@ export function AddDeviceScreen() {
 
   async function loadSelectedBleDeviceWifiNetworks(device: BleProvisioningDevice) {
     setIsBleDevicePickerOpen(false);
-    setWifiScanMessage(null);
+    setWifiScanMessage("Scanning nearby 2.4 GHz Wi-Fi...");
     setIsLoadingWifiNetworks(true);
     try {
       const result = await readBleWifiNetworksFromDevice(device.id);
-      applyBleWifiNetworksResult(result);
+      applyBleWifiNetworksResult(result, device);
     } catch (err) {
       setWifiScanMessage(wifiScanErrorMessage(err));
     } finally {
@@ -187,59 +242,145 @@ export function AddDeviceScreen() {
     }
   }
 
-  function applyBleWifiNetworksResult(result: BleWifiNetworksResult) {
+  function applyBleWifiNetworksResult(result: BleWifiNetworksResult, sourceDevice?: BleProvisioningDevice) {
+    const existingIdentity =
+      sourceDevice?.identity ?? (selectedBleDevice?.id === result.device.id ? selectedBleDevice.identity : undefined);
+    setSelectedBleDevice({
+      ...result.device,
+      identity: existingIdentity,
+      displaySuffix: existingIdentity ? shortHardwareSuffix(existingIdentity.hardwareDeviceId) : result.device.displaySuffix,
+    });
     const ssids = mergeWifiSsidOptions(result.networks.map((network) => network.ssid));
     setDiscoveredWifiSsids(ssids);
-    setWifiDetailsConfirmed(false);
+    setBleProvisioningTone("idle");
+    setBleProvisioningMessage(null);
     if (ssids.length > 0) {
-      setIsManualWifiSsid(false);
       setWifiPickerOpenSignal((value) => value + 1);
       setWifiScanMessage(
-        `Loaded ${ssids.length} nearby Wi-Fi network(s) over BLE from ${result.device.name}.${
+        `Loaded ${ssids.length} nearby 2.4 GHz Wi-Fi network(s) from ${result.device.name}.${
           result.truncated ? " The BLE list was truncated; manual entry is still available." : ""
         }`,
       );
     } else {
-      setWifiScanMessage("No nearby 2.4 GHz Wi-Fi networks were reported by the device. Retry, or type the SSID manually.");
+      setIsManualWifiSsid(true);
+      setWifiScanMessage("No 2.4 GHz networks were reported by this device. You can still type your Wi-Fi name.");
+    }
+  }
+
+  async function sendProvisioningOverBle() {
+    if (!handoff?.setupToken || !blePlatformUrl || !canConfirmWifiDetails) {
+      return;
+    }
+    Keyboard.dismiss();
+    setBleProvisioningTone("idle");
+    setBleProvisioningMessage(null);
+    setIsProvisioningOverBle(true);
+    try {
+      const device = selectedBleDevice ?? (await findSingleBleProvisioningDevice());
+      if (!device) {
+        setBleProvisioningTone("error");
+        setBleProvisioningMessage("Select the PlantLab BLE setup device, then retry provisioning.");
+        return;
+      }
+      setSelectedBleDevice(device);
+      await provisionDeviceOverBle({
+        deviceId: device.id,
+        ssid: wifiSsid,
+        password: wifiPassword,
+        setupToken: handoff.setupToken,
+        platformUrl: blePlatformUrl,
+        backendUrl: handoff.provisioningApiUrl,
+        onProgress: handleBleProvisioningProgress,
+      });
+      setBleProvisioningTone("success");
+    } catch (err) {
+      setBleProvisioningTone("error");
+      setBleProvisioningMessage(provisioningErrorMessage(err));
+    } finally {
+      setIsProvisioningOverBle(false);
+    }
+  }
+
+  async function findSingleBleProvisioningDevice(): Promise<BleProvisioningDevice | null> {
+    const devices = await scanForBleProvisioningDevices();
+    if (devices.length === 0) {
+      throw new BleProvisioningError("no_devices", "No PlantLab BLE setup device was found. Keep the master in BLE provisioning mode and try again.");
+    }
+    if (devices.length > 1) {
+      setBleDeviceOptions(devices);
+      setBleDevicePickerMode("wifi");
+      setIsBleDevicePickerOpen(true);
+      return null;
+    }
+    return devices[0];
+  }
+
+  function handleBleProvisioningProgress(progress: BleProvisioningProgress) {
+    setBleProvisioningMessage(progress.message);
+    if (progress.phase === "success") {
+      setBleProvisioningTone("success");
+    } else if (progress.phase === "error") {
+      setBleProvisioningTone("error");
+    } else {
+      setBleProvisioningTone("idle");
     }
   }
 
   return (
-    <Screen>
+    <Screen scrollToTopSignal={step}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>DEVICE ONBOARDING</Text>
-        <Text style={styles.title}>Add device</Text>
-        <Text style={styles.subtitle}>Create a setup token, then load nearby Wi-Fi over BLE or use the compatibility SoftAP flow.</Text>
+        <Text style={styles.title}>{step === "find_device" ? "Add PlantLab device" : "Connect Wi-Fi"}</Text>
+        <Text style={styles.subtitle}>
+          {step === "find_device"
+            ? "Find a PlantLab device over BLE, then continue with Wi-Fi provisioning."
+            : "Choose a Wi-Fi network reported by the device, then send credentials over BLE."}
+        </Text>
       </View>
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Card>
-        <Text style={styles.cardTitle}>Device details</Text>
-        <LabeledInput label="Device name" value={deviceName} onChangeText={setDeviceName} placeholder={DEFAULT_DEVICE_NAME} />
-        <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_NAME}.</Text>
-        <LabeledInput label="Location" value={location} onChangeText={setLocation} placeholder={DEFAULT_DEVICE_LOCATION} />
-        <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_LOCATION}.</Text>
-        <LabeledInput label="Serial number" value={serialNumber} onChangeText={setSerialNumber} placeholder="SN-ESP32-001" />
-        <PrimaryButton label="Scan QR code" tone="secondary" onPress={openScanner} />
-        {scanError ? <Text style={styles.error}>{scanError}</Text> : null}
-        <PrimaryButton label={isSubmitting ? "Verifying..." : "Verify serial and create setup token"} onPress={onSubmit} disabled={!canSubmit} />
-      </Card>
-
-      {handoff ? (
+      {step === "find_device" ? (
         <Card>
-          <Text style={styles.cardTitle}>BLE provisioning test</Text>
+          <Text style={styles.cardTitle}>Device details</Text>
+          <LabeledInput label="Device name" value={deviceName} onChangeText={setDeviceName} placeholder={DEFAULT_DEVICE_NAME} />
+          <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_NAME}.</Text>
+          <LabeledInput label="Location" value={location} onChangeText={setLocation} placeholder={DEFAULT_DEVICE_LOCATION} />
+          <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_LOCATION}.</Text>
+          <PrimaryButton
+            label={isFindingBleDevice || isSubmitting ? "Finding PlantLab device..." : "Find PlantLab device"}
+            onPress={startBleIdentityOnboarding}
+            disabled={isFindingBleDevice || isSubmitting}
+          />
+          <Text style={styles.meta}>Long-press GPIO14 first so the master advertises as PlantLab-Setup.</Text>
+        </Card>
+      ) : null}
+
+      {step === "find_device" && showSerialFallback ? (
+        <Card>
+          <Text style={styles.cardTitle}>QR or serial fallback</Text>
+          <Text style={styles.cardSubtitle}>Use this only when BLE setup cannot find or read the device.</Text>
+          <LabeledInput label="Serial number" value={serialNumber} onChangeText={setSerialNumber} placeholder="SN-ESP32-001" />
+          <PrimaryButton label="Scan QR code" tone="secondary" onPress={openScanner} />
+          {scanError ? <Text style={styles.error}>{scanError}</Text> : null}
+          <PrimaryButton label={isSubmitting ? "Verifying..." : "Verify serial and create setup token"} onPress={onSubmit} disabled={!canSubmit} />
+        </Card>
+      ) : null}
+
+      {step === "wifi_provisioning" && handoff ? (
+        <Card>
+          <Text style={styles.cardTitle}>BLE provisioning</Text>
           <Text style={styles.cardSubtitle}>
-            Long-press GPIO14 on the master node, scan nearby 2.4 GHz Wi-Fi from the PlantLab BLE device, then write this JSON to the provisioning
-            characteristic.
+            PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name.
           </Text>
           <PrimaryButton
-            label={isLoadingWifiNetworks ? "Scanning nearby Wi-Fi..." : "Load nearby Wi-Fi over BLE"}
+            label={isLoadingWifiNetworks ? "Scanning nearby 2.4 GHz Wi-Fi..." : "Scan nearby 2.4 GHz Wi-Fi"}
             onPress={loadDeviceWifiNetworks}
             disabled={isLoadingWifiNetworks}
           />
           {wifiScanMessage ? <Text style={styles.meta}>{wifiScanMessage}</Text> : null}
+          {selectedBleDevice ? <Text style={styles.meta}>Selected BLE device: {bleDeviceLabel(selectedBleDevice)}</Text> : null}
           <WifiSsidPicker
             manualMode={isManualWifiSsid}
             onChangeManualMode={setIsManualWifiSsid}
@@ -248,28 +389,34 @@ export function AddDeviceScreen() {
             options={wifiSsidOptions}
             value={wifiSsid}
           />
-          <LabeledInput label="Home Wi-Fi password" value={wifiPassword} onChangeText={updateWifiPassword} placeholder="Required for BLE test" secureTextEntry />
-          <PrimaryButton label="Confirm Wi-Fi details" onPress={confirmWifiDetails} disabled={!canConfirmWifiDetails} />
+          <PasswordInput
+            label="Home Wi-Fi password"
+            onChangeText={updateWifiPassword}
+            onToggleVisible={() => setShowWifiPassword((value) => !value)}
+            placeholder="Required for BLE provisioning"
+            value={wifiPassword}
+            visible={showWifiPassword}
+          />
+          {handoff.setupToken ? <Text style={styles.meta}>Setup token: {maskSecret(handoff.setupToken)}</Text> : null}
+          <PrimaryButton
+            label={isProvisioningOverBle ? "Provisioning over BLE..." : "Send provisioning over BLE"}
+            onPress={sendProvisioningOverBle}
+            disabled={!canProvisionOverBle}
+          />
           {!canConfirmWifiDetails ? <Text style={styles.meta}>Select or type your Wi-Fi name, then enter the Wi-Fi password to continue.</Text> : null}
-          {wifiDetailsConfirmed ? (
-            <View style={styles.confirmedBlock}>
-              <Text style={styles.success}>Wi-Fi details confirmed. Next, write the BLE payload to the device.</Text>
-              <PrimaryButton label="Show BLE write instructions" onPress={() => setIsBlePayloadModalOpen(true)} />
-              {handoff.setupToken ? <Text style={styles.meta}>Setup token: {handoff.setupToken}</Text> : null}
-              <Text selectable style={styles.payload}>
-                {blePayload || "Setup token missing. Create another setup token before testing BLE."}
-              </Text>
-              <Text style={styles.meta}>Service UUID: {BLE_PROVISIONING_SERVICE_UUID}</Text>
-              <Text style={styles.meta}>Write UUID: {BLE_PROVISIONING_WRITE_CHARACTERISTIC_UUID}</Text>
-              <Text style={styles.meta}>Status UUID: {BLE_PROVISIONING_STATUS_CHARACTERISTIC_UUID}</Text>
-              <Text style={styles.meta}>Wi-Fi networks UUID: {BLE_PROVISIONING_WIFI_NETWORKS_CHARACTERISTIC_UUID}</Text>
-              <Text style={styles.meta}>Wi-Fi scan control UUID: {BLE_PROVISIONING_WIFI_SCAN_CONTROL_CHARACTERISTIC_UUID}</Text>
-            </View>
+          {!blePlatformUrl ? <Text style={styles.error}>A reachable platform URL is required before BLE provisioning.</Text> : null}
+          {bleProvisioningMessage ? (
+            <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
+              {bleProvisioningMessage}
+            </Text>
+          ) : null}
+          {bleProvisioningTone === "error" ? (
+            <PrimaryButton label="Retry BLE provisioning" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
           ) : null}
         </Card>
       ) : null}
 
-      {handoff ? (
+      {step === "wifi_provisioning" && handoff && bleProvisioningTone === "error" ? (
         <Card>
           <Text style={styles.cardTitle}>Existing Wi-Fi setup fallback</Text>
           <Text style={styles.cardSubtitle}>
@@ -300,34 +447,22 @@ export function AddDeviceScreen() {
         </View>
       </Modal>
 
-      <Modal animationType="slide" visible={isBlePayloadModalOpen} onRequestClose={() => setIsBlePayloadModalOpen(false)}>
-        <View style={styles.bleModalScreen}>
-          <Text style={styles.scannerTitle}>Write BLE payload</Text>
-          <Text style={styles.bleModalCopy}>
-            Wi-Fi details are ready. This app prepares the payload, but Expo Go does not write BLE characteristics directly.
-            Use a BLE client such as nRF Connect to connect to the PlantLab device and write the payload below.
-          </Text>
-          <View style={styles.bleSteps}>
-            <Text style={styles.bleStep}>1. Keep the master in BLE provisioning mode.</Text>
-            <Text style={styles.bleStep}>2. Connect to PlantLab-Setup in your BLE client.</Text>
-            <Text style={styles.bleStep}>3. Open service {BLE_PROVISIONING_SERVICE_UUID}.</Text>
-            <Text style={styles.bleStep}>4. Write this JSON to characteristic {BLE_PROVISIONING_WRITE_CHARACTERISTIC_UUID}.</Text>
-          </View>
-          <Text selectable style={styles.blePayload}>
-            {blePayload || "Setup token missing. Create another setup token before testing BLE."}
-          </Text>
-          <PrimaryButton label="Share payload" onPress={shareBlePayload} disabled={!blePayload} />
-          <PrimaryButton label="Done" tone="secondary" onPress={() => setIsBlePayloadModalOpen(false)} />
-        </View>
-      </Modal>
-
       <Modal animationType="slide" visible={isBleDevicePickerOpen} onRequestClose={() => setIsBleDevicePickerOpen(false)} transparent>
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerPanel}>
             <Text style={styles.cardTitle}>Choose setup device</Text>
-            <Text style={styles.cardSubtitle}>Select the PlantLab BLE device to read nearby Wi-Fi SSIDs.</Text>
+            <Text style={styles.cardSubtitle}>
+              Choose the PlantLab device in setup mode. Use the name suffix on the device label or serial monitor if needed.
+            </Text>
             {bleDeviceOptions.map((device) => (
-              <PrimaryButton key={device.id} label={device.name} tone="secondary" onPress={() => loadSelectedBleDeviceWifiNetworks(device)} />
+              <PrimaryButton
+                key={device.id}
+                label={bleDeviceLabel(device)}
+                tone="secondary"
+                onPress={() =>
+                  bleDevicePickerMode === "identity" ? createClaimTokenFromBleDevice(device) : loadSelectedBleDeviceWifiNetworks(device)
+                }
+              />
             ))}
             <PrimaryButton label="Cancel" tone="secondary" onPress={() => setIsBleDevicePickerOpen(false)} />
           </View>
@@ -349,7 +484,6 @@ type WifiSsidPickerProps = {
 function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, onChangeManualMode }: WifiSsidPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const availableOptions = options;
-  const showManualInput = manualMode || availableOptions.length === 0;
 
   useEffect(() => {
     if (openSignal > 0 && availableOptions.length > 0) {
@@ -372,22 +506,23 @@ function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, 
     <View style={styles.field}>
       <Text style={styles.label}>Home Wi-Fi SSID</Text>
       <PrimaryButton
-        label={value && !manualMode ? value : availableOptions.length > 0 ? `Select Wi-Fi network (${availableOptions.length})` : "Type Wi-Fi name manually"}
+        label={availableOptions.length > 0 ? `Choose scanned Wi-Fi (${availableOptions.length})` : "No scanned Wi-Fi networks"}
         tone="secondary"
         onPress={() => setIsOpen(true)}
       />
-      {showManualInput ? (
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={onChangeSsid}
-          placeholder="Your Wi-Fi"
-          placeholderTextColor={theme.colors.textMuted}
-          style={styles.input}
-          value={value}
-        />
-      ) : null}
-      <Text style={styles.meta}>Load nearby 2.4 GHz Wi-Fi over BLE to populate this list, or type the SSID manually.</Text>
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        onChangeText={(nextValue) => {
+          onChangeManualMode(true);
+          onChangeSsid(nextValue);
+        }}
+        placeholder="Your 2.4 GHz Wi-Fi name"
+        placeholderTextColor={theme.colors.textMuted}
+        style={styles.input}
+        value={value}
+      />
+      <Text style={styles.meta}>PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name.</Text>
 
       <Modal animationType="slide" visible={isOpen} onRequestClose={() => setIsOpen(false)} transparent>
         <View style={styles.pickerOverlay}>
@@ -398,7 +533,7 @@ function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, 
                 <PrimaryButton key={ssid} label={ssid} tone={ssid === value && !manualMode ? "primary" : "secondary"} onPress={() => selectSsid(ssid)} />
               ))
             ) : (
-              <Text style={styles.cardSubtitle}>No 2.4 GHz Wi-Fi options yet. 5 GHz-only networks will not appear.</Text>
+              <Text style={styles.cardSubtitle}>No 2.4 GHz networks were reported by this scan. You can still type your Wi-Fi name.</Text>
             )}
             <PrimaryButton label="My Wi-Fi is not listed" tone="secondary" onPress={selectManual} />
             <PrimaryButton label="Cancel" tone="secondary" onPress={() => setIsOpen(false)} />
@@ -431,6 +566,39 @@ function LabeledInput({ label, value, onChangeText, placeholder, secureTextEntry
         style={styles.input}
         value={value}
       />
+    </View>
+  );
+}
+
+type PasswordInputProps = {
+  label: string;
+  value: string;
+  visible: boolean;
+  onChangeText: (value: string) => void;
+  onToggleVisible: () => void;
+  placeholder?: string;
+};
+
+function PasswordInput({ label, value, visible, onChangeText, onToggleVisible, placeholder }: PasswordInputProps) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.passwordRow}>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.textMuted}
+          secureTextEntry={!visible}
+          style={[styles.input, styles.passwordInput]}
+          textContentType="password"
+          value={value}
+        />
+        <Pressable accessibilityRole="button" onPress={onToggleVisible} style={styles.passwordToggle}>
+          <Text style={styles.passwordToggleLabel}>{visible ? "Hide" : "Show"}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -482,11 +650,38 @@ function mergeWifiSsidOptions(values: string[]): string[] {
   return options;
 }
 
+function shortHardwareSuffix(value?: string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.slice(-6);
+}
+
+function bleDeviceLabel(device: BleProvisioningDevice): string {
+  const details: string[] = [];
+  const suffix = device.displaySuffix ?? shortHardwareSuffix(device.identity?.hardwareDeviceId);
+  if (suffix) {
+    details.push(suffix);
+  }
+  if (typeof device.rssi === "number") {
+    details.push(`${device.rssi} dBm`);
+  }
+  return details.length > 0 ? `${device.name} (${details.join(", ")})` : device.name;
+}
+
 function wifiScanErrorMessage(err: unknown): string {
   if (err instanceof BleProvisioningError) {
     return err.message;
   }
   return "Could not scan nearby 2.4 GHz Wi-Fi over BLE. Type the SSID manually or use the SoftAP compatibility fallback.";
+}
+
+function provisioningErrorMessage(err: unknown): string {
+  if (err instanceof BleProvisioningError) {
+    return err.message;
+  }
+  return "Could not provision the device over BLE. Retry, or use the SoftAP compatibility fallback.";
 }
 
 const styles = StyleSheet.create({
@@ -511,19 +706,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
   },
-  meta: { fontSize: 13, color: theme.colors.textMuted },
-  payload: {
+  passwordRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  passwordInput: {
+    flex: 1,
+  },
+  passwordToggle: {
+    minHeight: 44,
+    minWidth: 72,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: "#f9fbfa",
-    color: theme.colors.textPrimary,
-    fontFamily: "Courier",
-    fontSize: 12,
-    lineHeight: 18,
-    padding: 12,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 12,
   },
-  confirmedBlock: { gap: 10 },
+  passwordToggleLabel: {
+    color: theme.colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  meta: { fontSize: 13, color: theme.colors.textMuted },
   scannerScreen: {
     flex: 1,
     backgroundColor: "#0f1713",
@@ -542,38 +748,6 @@ const styles = StyleSheet.create({
   scannerFooter: {
     padding: 20,
     backgroundColor: "#0f1713",
-  },
-  bleModalScreen: {
-    flex: 1,
-    backgroundColor: "#0f1713",
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    gap: 16,
-  },
-  bleModalCopy: {
-    color: "#dbe7de",
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  bleSteps: {
-    gap: 8,
-  },
-  bleStep: {
-    color: "#ffffff",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  blePayload: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    color: "#ffffff",
-    fontFamily: "Courier",
-    fontSize: 12,
-    lineHeight: 18,
-    padding: 12,
   },
   pickerOverlay: {
     flex: 1,

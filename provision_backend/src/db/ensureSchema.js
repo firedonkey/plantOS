@@ -31,6 +31,8 @@ export async function ensureProvisioningSchema(pool) {
       device_name TEXT,
       location TEXT,
       user_id INTEGER NOT NULL REFERENCES users(id),
+      expected_device_id TEXT,
+      device_identity JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL,
       used_at TIMESTAMPTZ,
@@ -51,6 +53,16 @@ export async function ensureProvisioningSchema(pool) {
   await pool.query(`
     ALTER TABLE device_claim_tokens
       ADD COLUMN IF NOT EXISTS location TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS expected_device_id TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS device_identity JSONB
   `);
 
   await pool.query(`

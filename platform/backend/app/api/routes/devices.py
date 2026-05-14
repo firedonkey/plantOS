@@ -31,7 +31,7 @@ from app.schemas.devices import (
     DeviceSummaryReadingRead,
     DeviceUpdate,
 )
-from app.schemas.setup import DeviceSetupCodeRead, DeviceSetupCodeRequest
+from app.schemas.setup import DeviceClaimTokenRequest, DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
 from app.services.commands import create_command, list_commands_for_device
 from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
@@ -144,6 +144,93 @@ async def create_device_setup_code(
     )
     return DeviceSetupCodeRead(
         serial_number=upstream_payload.get("serial_number") or serial_number,
+        setup_code=upstream_payload.get("setup_code"),
+        claim_token=upstream_payload.get("claim_token"),
+        setup_token=setup_token,
+        local_setup_url=settings.local_setup_url,
+        provisioning_api_url=settings.effective_provisioning_public_url,
+        platform_url=settings.device_platform_url,
+        setup_finishing_url=setup_finishing_url,
+        continue_setup_url=continue_setup_url,
+        expect_image=True,
+    )
+
+
+@router.post("/claim-token", response_model=DeviceSetupCodeRead)
+async def create_device_claim_token(
+    request: Request,
+    payload: DeviceClaimTokenRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    del session
+    settings = get_settings()
+    identity = payload.device_identity
+    expected_device_id = (identity.hardware_device_id or identity.device_id).strip()
+    if not expected_device_id:
+        raise api_error(422, "validation_error", "Device identity is required.")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{settings.provisioning_api_url}/api/devices/claim-token",
+                json={
+                    "device_name": payload.device_name.strip() if payload.device_name else None,
+                    "location": payload.location.strip() if payload.location else None,
+                    "device_identity": {
+                        "source": identity.source,
+                        "schema_version": identity.schema_version,
+                        "device_id": identity.device_id.strip(),
+                        "hardware_device_id": expected_device_id,
+                        "hardware_model": identity.hardware_model,
+                        "hardware_version": identity.hardware_version,
+                        "software_version": identity.software_version,
+                        "node_role": identity.node_role,
+                        "display_name": identity.display_name,
+                        "ble_name": identity.ble_name,
+                        "serial_number": identity.serial_number,
+                    },
+                },
+                headers={
+                    "x-plantlab-service-secret": settings.provisioning_service_secret or "",
+                    "x-plantlab-user-id": str(current_user.id),
+                    "x-plantlab-user-email": current_user.email or "",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise api_error(502, "provisioning_service_unavailable", f"Provisioning service unavailable: {exc}") from exc
+
+    try:
+        upstream_payload = response.json()
+    except ValueError as exc:
+        raise api_error(502, "invalid_upstream_response", "Provisioning service returned an invalid response.") from exc
+
+    if response.status_code >= 400:
+        raise api_error(
+            response.status_code,
+            "claim_token_request_failed",
+            upstream_payload.get("message") or upstream_payload.get("error") or "Could not create a device claim token.",
+        )
+
+    setup_token = upstream_payload.get("setup_code") or upstream_payload.get("claim_token")
+    frontend_origin = (request.headers.get("origin") or str(request.base_url).rstrip("/")).rstrip("/")
+    setup_finishing_url = _build_setup_finishing_url(
+        frontend_origin=frontend_origin,
+        device_name=payload.device_name or "",
+        location=payload.location or "",
+        expect_image=True,
+    )
+    continue_setup_url = _build_continue_setup_url(
+        settings=settings,
+        setup_token=setup_token,
+        serial_number=upstream_payload.get("serial_number") or expected_device_id,
+        device_name=payload.device_name or "",
+        location=payload.location or "",
+        setup_finishing_url=setup_finishing_url,
+    )
+    return DeviceSetupCodeRead(
+        serial_number=upstream_payload.get("serial_number"),
+        expected_device_id=upstream_payload.get("expected_device_id") or expected_device_id,
         setup_code=upstream_payload.get("setup_code"),
         claim_token=upstream_payload.get("claim_token"),
         setup_token=setup_token,
@@ -440,11 +527,38 @@ async def register_provisioned_device_proxy(request: Request):
         logger.warning(
             "provisioned device registration failed status=%s payload=%s response=%s",
             response.status_code,
-            payload,
-            response_payload,
+            _sanitize_registration_log_payload(payload),
+            _sanitize_registration_log_payload(response_payload),
         )
 
     return JSONResponse(response_payload, status_code=response.status_code)
+
+
+def _sanitize_registration_log_payload(value):
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            normalized_key = str(key).lower()
+            if normalized_key in {
+                "claim_token",
+                "setup_code",
+                "setup_token",
+                "device_access_token",
+                "device_token",
+                "api_token",
+                "wifi_password",
+                "password",
+                "psk",
+            }:
+                sanitized[key] = "[redacted]"
+            elif normalized_key in {"wifi_ssid", "ssid"}:
+                sanitized[key] = "[omitted]"
+            else:
+                sanitized[key] = _sanitize_registration_log_payload(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_registration_log_payload(item) for item in value]
+    return value
 
 
 def _build_device_read(request: Request, session: Session, device) -> DeviceRead:
@@ -698,6 +812,7 @@ def _build_continue_setup_url(*, settings, setup_token: str | None, serial_numbe
     parsed = urlparse(settings.local_setup_url)
     query_params = {
         "sn": serial_number,
+        "serial_number": serial_number,
         "device_name": device_name,
         "backend_url": settings.effective_provisioning_public_url,
         "return_url": setup_finishing_url,

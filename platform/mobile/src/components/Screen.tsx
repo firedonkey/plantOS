@@ -1,4 +1,4 @@
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useEffect, useRef } from "react";
 import { RefreshControl, ScrollView, StyleSheet } from "react-native";
 
 import { theme } from "@/styles/theme";
@@ -6,11 +6,21 @@ import { theme } from "@/styles/theme";
 type ScreenProps = PropsWithChildren<{
   onRefresh?: () => void;
   refreshing?: boolean;
+  scrollToTopSignal?: string | number | boolean | null;
 }>;
 
-export function Screen({ children, onRefresh, refreshing = false }: ScreenProps) {
+export function Screen({ children, onRefresh, refreshing = false, scrollToTopSignal }: ScreenProps) {
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (scrollToTopSignal !== undefined) {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    }
+  }, [scrollToTopSignal]);
+
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={styles.content}
       refreshControl={

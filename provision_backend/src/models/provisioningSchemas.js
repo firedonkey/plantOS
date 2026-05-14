@@ -5,10 +5,37 @@ export const claimTokenResponseSchema = z.object({
   claim_token: z.string(),
   setup_code: z.string(),
   setup_url: z.string().url(),
+  expected_device_id: z.string().optional(),
   expires_at: z.string().datetime()
 });
 
-export const claimTokenPayloadSchema = z.object({}).strict();
+const bleDeviceIdentitySchema = z
+  .object({
+    source: z.string().trim().max(40).optional().nullable(),
+    schema_version: z.number().int().positive().optional().nullable(),
+    device_id: z
+      .string()
+      .trim()
+      .min(3, "device_identity.device_id is required.")
+      .max(120, "device_identity.device_id is too long."),
+    hardware_device_id: z.string().trim().min(3).max(120).optional().nullable(),
+    hardware_model: z.string().trim().max(120).optional().nullable(),
+    hardware_version: z.string().trim().max(120).optional().nullable(),
+    software_version: z.string().trim().max(120).optional().nullable(),
+    node_role: z.string().trim().max(40).optional().nullable(),
+    display_name: z.string().trim().max(120).optional().nullable(),
+    ble_name: z.string().trim().max(120).optional().nullable(),
+    serial_number: z.string().trim().max(120).optional().nullable()
+  })
+  .strict();
+
+export const claimTokenPayloadSchema = z
+  .object({
+    device_name: z.string().trim().max(120, "device_name is too long.").optional().nullable(),
+    location: z.string().trim().max(120, "location is too long.").optional().nullable(),
+    device_identity: bleDeviceIdentitySchema.optional()
+  })
+  .strict();
 
 export const setupCodePayloadSchema = z
   .object({

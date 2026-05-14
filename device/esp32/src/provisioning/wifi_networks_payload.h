@@ -8,7 +8,7 @@
 
 namespace plantlab {
 
-constexpr size_t kBleWifiNetworksMaxJsonLength = 480;
+constexpr size_t kBleWifiNetworksMaxJsonLength = 200;
 
 struct WifiNetworkOption {
   WifiNetworkOption() = default;

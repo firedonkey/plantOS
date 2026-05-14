@@ -24,6 +24,8 @@ constexpr const char* kBleProvisioningWifiNetworksCharacteristicUuid =
     "c7d36f9a-7b18-4c52-9c4f-93c2f0f6a904";
 constexpr const char* kBleProvisioningWifiScanControlCharacteristicUuid =
     "c7d36f9a-7b18-4c52-9c4f-93c2f0f6a905";
+constexpr const char* kBleProvisioningDeviceIdentityCharacteristicUuid =
+    "c7d36f9a-7b18-4c52-9c4f-93c2f0f6a906";
 
 enum class BleWifiScanCommand {
   kNone = 0,
@@ -45,7 +47,10 @@ class BleProvisioningService {
   BleProvisioningService();
   ~BleProvisioningService();
 
-  bool begin(const std::string& advertised_name, const char* fallback_platform_url);
+  bool begin(
+      const std::string& advertised_name,
+      const char* fallback_platform_url,
+      const char* device_identity_json);
   void stop();
   bool active() const;
   bool connected() const;
@@ -87,6 +92,7 @@ class BleProvisioningService {
   NimBLECharacteristic* status_characteristic_ = nullptr;
   NimBLECharacteristic* wifi_networks_characteristic_ = nullptr;
   NimBLECharacteristic* wifi_scan_control_characteristic_ = nullptr;
+  NimBLECharacteristic* device_identity_characteristic_ = nullptr;
   std::unique_ptr<BleProvisioningServiceServerCallbacks> server_callbacks_;
   std::unique_ptr<BleProvisioningServiceWriteCallbacks> write_callbacks_;
   std::unique_ptr<BleProvisioningServiceWifiScanControlCallbacks> wifi_scan_control_callbacks_;

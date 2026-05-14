@@ -71,7 +71,7 @@ void test_networks_are_sorted_by_signal_then_name() {
       {"Alpha", -45},
       {"HomeWiFi", -30},
   };
-  const std::string json = plantlab::buildBleWifiNetworksJson(networks);
+  const std::string json = plantlab::buildBleWifiNetworksJson(networks, 480);
   const size_t home = json.find("\"ssid\":\"HomeWiFi\"");
   const size_t alpha = json.find("\"ssid\":\"Alpha\"");
   const size_t zoo = json.find("\"ssid\":\"Zoo\"");
@@ -87,7 +87,7 @@ void test_json_escapes_ssid_values() {
       {"Home \"Lab\" WiFi", -47},
       {"Backslash\\Network", -51},
   };
-  const std::string json = plantlab::buildBleWifiNetworksJson(networks);
+  const std::string json = plantlab::buildBleWifiNetworksJson(networks, 480);
   assert(json.find("\"ssid\":\"Home \\\"Lab\\\" WiFi\"") != std::string::npos);
   assert(json.find("\"ssid\":\"Backslash\\\\Network\"") != std::string::npos);
   assert(json.find("\"count\":2") != std::string::npos);

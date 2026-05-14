@@ -105,4 +105,8 @@ fi
 
 log "Starting EAS iOS development build."
 log "Profile: ${PROFILE}"
-run_eas build --profile "$PROFILE" --platform ios "${EXTRA_EAS_ARGS[@]}"
+if [[ "${#EXTRA_EAS_ARGS[@]}" -gt 0 ]]; then
+  run_eas build --profile "$PROFILE" --platform ios "${EXTRA_EAS_ARGS[@]}"
+else
+  run_eas build --profile "$PROFILE" --platform ios
+fi

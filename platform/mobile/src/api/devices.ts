@@ -2,6 +2,7 @@ import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
 import { Device, DeviceCommand, DeviceDashboard, HardwareHealth, HardwareNodeHealth } from "@/types";
 import type { RangeKey } from "@/components/ReadingTrendSection";
+import type { BleDeviceIdentity } from "@/ble/bleProvisioning";
 
 type ApiDevice = {
   id: number;
@@ -113,13 +114,14 @@ type ApiDeviceImage = {
 };
 
 type ApiSetupCodeResponse = {
-  serial_number: string;
+  serial_number?: string | null;
   setup_code?: string | null;
   claim_token?: string | null;
   setup_token?: string | null;
   continue_setup_url: string;
   setup_finishing_url: string;
   expect_image: boolean;
+  platform_url?: string | null;
   provisioning_api_url: string;
 };
 
@@ -129,11 +131,14 @@ type ApiDeleteResponse = {
 };
 
 export type DeviceSetupHandoff = {
-  serialNumber: string;
+  serialNumber?: string;
+  expectedDeviceId?: string;
   setupToken?: string;
   continueSetupUrl: string;
   setupFinishingUrl: string;
   expectImage: boolean;
+  platformUrl?: string;
+  provisioningApiUrl?: string;
 };
 
 export type DeviceSettingsDetails = {
@@ -482,11 +487,13 @@ export async function requestDeviceSetupCode(
     return {
       usedMock: false,
       handoff: {
-        serialNumber: created.serial_number,
+        serialNumber: created.serial_number ?? input.serialNumber,
         setupToken: created.setup_token ?? created.setup_code ?? created.claim_token ?? undefined,
         continueSetupUrl: created.continue_setup_url,
         setupFinishingUrl: created.setup_finishing_url,
         expectImage: created.expect_image,
+        platformUrl: created.platform_url ?? undefined,
+        provisioningApiUrl: created.provisioning_api_url ?? undefined,
       },
     };
   } catch (error) {
@@ -506,6 +513,78 @@ export async function requestDeviceSetupCode(
         continueSetupUrl: `http://10.42.0.1:8080/?setup_code=mock-claim-token&sn=${encodeURIComponent(input.serialNumber)}`,
         setupFinishingUrl: `/devices/setup-finishing?${params.toString()}`,
         expectImage: true,
+        platformUrl: undefined,
+        provisioningApiUrl: undefined,
+      },
+    };
+  }
+}
+
+export async function requestDeviceClaimToken(
+  input: {
+    deviceName: string;
+    location?: string;
+    deviceIdentity: BleDeviceIdentity;
+  },
+  token?: string,
+): Promise<{ handoff: DeviceSetupHandoff; usedMock: boolean }> {
+  try {
+    const created = await apiRequest<ApiSetupCodeResponse & { expected_device_id?: string | null }>(
+      "/api/devices/claim-token",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          device_name: input.deviceName,
+          location: input.location ?? null,
+          device_identity: {
+            source: input.deviceIdentity.source,
+            schema_version: input.deviceIdentity.schemaVersion,
+            device_id: input.deviceIdentity.deviceId,
+            hardware_device_id: input.deviceIdentity.hardwareDeviceId,
+            hardware_model: input.deviceIdentity.hardwareModel ?? null,
+            hardware_version: input.deviceIdentity.hardwareVersion ?? null,
+            software_version: input.deviceIdentity.softwareVersion ?? null,
+            node_role: input.deviceIdentity.nodeRole ?? null,
+            display_name: input.deviceIdentity.displayName ?? null,
+            ble_name: input.deviceIdentity.bleName ?? null,
+            serial_number: input.deviceIdentity.serialNumber ?? null,
+          },
+        }),
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      handoff: {
+        serialNumber: created.serial_number ?? undefined,
+        expectedDeviceId: created.expected_device_id ?? input.deviceIdentity.hardwareDeviceId,
+        setupToken: created.setup_token ?? created.setup_code ?? created.claim_token ?? undefined,
+        continueSetupUrl: created.continue_setup_url,
+        setupFinishingUrl: created.setup_finishing_url,
+        expectImage: created.expect_image,
+        platformUrl: created.platform_url ?? undefined,
+        provisioningApiUrl: created.provisioning_api_url ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    const params = new URLSearchParams({
+      device_name: input.deviceName,
+      location: input.location ?? "",
+      expect_image: "1",
+    });
+    return {
+      usedMock: true,
+      handoff: {
+        expectedDeviceId: input.deviceIdentity.hardwareDeviceId,
+        setupToken: "mock-claim-token",
+        continueSetupUrl: `http://10.42.0.1:8080/?setup_code=mock-claim-token&device_id=${encodeURIComponent(input.deviceIdentity.hardwareDeviceId)}`,
+        setupFinishingUrl: `/devices/setup-finishing?${params.toString()}`,
+        expectImage: true,
+        platformUrl: undefined,
+        provisioningApiUrl: undefined,
       },
     };
   }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Mars Potato Lab app icon</title>
+  <desc id="desc">Simplified circular Mars horizon sprout icon without wordmark.</desc>
+  <rect width="1024" height="1024" rx="224" fill="#ffffff"/>
+  <g transform="translate(0 20) scale(1.16)" transform-origin="512 512">
+    <circle cx="512" cy="482" r="210" fill="none" stroke="#111111" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M322 567 C412 502, 612 502, 702 567" fill="none" stroke="#111111" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M512 562 C512 502, 512 452, 512 397" fill="none" stroke="#111111" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M506 450 C442 442, 405 397, 397 350 C457 352, 496 389, 506 450 Z" fill="#111111"/>
+    <path d="M518 442 C584 424, 619 375, 620 324 C555 332, 523 380, 518 442 Z" fill="#111111"/>
+  </g>
+</svg>

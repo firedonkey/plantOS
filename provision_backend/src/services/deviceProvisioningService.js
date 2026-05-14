@@ -27,6 +27,25 @@ function buildDefaultNodeDisplayName(nodeRole, nodeIndex) {
   return "Raspberry Pi";
 }
 
+function normalizeBleDeviceIdentity(identity) {
+  if (!identity || typeof identity !== "object") {
+    return { expectedDeviceId: null, deviceIdentity: null };
+  }
+  const deviceId = identity.device_id?.trim() || null;
+  const hardwareDeviceId = identity.hardware_device_id?.trim() || deviceId;
+  if (!hardwareDeviceId) {
+    return { expectedDeviceId: null, deviceIdentity: null };
+  }
+  return {
+    expectedDeviceId: hardwareDeviceId,
+    deviceIdentity: {
+      ...identity,
+      device_id: deviceId,
+      hardware_device_id: hardwareDeviceId
+    }
+  };
+}
+
 async function ensureDeviceAccessTokenRecord(client, deviceId, deviceAccessToken) {
   const tokenHash = hashToken(deviceAccessToken);
   await client.query(
@@ -92,8 +111,8 @@ async function upsertDeviceHardwareNode(client, payload) {
   );
 }
 
-export async function createClaimTokenForUser(userId) {
-  return createClaimTokenForUserAndSerial(userId, null);
+export async function createClaimTokenForUser(userId, metadata = {}) {
+  return createClaimTokenForUserAndSerial(userId, null, metadata);
 }
 
 export async function createClaimTokenForUserAndSerial(userId, serialNumber, metadata = {}) {
@@ -104,6 +123,7 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
   const normalizedSerialNumber = serialNumber?.trim() || null;
   const deviceName = metadata.deviceName?.trim() || null;
   const location = metadata.location?.trim() || null;
+  const { expectedDeviceId, deviceIdentity } = normalizeBleDeviceIdentity(metadata.deviceIdentity);
 
   const { rows } = await withTransaction(async (client) => {
     if (normalizedSerialNumber) {
@@ -147,13 +167,15 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
         device_name,
         location,
         user_id,
+        expected_device_id,
+        device_identity,
         created_at,
         expires_at,
         used_at,
         used_by_device_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
-      RETURNING claim_token, serial_number, device_name, location, expires_at
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NULL, NULL)
+      RETURNING claim_token, serial_number, device_name, location, expected_device_id, device_identity, expires_at
     `;
 
     return client.query(query, [
@@ -162,6 +184,8 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
       deviceName,
       location,
       userId,
+      expectedDeviceId,
+      deviceIdentity ? JSON.stringify(deviceIdentity) : null,
       createdAt,
       expiresAt
     ]);
@@ -180,6 +204,8 @@ export async function registerDeviceFromClaim(payload) {
           dct.device_name,
           dct.location,
           dct.user_id,
+          dct.expected_device_id,
+          dct.device_identity,
           dct.created_at,
           dct.expires_at,
           dct.used_at,
@@ -213,6 +239,14 @@ export async function registerDeviceFromClaim(payload) {
         400,
         "invalid_or_expired_claim_token",
         "Claim token has expired."
+      );
+    }
+
+    if (claim.expected_device_id && payload.device_id !== claim.expected_device_id) {
+      throw new ApiError(
+        409,
+        "expected_device_id_mismatch",
+        "Claim token is bound to a different PlantLab device."
       );
     }
 

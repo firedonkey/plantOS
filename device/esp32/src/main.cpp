@@ -40,6 +40,8 @@ constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
 constexpr uint32_t kBleProvisioningTimeoutMs = 10UL * 60UL * 1000UL;
 constexpr uint32_t kBleWifiScanTimeoutMs = 15000UL;
+constexpr uint32_t kBleWifiScanRetryDelayMs = 750UL;
+constexpr uint8_t kBleWifiScanMaxRetries = 3;
 constexpr uint32_t kFactoryResetHoldMs = 10000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
@@ -139,6 +141,7 @@ bool g_wifi_ready = false;
 bool g_web_routes_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
+String g_restart_reason;
 plantlab::ProvisioningState g_provisioning_state = plantlab::ProvisioningState::NORMAL;
 unsigned long g_ble_provisioning_started_at_ms = 0;
 bool g_ble_had_previous_config = false;
@@ -152,6 +155,8 @@ std::vector<WiFiNetworkOption> g_cached_wifi_networks;
 bool g_ble_wifi_scan_active = false;
 uint32_t g_ble_wifi_scan_id = 0;
 unsigned long g_ble_wifi_scan_started_at_ms = 0;
+unsigned long g_ble_wifi_scan_retry_at_ms = 0;
+uint8_t g_ble_wifi_scan_retry_count = 0;
 bool g_espnow_ready = false;
 uint32_t g_next_espnow_request_id = 1;
 MasterProvisioningSession g_camera_provisioning_session{};
@@ -276,6 +281,25 @@ String bleProvisioningDeviceName() {
   return String("PlantLab-Setup-") + hardware_id.substring(start);
 }
 
+String bleProvisioningDeviceIdentityJson(const String& advertised_name) {
+  StaticJsonDocument<512> payload;
+  const String hardware_id = stableHardwareDeviceId();
+  payload["source"] = "esp32-ble";
+  payload["schema_version"] = 1;
+  payload["device_id"] = hardware_id;
+  payload["hardware_device_id"] = hardware_id;
+  payload["hardware_model"] = "esp32_master";
+  payload["hardware_version"] = BOARD_NAME;
+  payload["software_version"] = kSoftwareVersion;
+  payload["node_role"] = "master";
+  payload["display_name"] = "Master";
+  payload["ble_name"] = advertised_name;
+
+  String json;
+  serializeJson(payload, json);
+  return json;
+}
+
 String macToString(const uint8_t* mac) {
   char buffer[18];
   snprintf(
@@ -348,6 +372,12 @@ bool platform_enabled() {
   return g_platform_client != nullptr && g_platform_client->configured();
 }
 
+void scheduleRestart(unsigned long delay_ms, const char* reason) {
+  g_restart_scheduled = true;
+  g_restart_at_ms = millis() + delay_ms;
+  g_restart_reason = reason == nullptr || strlen(reason) == 0 ? "unspecified" : reason;
+}
+
 bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
   if (payload == nullptr || !hasWifiCredentials() || !hasRuntimeRegistration()) {
     return false;
@@ -405,21 +435,25 @@ void noteEspNowSend(
 
 void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len) {
   if (len != static_cast<int>(sizeof(EspNowPacket))) {
-    Serial.printf(
-        "[camera-schedule] ignored ESP-NOW packet length=%d from %s\n",
-        len,
-        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    if (!g_provisioning_mode && !g_ble_wifi_scan_active) {
+      Serial.printf(
+          "[camera-schedule] ignored ESP-NOW packet length=%d from %s\n",
+          len,
+          mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    }
     return;
   }
 
   EspNowPacket packet{};
   memcpy(&packet, data, sizeof(packet));
   if (packet.magic != ESPNOW_TEST_MAGIC || packet.version != ESPNOW_TEST_VERSION) {
-    Serial.printf(
-        "[camera-schedule] ignored invalid ESP-NOW packet magic=%lu version=%u from %s\n",
-        static_cast<unsigned long>(packet.magic),
-        static_cast<unsigned int>(packet.version),
-        mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    if (!g_provisioning_mode && !g_ble_wifi_scan_active) {
+      Serial.printf(
+          "[camera-schedule] ignored invalid ESP-NOW packet magic=%lu version=%u from %s\n",
+          static_cast<unsigned long>(packet.magic),
+          static_cast<unsigned int>(packet.version),
+          mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
+    }
     return;
   }
 
@@ -1208,6 +1242,27 @@ void updateStatusLed() {
   }
 }
 
+const char* wifiStatusLabel(wl_status_t status) {
+  switch (status) {
+    case WL_IDLE_STATUS:
+      return "idle";
+    case WL_NO_SSID_AVAIL:
+      return "no_ssid";
+    case WL_SCAN_COMPLETED:
+      return "scan_completed";
+    case WL_CONNECTED:
+      return "connected";
+    case WL_CONNECT_FAILED:
+      return "connect_failed";
+    case WL_CONNECTION_LOST:
+      return "connection_lost";
+    case WL_DISCONNECTED:
+      return "disconnected";
+    default:
+      return "unknown";
+  }
+}
+
 bool loadConfig() {
   Serial.println("[provisioning] loading config from Preferences");
   g_preferences.begin(kPreferencesNamespace, true);
@@ -1227,8 +1282,9 @@ bool loadConfig() {
   g_config.platform_url.trim();
 
   Serial.printf(
-      "[provisioning] config loaded: ssid=%s claim=%s device_token=%s platform_id=%d backend=%s platform=%s\n",
+      "[provisioning] config loaded: ssid=%s password_len=%u claim=%s device_token=%s platform_id=%d backend=%s platform=%s\n",
       g_config.wifi_ssid.length() > 0 ? g_config.wifi_ssid.c_str() : "<empty>",
+      static_cast<unsigned>(g_config.wifi_password.length()),
       g_config.claim_token.length() > 0 ? "<set>" : "<empty>",
       g_config.device_token.length() > 0 ? "<set>" : "<empty>",
       g_config.platform_device_id,
@@ -1431,24 +1487,46 @@ std::string buildBleWifiNetworksPayloadPage(const std::vector<WiFiNetworkOption>
   return plantlab::buildBleWifiNetworksJson(options, g_ble_wifi_scan_id, cursor);
 }
 
+void logBleWifiScanNetworks() {
+  for (size_t index = 0; index < g_cached_wifi_networks.size(); ++index) {
+    const WiFiNetworkOption& network = g_cached_wifi_networks[index];
+    Serial.printf(
+        "[provisioning] BLE Wi-Fi network[%u] rssi=%d ssid=%s\n",
+        static_cast<unsigned>(index + 1),
+        network.rssi,
+        network.ssid.c_str());
+  }
+}
+
 void publishBleWifiScanStatus(const char* status) {
   g_ble_provisioning.setWifiNetworksJson(
       plantlab::buildBleWifiNetworksStatusJson(status, g_ble_wifi_scan_id, g_cached_wifi_networks.size()));
 }
 
 void publishBleWifiScanPage(size_t cursor = 0) {
-  g_ble_provisioning.setWifiNetworksJson(buildBleWifiNetworksPayloadPage(g_cached_wifi_networks, cursor));
+  const std::string payload = buildBleWifiNetworksPayloadPage(g_cached_wifi_networks, cursor);
+  Serial.printf(
+      "[provisioning] BLE Wi-Fi payload scan_id=%u cursor=%u bytes=%u\n",
+      static_cast<unsigned>(g_ble_wifi_scan_id),
+      static_cast<unsigned>(cursor),
+      static_cast<unsigned>(payload.size()));
+  g_ble_provisioning.setWifiNetworksJson(payload);
 }
 
 void stopBleWifiScanRadio() {
   WiFi.scanDelete();
   WiFi.disconnect(false, false);
-  WiFi.mode(WIFI_OFF);
+}
+
+void resetBleWifiScanRuntime() {
+  g_ble_wifi_scan_active = false;
+  g_ble_wifi_scan_retry_at_ms = 0;
+  g_ble_wifi_scan_retry_count = 0;
 }
 
 void finishBleWifiScan(int network_count) {
   g_cached_wifi_networks = collectWifiScanResults(network_count);
-  g_ble_wifi_scan_active = false;
+  resetBleWifiScanRuntime();
   stopBleWifiScanRadio();
   if (g_cached_wifi_networks.empty()) {
     Serial.println("[provisioning] BLE Wi-Fi scan completed with no visible 2.4 GHz networks");
@@ -1458,26 +1536,34 @@ void finishBleWifiScan(int network_count) {
   Serial.printf(
       "[provisioning] BLE Wi-Fi scan completed: %u network(s)\n",
       static_cast<unsigned>(g_cached_wifi_networks.size()));
+  logBleWifiScanNetworks();
   publishBleWifiScanPage(0);
 }
 
 void failBleWifiScan(const char* status, const char* log_message) {
-  g_ble_wifi_scan_active = false;
+  resetBleWifiScanRuntime();
   stopBleWifiScanRadio();
   Serial.println(log_message);
   publishBleWifiScanStatus(status);
 }
 
-void startBleWifiScan(unsigned long now) {
-  if (g_ble_wifi_scan_active) {
-    publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+void retryBleWifiScan(const char* reason, unsigned long now) {
+  WiFi.scanDelete();
+  if (g_ble_wifi_scan_retry_count >= kBleWifiScanMaxRetries) {
+    failBleWifiScan(plantlab::kBleWifiScanStatusError, "[provisioning] BLE Wi-Fi scan failed");
     return;
   }
+  ++g_ble_wifi_scan_retry_count;
+  g_ble_wifi_scan_retry_at_ms = now + kBleWifiScanRetryDelayMs;
+  Serial.printf(
+      "[provisioning] BLE Wi-Fi scan transient failure: %s, retrying %u/%u\n",
+      reason,
+      static_cast<unsigned>(g_ble_wifi_scan_retry_count),
+      static_cast<unsigned>(kBleWifiScanMaxRetries));
+  publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+}
 
-  ++g_ble_wifi_scan_id;
-  g_ble_wifi_scan_started_at_ms = now;
-  g_ble_wifi_scan_active = true;
-
+void startBleWifiScanAttempt(unsigned long now) {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(false, false);
   WiFi.scanDelete();
@@ -1489,8 +1575,22 @@ void startBleWifiScan(unsigned long now) {
     return;
   }
   if (scan_result != WIFI_SCAN_RUNNING) {
-    failBleWifiScan(plantlab::kBleWifiScanStatusError, "[provisioning] BLE Wi-Fi scan failed to start");
+    retryBleWifiScan("start failed", now);
   }
+}
+
+void startBleWifiScan(unsigned long now) {
+  if (g_ble_wifi_scan_active) {
+    publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+    return;
+  }
+
+  ++g_ble_wifi_scan_id;
+  g_ble_wifi_scan_started_at_ms = now;
+  g_ble_wifi_scan_active = true;
+  g_ble_wifi_scan_retry_count = 0;
+  g_ble_wifi_scan_retry_at_ms = 0;
+  startBleWifiScanAttempt(now);
 }
 
 void serviceBleWifiScan(unsigned long now) {
@@ -1510,6 +1610,13 @@ void serviceBleWifiScan(unsigned long now) {
   if (!g_ble_wifi_scan_active) {
     return;
   }
+  if (g_ble_wifi_scan_retry_at_ms != 0) {
+    if (now >= g_ble_wifi_scan_retry_at_ms) {
+      g_ble_wifi_scan_retry_at_ms = 0;
+      startBleWifiScanAttempt(now);
+    }
+    return;
+  }
   if (now - g_ble_wifi_scan_started_at_ms >= kBleWifiScanTimeoutMs) {
     failBleWifiScan(plantlab::kBleWifiScanStatusTimeout, "[provisioning] BLE Wi-Fi scan timed out");
     return;
@@ -1519,7 +1626,7 @@ void serviceBleWifiScan(unsigned long now) {
     return;
   }
   if (scan_result < 0) {
-    failBleWifiScan(plantlab::kBleWifiScanStatusError, "[provisioning] BLE Wi-Fi scan failed");
+    retryBleWifiScan("scan complete failed", now);
     return;
   }
   finishBleWifiScan(scan_result);
@@ -1791,8 +1898,7 @@ void handleProvisioningSubmit() {
     return;
   }
   g_web_server.send(200, "text/html", connectingPageHtml(return_url));
-  g_restart_scheduled = true;
-  g_restart_at_ms = millis() + 5000UL;
+  scheduleRestart(5000UL, "softap_credentials_saved");
   Serial.println("[provisioning] saved Wi-Fi and setup code, reboot scheduled");
 }
 
@@ -1825,7 +1931,7 @@ bool commitBleProvisioningPayload(const plantlab::BleProvisioningPayload& payloa
 
 void stopBleProvisioningMode() {
   if (g_ble_wifi_scan_active) {
-    g_ble_wifi_scan_active = false;
+    resetBleWifiScanRuntime();
     stopBleWifiScanRadio();
   }
   if (g_ble_provisioning.active()) {
@@ -1851,14 +1957,18 @@ bool startBleProvisioningMode() {
   updateStatusLed();
 
   g_cached_wifi_networks.clear();
-  g_ble_wifi_scan_active = false;
+  resetBleWifiScanRuntime();
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
   delay(50);
 
   const String advertised_name = bleProvisioningDeviceName();
   const String fallback_platform_url = runtimePlatformUrl();
-  if (!g_ble_provisioning.begin(advertised_name.c_str(), fallback_platform_url.c_str())) {
+  const String device_identity_json = bleProvisioningDeviceIdentityJson(advertised_name);
+  if (!g_ble_provisioning.begin(
+          advertised_name.c_str(),
+          fallback_platform_url.c_str(),
+          device_identity_json.c_str())) {
     Serial.println("[provisioning] BLE setup failed");
     g_ble_provisioning.stop();
     g_provisioning_mode = false;
@@ -1877,13 +1987,15 @@ bool startBleProvisioningMode() {
   publishBleWifiScanStatus(plantlab::kBleWifiScanStatusIdle);
 
   Serial.printf(
-      "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s wifi_networks=%s wifi_scan_control=%s\n",
+      "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s wifi_networks=%s wifi_scan_control=%s device_identity=%s hardware_id=%s\n",
       advertised_name.c_str(),
       plantlab::kBleProvisioningServiceUuid,
       plantlab::kBleProvisioningWriteCharacteristicUuid,
       plantlab::kBleProvisioningStatusCharacteristicUuid,
       plantlab::kBleProvisioningWifiNetworksCharacteristicUuid,
-      plantlab::kBleProvisioningWifiScanControlCharacteristicUuid);
+      plantlab::kBleProvisioningWifiScanControlCharacteristicUuid,
+      plantlab::kBleProvisioningDeviceIdentityCharacteristicUuid,
+      stableHardwareDeviceId().c_str());
   return true;
 }
 
@@ -1904,8 +2016,9 @@ void serviceBleProvisioning(unsigned long now) {
     }
 
     Serial.printf(
-        "[provisioning] BLE payload accepted: ssid=%s token=%s platform=%s backend=%s\n",
+        "[provisioning] BLE payload accepted: ssid=%s password_len=%u token=%s platform=%s backend=%s\n",
         result.payload.ssid.c_str(),
+        static_cast<unsigned>(result.payload.password.length()),
         plantlab::maskSecretForLog(result.payload.plantlab_token).c_str(),
         result.payload.platform_url.empty() ? "<empty>" : result.payload.platform_url.c_str(),
         result.payload.backend_url.empty() ? "<empty>" : result.payload.backend_url.c_str());
@@ -1927,8 +2040,7 @@ void serviceBleProvisioning(unsigned long now) {
 
     g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_SUCCESS;
     g_ble_provisioning.setStatus(g_provisioning_state);
-    g_restart_scheduled = true;
-    g_restart_at_ms = now + 2500UL;
+    scheduleRestart(2500UL, "ble_credentials_saved");
     updateStatusLed();
     Serial.println("[provisioning] BLE credentials saved, reboot scheduled");
     return;
@@ -2050,7 +2162,11 @@ bool connectToWiFi() {
   g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
   updateStatusLed();
 
-  Serial.printf("[wifi] connecting to %s\n", g_config.wifi_ssid.c_str());
+  Serial.printf(
+      "[wifi] connecting to %s password_len=%u status=%s\n",
+      g_config.wifi_ssid.c_str(),
+      static_cast<unsigned>(g_config.wifi_password.length()),
+      wifiStatusLabel(WiFi.status()));
   WiFi.mode(WIFI_STA);
   WiFi.begin(g_config.wifi_ssid.c_str(), g_config.wifi_password.c_str());
 
@@ -2069,11 +2185,12 @@ bool connectToWiFi() {
     return true;
   }
 
+  const wl_status_t final_status = WiFi.status();
   WiFi.disconnect();
   g_device_mode = DeviceMode::kWifiFailed;
   g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
   updateStatusLed();
-  Serial.println("[wifi] connect timed out");
+  Serial.printf("[wifi] connect timed out status=%s\n", wifiStatusLabel(final_status));
   return false;
 }
 
@@ -2173,8 +2290,7 @@ void startFactoryReset() {
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_OFF);
   clearConfig();
-  g_restart_scheduled = true;
-  g_restart_at_ms = millis() + 2000UL;
+  scheduleRestart(2000UL, "factory_reset");
   Serial.println("[provisioning] credentials cleared, reboot scheduled");
 }
 
@@ -2441,7 +2557,9 @@ void loop() {
       g_web_server.handleClient();
     }
     if (g_restart_scheduled && static_cast<long>(now - g_restart_at_ms) >= 0) {
-      Serial.println("[provisioning] rebooting ESP32");
+      Serial.printf(
+          "[provisioning] rebooting ESP32 reason=%s\n",
+          g_restart_reason.length() > 0 ? g_restart_reason.c_str() : "unspecified");
       stopBleProvisioningMode();
       delay(100);
       ESP.restart();

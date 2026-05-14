@@ -5,12 +5,19 @@
     "scheme": "plantlab",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/app-icon-1024.png",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/app-icon-512.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "ios": {
       "bundleIdentifier": "com.plantlab.mobile",
       "buildNumber": "1",
+      "icon": "./assets/app-icon-1024.png",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "PlantLab uses Bluetooth to read nearby Wi-Fi network names from your ESP32 during setup.",
+        "NSBluetoothAlwaysUsageDescription": "PlantLab uses Bluetooth to find and provision PlantLab devices during setup.",
         "NSLocalNetworkUsageDescription": "PlantLab can connect to the device setup network for the compatibility SoftAP setup flow.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,7 +29,7 @@
         {
           "isBackgroundEnabled": false,
           "neverForLocation": true,
-          "bluetoothAlwaysPermission": "PlantLab uses Bluetooth to read nearby Wi-Fi network names from your ESP32 during setup."
+          "bluetoothAlwaysPermission": "PlantLab uses Bluetooth to find and provision PlantLab devices during setup."
         }
       ],
       [
@@ -32,6 +39,12 @@
         }
       ]
     ],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app-icon-512.png",
+        "backgroundColor": "#000000"
+      }
+    },
     "experiments": {
       "typedRoutes": true
     },

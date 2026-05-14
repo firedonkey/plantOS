@@ -4,6 +4,11 @@
 CREATE TABLE IF NOT EXISTS device_claim_tokens (
   claim_token TEXT PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id),
+  serial_number TEXT REFERENCES device_serial_numbers(serial_number),
+  device_name TEXT,
+  location TEXT,
+  expected_device_id TEXT,
+  device_identity JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
   used_at TIMESTAMPTZ,

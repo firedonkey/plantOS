@@ -1,6 +1,9 @@
 #include "provisioning/ble_provisioning.h"
 
+#include <Arduino.h>
 #include <NimBLEDevice.h>
+
+#include <cstring>
 
 #include "provisioning/wifi_networks_payload.h"
 
@@ -98,7 +101,10 @@ BleProvisioningService::~BleProvisioningService() {
   stop();
 }
 
-bool BleProvisioningService::begin(const std::string& advertised_name, const char* fallback_platform_url) {
+bool BleProvisioningService::begin(
+    const std::string& advertised_name,
+    const char* fallback_platform_url,
+    const char* device_identity_json) {
   if (active_) {
     return true;
   }
@@ -119,7 +125,7 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
     return false;
   }
   server_callbacks_.reset(new BleProvisioningServiceServerCallbacks(this));
-  server_->setCallbacks(server_callbacks_.get());
+  server_->setCallbacks(server_callbacks_.get(), false);
 
   service_ = server_->createService(kBleProvisioningServiceUuid);
   if (service_ == nullptr) {
@@ -139,8 +145,12 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
   wifi_scan_control_characteristic_ = service_->createCharacteristic(
       kBleProvisioningWifiScanControlCharacteristicUuid,
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  device_identity_characteristic_ = service_->createCharacteristic(
+      kBleProvisioningDeviceIdentityCharacteristicUuid,
+      NIMBLE_PROPERTY::READ);
   if (write_characteristic_ == nullptr || status_characteristic_ == nullptr ||
-      wifi_networks_characteristic_ == nullptr || wifi_scan_control_characteristic_ == nullptr) {
+      wifi_networks_characteristic_ == nullptr || wifi_scan_control_characteristic_ == nullptr ||
+      device_identity_characteristic_ == nullptr) {
     stop();
     return false;
   }
@@ -150,6 +160,11 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
   write_characteristic_->setCallbacks(write_callbacks_.get());
   wifi_scan_control_characteristic_->setCallbacks(wifi_scan_control_callbacks_.get());
   wifi_networks_characteristic_->setValue(buildBleWifiNetworksStatusJson(kBleWifiScanStatusIdle, 0));
+  const char* identity_json = device_identity_json == nullptr ? "{}" : device_identity_json;
+  device_identity_characteristic_->setValue(
+      reinterpret_cast<const uint8_t*>(identity_json),
+      strlen(identity_json));
+  Serial.printf("[provisioning] BLE identity characteristic loaded len=%u\n", static_cast<unsigned int>(strlen(identity_json)));
   publishStatus(false);
 
   service_->start();
@@ -186,6 +201,7 @@ void BleProvisioningService::stop() {
   status_characteristic_ = nullptr;
   wifi_networks_characteristic_ = nullptr;
   wifi_scan_control_characteristic_ = nullptr;
+  device_identity_characteristic_ = nullptr;
   server_callbacks_.reset();
   write_callbacks_.reset();
   wifi_scan_control_callbacks_.reset();
@@ -243,7 +259,9 @@ void BleProvisioningService::setWifiNetworksJson(const std::string& wifi_network
   if (wifi_networks_characteristic_ == nullptr) {
     return;
   }
-  wifi_networks_characteristic_->setValue(wifi_networks_json);
+  wifi_networks_characteristic_->setValue(
+      reinterpret_cast<const uint8_t*>(wifi_networks_json.data()),
+      wifi_networks_json.size());
   if (notify) {
     wifi_networks_characteristic_->notify();
   }
@@ -339,7 +357,9 @@ void BleProvisioningService::publishStatus(bool notify) {
     return;
   }
   const std::string json = statusJson(state_, last_error_, accepting_writes_);
-  status_characteristic_->setValue(json);
+  status_characteristic_->setValue(
+      reinterpret_cast<const uint8_t*>(json.data()),
+      json.size());
   if (notify) {
     status_characteristic_->notify();
   }

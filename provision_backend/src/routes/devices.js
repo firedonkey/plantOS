@@ -29,17 +29,27 @@ devicesRouter.post(
   requireAuthenticatedUser,
   async (req, res, next) => {
     try {
-      claimTokenPayloadSchema.parse(req.body ?? {});
+      const payload = claimTokenPayloadSchema.parse(req.body ?? {});
 
-      const claimToken = await createClaimTokenForUser(req.user.id);
+      const claimToken = await createClaimTokenForUser(req.user.id, {
+        deviceName: payload.device_name,
+        location: payload.location,
+        deviceIdentity: payload.device_identity
+      });
       return res.status(201).json({
         ok: true,
         claim_token: claimToken.claim_token,
         setup_code: claimToken.claim_token,
         setup_url: buildSetupUrl(claimToken.claim_token),
+        expected_device_id: claimToken.expected_device_id || undefined,
         expires_at: new Date(claimToken.expires_at).toISOString()
       });
     } catch (error) {
+      if (error.name === "ZodError") {
+        return next(
+          new ApiError(422, "validation_error", "Request body is invalid.", error.flatten())
+        );
+      }
       return next(error);
     }
   }
