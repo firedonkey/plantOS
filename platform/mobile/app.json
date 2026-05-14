@@ -8,11 +8,20 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "PlantLab connects to the device setup network to load nearby Wi-Fi options from the ESP32."
+        "NSBluetoothAlwaysUsageDescription": "PlantLab uses Bluetooth to read nearby Wi-Fi network names from your ESP32 during setup.",
+        "NSLocalNetworkUsageDescription": "PlantLab can connect to the device setup network for the compatibility SoftAP setup flow."
       }
     },
     "plugins": [
       "expo-router",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true,
+          "bluetoothAlwaysPermission": "PlantLab uses Bluetooth to read nearby Wi-Fi network names from your ESP32 during setup."
+        }
+      ],
       [
         "expo-camera",
         {

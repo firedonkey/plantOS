@@ -2,6 +2,8 @@
 
 #include <NimBLEDevice.h>
 
+#include "provisioning/wifi_networks_payload.h"
+
 namespace plantlab {
 namespace {
 
@@ -20,6 +22,31 @@ std::string statusJson(ProvisioningState state, ProvisioningParseError error, bo
   }
   json += "}";
   return json;
+}
+
+bool containsCommand(const std::string& value, const char* command) {
+  return value.find(command) != std::string::npos;
+}
+
+size_t parseCursor(const std::string& value) {
+  const size_t key = value.find("\"cursor\"");
+  if (key == std::string::npos) {
+    return 0;
+  }
+  const size_t separator = value.find(':', key);
+  if (separator == std::string::npos) {
+    return 0;
+  }
+  size_t index = separator + 1;
+  while (index < value.length() && (value[index] == ' ' || value[index] == '\t')) {
+    ++index;
+  }
+  size_t cursor = 0;
+  while (index < value.length() && value[index] >= '0' && value[index] <= '9') {
+    cursor = cursor * 10 + static_cast<size_t>(value[index] - '0');
+    ++index;
+  }
+  return cursor;
 }
 
 }  // namespace
@@ -54,6 +81,18 @@ class BleProvisioningServiceWriteCallbacks : public NimBLECharacteristicCallback
   BleProvisioningService* owner_;
 };
 
+class BleProvisioningServiceWifiScanControlCallbacks : public NimBLECharacteristicCallbacks {
+ public:
+  explicit BleProvisioningServiceWifiScanControlCallbacks(BleProvisioningService* owner) : owner_(owner) {}
+
+  void onWrite(NimBLECharacteristic* characteristic) override {
+    owner_->handleWifiScanControlWrite(characteristic->getValue());
+  }
+
+ private:
+  BleProvisioningService* owner_;
+};
+
 BleProvisioningService::BleProvisioningService() = default;
 BleProvisioningService::~BleProvisioningService() {
   stop();
@@ -69,6 +108,7 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
   last_error_ = ProvisioningParseError::kNone;
   accepting_writes_ = true;
   pending_result_ready_ = false;
+  pending_wifi_scan_request_ready_ = false;
   connected_ = false;
 
   NimBLEDevice::init(advertised_name);
@@ -93,13 +133,23 @@ bool BleProvisioningService::begin(const std::string& advertised_name, const cha
   status_characteristic_ = service_->createCharacteristic(
       kBleProvisioningStatusCharacteristicUuid,
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  if (write_characteristic_ == nullptr || status_characteristic_ == nullptr) {
+  wifi_networks_characteristic_ = service_->createCharacteristic(
+      kBleProvisioningWifiNetworksCharacteristicUuid,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  wifi_scan_control_characteristic_ = service_->createCharacteristic(
+      kBleProvisioningWifiScanControlCharacteristicUuid,
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  if (write_characteristic_ == nullptr || status_characteristic_ == nullptr ||
+      wifi_networks_characteristic_ == nullptr || wifi_scan_control_characteristic_ == nullptr) {
     stop();
     return false;
   }
 
   write_callbacks_.reset(new BleProvisioningServiceWriteCallbacks(this));
+  wifi_scan_control_callbacks_.reset(new BleProvisioningServiceWifiScanControlCallbacks(this));
   write_characteristic_->setCallbacks(write_callbacks_.get());
+  wifi_scan_control_characteristic_->setCallbacks(wifi_scan_control_callbacks_.get());
+  wifi_networks_characteristic_->setValue(buildBleWifiNetworksStatusJson(kBleWifiScanStatusIdle, 0));
   publishStatus(false);
 
   service_->start();
@@ -126,12 +176,19 @@ void BleProvisioningService::stop() {
   pending_result_ready_ = false;
   pending_result_ = ProvisioningParseResult{};
   portEXIT_CRITICAL(&pending_lock_);
+  portENTER_CRITICAL(&wifi_scan_lock_);
+  pending_wifi_scan_request_ready_ = false;
+  pending_wifi_scan_request_ = BleWifiScanRequest{};
+  portEXIT_CRITICAL(&wifi_scan_lock_);
   server_ = nullptr;
   service_ = nullptr;
   write_characteristic_ = nullptr;
   status_characteristic_ = nullptr;
+  wifi_networks_characteristic_ = nullptr;
+  wifi_scan_control_characteristic_ = nullptr;
   server_callbacks_.reset();
   write_callbacks_.reset();
+  wifi_scan_control_callbacks_.reset();
 }
 
 bool BleProvisioningService::active() const {
@@ -182,6 +239,32 @@ void BleProvisioningService::setAcceptingWrites(bool accepting) {
   publishStatus(true);
 }
 
+void BleProvisioningService::setWifiNetworksJson(const std::string& wifi_networks_json, bool notify) {
+  if (wifi_networks_characteristic_ == nullptr) {
+    return;
+  }
+  wifi_networks_characteristic_->setValue(wifi_networks_json);
+  if (notify) {
+    wifi_networks_characteristic_->notify();
+  }
+}
+
+bool BleProvisioningService::hasPendingWifiScanRequest() const {
+  portENTER_CRITICAL(&wifi_scan_lock_);
+  const bool ready = pending_wifi_scan_request_ready_;
+  portEXIT_CRITICAL(&wifi_scan_lock_);
+  return ready;
+}
+
+BleWifiScanRequest BleProvisioningService::takePendingWifiScanRequest() {
+  portENTER_CRITICAL(&wifi_scan_lock_);
+  const BleWifiScanRequest request = pending_wifi_scan_request_;
+  pending_wifi_scan_request_ready_ = false;
+  pending_wifi_scan_request_ = BleWifiScanRequest{};
+  portEXIT_CRITICAL(&wifi_scan_lock_);
+  return request;
+}
+
 void BleProvisioningService::handleWrite(const std::string& value) {
   portENTER_CRITICAL(&pending_lock_);
   const bool pending = pending_result_ready_;
@@ -219,6 +302,24 @@ void BleProvisioningService::handleWrite(const std::string& value) {
   if (!result.ok) {
     setStatus(provisioningStateAfterInvalidPayload(), result.error);
   }
+}
+
+void BleProvisioningService::handleWifiScanControlWrite(const std::string& value) {
+  BleWifiScanRequest request;
+  if (containsCommand(value, "wifi_scan_start")) {
+    request.command = BleWifiScanCommand::kStart;
+    request.cursor = 0;
+  } else if (containsCommand(value, "wifi_scan_page")) {
+    request.command = BleWifiScanCommand::kPage;
+    request.cursor = parseCursor(value);
+  } else {
+    return;
+  }
+
+  portENTER_CRITICAL(&wifi_scan_lock_);
+  pending_wifi_scan_request_ = request;
+  pending_wifi_scan_request_ready_ = true;
+  portEXIT_CRITICAL(&wifi_scan_lock_);
 }
 
 void BleProvisioningService::handleConnect() {

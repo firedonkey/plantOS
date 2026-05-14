@@ -124,7 +124,7 @@ error
 
 ```yaml
 provisioning:
-  backend_url: https://marspotatolab.com
+  backend_url: https://plantlab-provision-api-418533861080.us-central1.run.app
   state_file: data/provisioning/device_config.json
   network_dry_run: true
   hardware_version: raspberry_pi_3

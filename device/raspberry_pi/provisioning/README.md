@@ -31,7 +31,7 @@ From the Raspberry Pi device folder:
 ```bash
 cd ~/projects/plantOS/device/raspberry_pi
 source ../../.venv/bin/activate
-python provision.py --backend-url https://marspotatolab.com
+python provision.py --backend-url https://plantlab-provision-api-418533861080.us-central1.run.app
 ```
 
 By default, network commands run in dry-run mode. This lets you test the setup page and backend registration code without changing the Pi network stack.

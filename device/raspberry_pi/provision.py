@@ -6,6 +6,9 @@ from config import DEFAULT_CONFIG_PATH, load_config
 from provisioning.service import ProvisioningService
 
 
+DEFAULT_PROVISIONING_API_URL = "https://plantlab-provision-api-418533861080.us-central1.run.app"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run PlantLab Raspberry Pi SoftAP provisioning.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to device YAML config.")
@@ -34,10 +37,10 @@ def main() -> None:
         hotspot_password = "plantlabsetup"
     backend_url = (
         args.backend_url
+        or os.getenv("PLANTLAB_PROVISIONING_API_URL")
         or os.getenv("PLANTLAB_BACKEND_URL")
         or provisioning_config.get("backend_url")
-        or config.get("platform", {}).get("url")
-        or "https://marspotatolab.com"
+        or DEFAULT_PROVISIONING_API_URL
     )
     state_file = args.state_file or provisioning_config.get("state_file") or "data/provisioning/device_config.json"
     dry_run = not args.real_network and bool(provisioning_config.get("network_dry_run", True))

@@ -21,7 +21,8 @@ Local dev:
 - The mobile callback uses the app scheme `plantlab://auth/callback`. Expo Go may not claim custom app schemes reliably; use a dev build or installed app build when validating the full callback loop.
 - Leave `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
 - Optional: set `EXPO_PUBLIC_WIFI_SSID_OPTIONS=HomeWiFi,LabWiFi` to seed the add-device Wi-Fi dropdown.
-- During real device setup, connect the phone to `PlantLab-Setup`, then tap `Load nearby Wi-Fi from device` to populate the mobile dropdown from the ESP32 scan cache. Manual SSID entry remains available.
+- During BLE device setup, tap `Load nearby Wi-Fi over BLE` to populate the mobile dropdown from the ESP32 BLE scan cache. This requires a native development build because Expo Go cannot load the BLE native module.
+- The `PlantLab-Setup` SoftAP page remains available as a compatibility fallback. Manual SSID entry remains available in both flows.
 - iOS simulator can use `http://127.0.0.1:8000`
 - physical devices should use your Mac's LAN IP, for example `http://192.168.x.x:8000`
 

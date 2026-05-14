@@ -18,6 +18,7 @@
 #include "espnow_test_protocol.h"
 #include "platform/platform_client.h"
 #include "provisioning/ble_provisioning.h"
+#include "provisioning/wifi_networks_payload.h"
 #include "sensors/dht22_sensor.h"
 #include "sensors/moisture_sensor.h"
 #include "system/power_button.h"
@@ -38,6 +39,7 @@ constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
 constexpr uint32_t kBleProvisioningTimeoutMs = 10UL * 60UL * 1000UL;
+constexpr uint32_t kBleWifiScanTimeoutMs = 15000UL;
 constexpr uint32_t kFactoryResetHoldMs = 10000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
@@ -147,6 +149,9 @@ String g_pending_backend_url;
 String g_pending_platform_url;
 String g_pending_return_url;
 std::vector<WiFiNetworkOption> g_cached_wifi_networks;
+bool g_ble_wifi_scan_active = false;
+uint32_t g_ble_wifi_scan_id = 0;
+unsigned long g_ble_wifi_scan_started_at_ms = 0;
 bool g_espnow_ready = false;
 uint32_t g_next_espnow_request_id = 1;
 MasterProvisioningSession g_camera_provisioning_session{};
@@ -1322,11 +1327,51 @@ void clearConfig() {
   resetCameraProvisioningRuntime();
 }
 
+void addWifiNetworkOption(std::vector<WiFiNetworkOption>* networks, String ssid, int rssi) {
+  ssid.trim();
+  if (ssid.length() == 0) {
+    return;
+  }
+  auto existing = std::find_if(
+      networks->begin(),
+      networks->end(),
+      [&ssid](const WiFiNetworkOption& network) { return network.ssid == ssid; });
+  if (existing == networks->end()) {
+    WiFiNetworkOption network;
+    network.ssid = ssid;
+    network.rssi = rssi;
+    networks->push_back(network);
+  } else if (rssi > existing->rssi) {
+    existing->rssi = rssi;
+  }
+}
+
+void sortWifiNetworksBySignal(std::vector<WiFiNetworkOption>* networks) {
+  std::sort(
+      networks->begin(),
+      networks->end(),
+      [](const WiFiNetworkOption& left, const WiFiNetworkOption& right) {
+        if (left.rssi == right.rssi) {
+          return left.ssid < right.ssid;
+        }
+        return left.rssi > right.rssi;
+      });
+}
+
+std::vector<WiFiNetworkOption> collectWifiScanResults(int network_count) {
+  std::vector<WiFiNetworkOption> networks;
+  for (int index = 0; index < network_count; ++index) {
+    addWifiNetworkOption(&networks, WiFi.SSID(index), WiFi.RSSI(index));
+  }
+  sortWifiNetworksBySignal(&networks);
+  return networks;
+}
+
 std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
   std::vector<WiFiNetworkOption> networks;
-  Serial.println("[provisioning] scanning nearby Wi-Fi before SoftAP");
+  Serial.println("[provisioning] scanning nearby Wi-Fi for SoftAP setup");
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(false, true);
+  WiFi.disconnect(false, false);
   delay(200);
 
   const int network_count = WiFi.scanNetworks(false, true);
@@ -1336,36 +1381,8 @@ std::vector<WiFiNetworkOption> scanNearbyWifiNetworks() {
     return networks;
   }
 
-  for (int index = 0; index < network_count; ++index) {
-    String ssid = WiFi.SSID(index);
-    ssid.trim();
-    if (ssid.length() == 0) {
-      continue;
-    }
-    const int rssi = WiFi.RSSI(index);
-    auto existing = std::find_if(
-        networks.begin(),
-        networks.end(),
-        [&ssid](const WiFiNetworkOption& network) { return network.ssid == ssid; });
-    if (existing == networks.end()) {
-      WiFiNetworkOption network;
-      network.ssid = ssid;
-      network.rssi = rssi;
-      networks.push_back(network);
-    } else if (rssi > existing->rssi) {
-      existing->rssi = rssi;
-    }
-  }
+  networks = collectWifiScanResults(network_count);
   WiFi.scanDelete();
-  std::sort(
-      networks.begin(),
-      networks.end(),
-      [](const WiFiNetworkOption& left, const WiFiNetworkOption& right) {
-        if (left.rssi == right.rssi) {
-          return left.ssid < right.ssid;
-        }
-        return left.rssi > right.rssi;
-      });
   Serial.printf("[provisioning] captured %u nearby network(s)\n", static_cast<unsigned>(networks.size()));
   return networks;
 }
@@ -1394,6 +1411,118 @@ void handleWifiNetworksJson() {
   serializeJson(payload, body);
   g_web_server.sendHeader("Access-Control-Allow-Origin", "*");
   g_web_server.send(200, "application/json", body);
+}
+
+std::string buildBleWifiNetworksPayload(const std::vector<WiFiNetworkOption>& networks) {
+  std::vector<plantlab::WifiNetworkOption> options;
+  options.reserve(networks.size());
+  for (const WiFiNetworkOption& network : networks) {
+    options.push_back(plantlab::WifiNetworkOption{network.ssid.c_str(), network.rssi});
+  }
+  return plantlab::buildBleWifiNetworksJson(options, g_ble_wifi_scan_id, 0);
+}
+
+std::string buildBleWifiNetworksPayloadPage(const std::vector<WiFiNetworkOption>& networks, size_t cursor) {
+  std::vector<plantlab::WifiNetworkOption> options;
+  options.reserve(networks.size());
+  for (const WiFiNetworkOption& network : networks) {
+    options.push_back(plantlab::WifiNetworkOption{network.ssid.c_str(), network.rssi});
+  }
+  return plantlab::buildBleWifiNetworksJson(options, g_ble_wifi_scan_id, cursor);
+}
+
+void publishBleWifiScanStatus(const char* status) {
+  g_ble_provisioning.setWifiNetworksJson(
+      plantlab::buildBleWifiNetworksStatusJson(status, g_ble_wifi_scan_id, g_cached_wifi_networks.size()));
+}
+
+void publishBleWifiScanPage(size_t cursor = 0) {
+  g_ble_provisioning.setWifiNetworksJson(buildBleWifiNetworksPayloadPage(g_cached_wifi_networks, cursor));
+}
+
+void stopBleWifiScanRadio() {
+  WiFi.scanDelete();
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_OFF);
+}
+
+void finishBleWifiScan(int network_count) {
+  g_cached_wifi_networks = collectWifiScanResults(network_count);
+  g_ble_wifi_scan_active = false;
+  stopBleWifiScanRadio();
+  if (g_cached_wifi_networks.empty()) {
+    Serial.println("[provisioning] BLE Wi-Fi scan completed with no visible 2.4 GHz networks");
+    publishBleWifiScanStatus(plantlab::kBleWifiScanStatusEmpty);
+    return;
+  }
+  Serial.printf(
+      "[provisioning] BLE Wi-Fi scan completed: %u network(s)\n",
+      static_cast<unsigned>(g_cached_wifi_networks.size()));
+  publishBleWifiScanPage(0);
+}
+
+void failBleWifiScan(const char* status, const char* log_message) {
+  g_ble_wifi_scan_active = false;
+  stopBleWifiScanRadio();
+  Serial.println(log_message);
+  publishBleWifiScanStatus(status);
+}
+
+void startBleWifiScan(unsigned long now) {
+  if (g_ble_wifi_scan_active) {
+    publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+    return;
+  }
+
+  ++g_ble_wifi_scan_id;
+  g_ble_wifi_scan_started_at_ms = now;
+  g_ble_wifi_scan_active = true;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(false, false);
+  WiFi.scanDelete();
+  const int scan_result = WiFi.scanNetworks(true, true);
+  publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+
+  if (scan_result >= 0) {
+    finishBleWifiScan(scan_result);
+    return;
+  }
+  if (scan_result != WIFI_SCAN_RUNNING) {
+    failBleWifiScan(plantlab::kBleWifiScanStatusError, "[provisioning] BLE Wi-Fi scan failed to start");
+  }
+}
+
+void serviceBleWifiScan(unsigned long now) {
+  if (g_ble_provisioning.hasPendingWifiScanRequest()) {
+    const plantlab::BleWifiScanRequest request = g_ble_provisioning.takePendingWifiScanRequest();
+    if (request.command == plantlab::BleWifiScanCommand::kStart) {
+      startBleWifiScan(now);
+    } else if (request.command == plantlab::BleWifiScanCommand::kPage) {
+      if (g_ble_wifi_scan_active) {
+        publishBleWifiScanStatus(plantlab::kBleWifiScanStatusScanning);
+      } else {
+        publishBleWifiScanPage(request.cursor);
+      }
+    }
+  }
+
+  if (!g_ble_wifi_scan_active) {
+    return;
+  }
+  if (now - g_ble_wifi_scan_started_at_ms >= kBleWifiScanTimeoutMs) {
+    failBleWifiScan(plantlab::kBleWifiScanStatusTimeout, "[provisioning] BLE Wi-Fi scan timed out");
+    return;
+  }
+  const int scan_result = WiFi.scanComplete();
+  if (scan_result == WIFI_SCAN_RUNNING) {
+    return;
+  }
+  if (scan_result < 0) {
+    failBleWifiScan(plantlab::kBleWifiScanStatusError, "[provisioning] BLE Wi-Fi scan failed");
+    return;
+  }
+  finishBleWifiScan(scan_result);
 }
 
 String connectingPageHtml(const String& return_url) {
@@ -1695,6 +1824,10 @@ bool commitBleProvisioningPayload(const plantlab::BleProvisioningPayload& payloa
 }
 
 void stopBleProvisioningMode() {
+  if (g_ble_wifi_scan_active) {
+    g_ble_wifi_scan_active = false;
+    stopBleWifiScanRadio();
+  }
   if (g_ble_provisioning.active()) {
     g_ble_provisioning.stop();
   }
@@ -1717,9 +1850,11 @@ bool startBleProvisioningMode() {
   g_device_mode = DeviceMode::kProvisioning;
   updateStatusLed();
 
+  g_cached_wifi_networks.clear();
+  g_ble_wifi_scan_active = false;
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
-  delay(100);
+  delay(50);
 
   const String advertised_name = bleProvisioningDeviceName();
   const String fallback_platform_url = runtimePlatformUrl();
@@ -1739,13 +1874,16 @@ bool startBleProvisioningMode() {
     updateStatusLed();
     return false;
   }
+  publishBleWifiScanStatus(plantlab::kBleWifiScanStatusIdle);
 
   Serial.printf(
-      "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s\n",
+      "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s wifi_networks=%s wifi_scan_control=%s\n",
       advertised_name.c_str(),
       plantlab::kBleProvisioningServiceUuid,
       plantlab::kBleProvisioningWriteCharacteristicUuid,
-      plantlab::kBleProvisioningStatusCharacteristicUuid);
+      plantlab::kBleProvisioningStatusCharacteristicUuid,
+      plantlab::kBleProvisioningWifiNetworksCharacteristicUuid,
+      plantlab::kBleProvisioningWifiScanControlCharacteristicUuid);
   return true;
 }
 
@@ -1753,6 +1891,8 @@ void serviceBleProvisioning(unsigned long now) {
   if (!g_ble_provisioning.active()) {
     return;
   }
+
+  serviceBleWifiScan(now);
 
   if (g_ble_provisioning.hasPendingResult()) {
     const plantlab::ProvisioningParseResult result = g_ble_provisioning.takePendingResult();

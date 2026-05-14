@@ -38,6 +38,9 @@ from services.platform_runtime import PlatformRuntime
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_PROVISIONING_API_URL = "https://plantlab-provision-api-418533861080.us-central1.run.app"
+
+
 class ProvisioningController:
     def __init__(self, config_path: str = "config.gcp.yaml") -> None:
         config = load_config(config_path)
@@ -53,8 +56,7 @@ class ProvisioningController:
 
         backend_url = (
             provisioning_config.get("backend_url")
-            or platform_config.get("url")
-            or "https://marspotatolab.com"
+            or DEFAULT_PROVISIONING_API_URL
         )
         platform_url = platform_config.get("url")
         state_file = provisioning_config.get("state_file") or "data/provisioning/device_config.json"
