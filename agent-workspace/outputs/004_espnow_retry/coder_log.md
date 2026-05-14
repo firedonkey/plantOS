@@ -1,2 +1,0 @@
-# Coder Log
-

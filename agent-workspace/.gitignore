@@ -1,9 +1,6 @@
 APPROVED_PLAN
 .*_attempt_*.md
 scripts/__pycache__/
-outputs/*/APPROVED_PLAN
-outputs/*/.*_attempt_*.md
-outputs/*/tmp/
-outputs/*/progress.log
-outputs/*/heartbeat.json
-outputs/*/current_stage.txt
+
+# Agent execution outputs are local runtime artifacts.
+outputs/
