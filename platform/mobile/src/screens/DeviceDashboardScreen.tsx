@@ -35,7 +35,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     isActionBlocked,
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
-  const { token, session } = useSession();
+  const { token } = useSession();
 
   if (!deviceId) {
     return (
@@ -97,7 +97,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
 
           <RecentImageGallery
             images={dashboard.recentImages}
-            imageHeaders={session?.mode === "api" && token ? { Authorization: `Bearer ${token}` } : undefined}
+            imageHeaders={token ? { Authorization: `Bearer ${token}` } : undefined}
             captureDisabled={isCommandRunning || isActionBlocked("capture_image")}
             captureLabel={
               activeCommandAction === "capture_image" || isActionBlocked("capture_image")

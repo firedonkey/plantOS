@@ -30,6 +30,8 @@ class Settings:
     storage_backend: str = "local"
     upload_dir: str = "data/uploads"
     gcs_bucket_name: str | None = None
+    image_url_strategy: str | None = None
+    image_signed_url_ttl_seconds: int = 30 * 60
     session_secret: str = "dev-only-change-me"
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -59,6 +61,12 @@ class Settings:
     def effective_provisioning_public_url(self) -> str:
         return (self.provisioning_public_url or self.provisioning_api_url).rstrip("/")
 
+    @property
+    def effective_image_url_strategy(self) -> str:
+        if self.image_url_strategy:
+            return self.image_url_strategy
+        return "signed_url" if self.storage_backend == "gcs" else "proxy"
+
     def validate(self) -> None:
         if self.is_production and self.database_url.startswith("sqlite"):
             raise ValueError("PostgreSQL DATABASE_URL or Cloud SQL DB_PASSWORD is required in production.")
@@ -68,6 +76,10 @@ class Settings:
             raise ValueError("PLANTLAB_UPLOAD_DIR is required when PLANTLAB_STORAGE_BACKEND=local.")
         if self.storage_backend == "gcs" and not self.gcs_bucket_name:
             raise ValueError("GCS_BUCKET_NAME is required when PLANTLAB_STORAGE_BACKEND=gcs.")
+        if self.image_url_strategy is not None and self.image_url_strategy not in {"signed_url", "proxy"}:
+            raise ValueError("PLANTLAB_IMAGE_URL_STRATEGY must be 'signed_url' or 'proxy'.")
+        if not 60 <= self.image_signed_url_ttl_seconds <= 7 * 24 * 60 * 60:
+            raise ValueError("PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS must be between 60 and 604800.")
         if bool(self.google_client_id) != bool(self.google_client_secret):
             raise ValueError("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set together.")
         if self.is_production and not self.provisioning_service_secret:
@@ -100,6 +112,11 @@ def get_settings() -> Settings:
         storage_backend=os.getenv("PLANTLAB_STORAGE_BACKEND", Settings.storage_backend).lower(),
         upload_dir=os.getenv("PLANTLAB_UPLOAD_DIR", Settings.upload_dir),
         gcs_bucket_name=_optional_env("GCS_BUCKET_NAME"),
+        image_url_strategy=(_optional_env("PLANTLAB_IMAGE_URL_STRATEGY") or "").lower() or None,
+        image_signed_url_ttl_seconds=_env_int(
+            "PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS",
+            default=Settings.image_signed_url_ttl_seconds,
+        ),
         session_secret=_required_or_default_secret("APP_SECRET_KEY", legacy_name="PLANTLAB_SESSION_SECRET"),
         google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),

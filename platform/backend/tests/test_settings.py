@@ -45,6 +45,51 @@ def test_gcs_storage_requires_bucket(monkeypatch):
     clear_settings_cache()
 
 
+def test_gcs_storage_defaults_to_signed_image_urls(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "gcs")
+    monkeypatch.setenv("GCS_BUCKET_NAME", "plantlab-images")
+    monkeypatch.delenv("PLANTLAB_IMAGE_URL_STRATEGY", raising=False)
+    monkeypatch.delenv("PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS", raising=False)
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.effective_image_url_strategy == "signed_url"
+    assert settings.image_signed_url_ttl_seconds == 1800
+    clear_settings_cache()
+
+
+def test_local_storage_defaults_to_proxy_image_urls(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.delenv("PLANTLAB_IMAGE_URL_STRATEGY", raising=False)
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.effective_image_url_strategy == "proxy"
+    clear_settings_cache()
+
+
+def test_image_url_strategy_must_be_valid(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_IMAGE_URL_STRATEGY", "public")
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match="PLANTLAB_IMAGE_URL_STRATEGY"):
+        get_settings()
+
+    clear_settings_cache()
+
+
+def test_signed_image_url_ttl_must_be_in_safe_range(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS", "30")
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match="PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS"):
+        get_settings()
+
+    clear_settings_cache()
+
+
 def test_google_oauth_env_vars_must_be_set_together(monkeypatch):
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "client-id")
     monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)

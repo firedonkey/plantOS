@@ -45,9 +45,18 @@ export function DeviceDashboardScreen() {
 
     let cancelled = false;
     const objectUrls: string[] = [];
+    const directEntries = dashboard.recentImages
+      .filter((image) => !shouldUseImageAuthHeaders(image.url))
+      .map((image) => [image.id, image.url] as const);
+    const protectedImages = dashboard.recentImages.filter((image) => shouldUseImageAuthHeaders(image.url));
+
+    if (!protectedImages.length) {
+      setProtectedImageUrls(Object.fromEntries(directEntries));
+      return;
+    }
 
     Promise.all(
-      dashboard.recentImages.map(async (image) => {
+      protectedImages.map(async (image) => {
         const response = await fetch(image.url, { headers: imageAuthHeaders });
         if (!response.ok) {
           throw new Error(`Unable to load image: ${response.status}`);
@@ -60,12 +69,12 @@ export function DeviceDashboardScreen() {
     )
       .then((entries) => {
         if (!cancelled) {
-          setProtectedImageUrls(Object.fromEntries(entries));
+          setProtectedImageUrls(Object.fromEntries([...directEntries, ...entries]));
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setProtectedImageUrls({});
+          setProtectedImageUrls(Object.fromEntries(directEntries));
         }
       });
 
@@ -181,6 +190,11 @@ export function DeviceDashboardScreen() {
       )}
     </section>
   );
+}
+
+function shouldUseImageAuthHeaders(url: string): boolean {
+  const path = url.replace(/^https?:\/\/[^/]+/i, "");
+  return path.startsWith("/api/images/") && path.split("?")[0].endsWith("/content");
 }
 
 function formatActionLabel(action: string) {

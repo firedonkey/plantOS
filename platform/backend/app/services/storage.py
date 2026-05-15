@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Protocol
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
-from fastapi import UploadFile
+from fastapi import Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.core.settings import Settings
@@ -54,7 +54,7 @@ class GcsImageStorage:
         bucket = client.bucket(self.bucket_name)
         blob = bucket.blob(object_name)
         blob.upload_from_file(upload_file.file, content_type=upload_file.content_type)
-        return StoredFile(path=blob.public_url)
+        return StoredFile(path=f"gs://{self.bucket_name}/{object_name}")
 
 
 def get_image_storage(settings: Settings) -> ImageStorage:
@@ -82,6 +82,17 @@ def proxied_image_src(image_id: int) -> str:
     return f"/api/images/{image_id}/content"
 
 
+def image_client_url(image: object, request: Request, settings: Settings) -> str:
+    image_id = getattr(image, "id")
+    path = getattr(image, "path")
+    if settings.effective_image_url_strategy == "signed_url" and (
+        settings.storage_backend == "gcs" or _is_gcs_url(path)
+    ):
+        bucket_name, object_name = _gcs_object_from_path(path, settings)
+        return _signed_gcs_image_url(bucket_name, object_name, settings)
+    return str(request.url_for("image_content", image_id=image_id))
+
+
 def image_response(path: str, settings: Settings) -> Response:
     if settings.storage_backend == "gcs" or _is_gcs_url(path):
         bucket_name, object_name = _gcs_object_from_path(path, settings)
@@ -105,6 +116,42 @@ def _gcs_image_response(bucket_name: str, object_name: str) -> Response:
         raise RuntimeError("GCS image could not be read.") from exc
     media_type = blob.content_type or guess_type(object_name)[0] or "application/octet-stream"
     return StreamingResponse(BytesIO(data), media_type=media_type)
+
+
+def _signed_gcs_image_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+    try:
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        from google.cloud import storage
+    except ImportError as exc:
+        raise RuntimeError("google-cloud-storage is required for GCS signed image URLs.") from exc
+
+    client = storage.Client()
+    blob = client.bucket(bucket_name).blob(object_name)
+    expiration = timedelta(seconds=settings.image_signed_url_ttl_seconds)
+    try:
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=expiration,
+            method="GET",
+            client=client,
+        )
+    except AttributeError:
+        credentials = client._credentials
+        service_account_email = getattr(credentials, "service_account_email", None) or getattr(
+            credentials,
+            "signer_email",
+            None,
+        )
+        if not service_account_email:
+            raise RuntimeError("GCS signed image URLs require service account signing credentials.")
+        credentials.refresh(GoogleAuthRequest())
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=expiration,
+            method="GET",
+            service_account_email=service_account_email,
+            access_token=credentials.token,
+        )
 
 
 def _is_gcs_url(path: str) -> bool:

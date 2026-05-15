@@ -17,6 +17,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Command, CommandAction, CommandStatus, CommandTarget, Image, SensorReading, User
 from app.models.base import Base
+from app.services import storage as storage_service
 from app.services.device_nodes import upsert_device_node
 from app.web.routes import _latest_device_activity, _latest_completed_command_state, _reading_chart
 
@@ -280,6 +281,50 @@ def test_device_images_api_returns_recent_images_with_limit():
         assert payload[1]["source_hardware_device_id"] == "cam-2"
     finally:
         teardown_overrides()
+
+
+def test_device_image_apis_return_signed_urls_for_gcs_images(monkeypatch):
+    signed_calls = []
+
+    def fake_signed_url(bucket_name: str, object_name: str, settings) -> str:
+        signed_calls.append((bucket_name, object_name, settings.image_signed_url_ttl_seconds))
+        return f"https://storage.googleapis.com/{bucket_name}/{object_name}?X-Goog-Signature=test"
+
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "gcs")
+    monkeypatch.setenv("GCS_BUCKET_NAME", "plantlab-images")
+    monkeypatch.setenv("PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS", "900")
+    monkeypatch.delenv("PLANTLAB_IMAGE_URL_STRATEGY", raising=False)
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fake_signed_url)
+    get_settings.cache_clear()
+
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add(Image(device_id=device_id, path="gs://plantlab-images/device-1/newest.jpg"))
+            session.commit()
+
+        latest_response = client.get(f"/api/devices/{device_id}/images/latest")
+        list_response = client.get(f"/api/devices/{device_id}/images")
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+
+        assert latest_response.status_code == 200
+        assert list_response.status_code == 200
+        assert summary_response.status_code == 200
+        assert latest_response.json()["content_url"].startswith("https://storage.googleapis.com/plantlab-images/")
+        assert "/api/images/" not in latest_response.json()["content_url"]
+        assert list_response.json()[0]["content_url"] == latest_response.json()["content_url"]
+        assert summary_response.json()["latest_image"]["content_url"] == latest_response.json()["content_url"]
+        assert signed_calls == [
+            ("plantlab-images", "device-1/newest.jpg", 900),
+            ("plantlab-images", "device-1/newest.jpg", 900),
+            ("plantlab-images", "device-1/newest.jpg", 900),
+        ]
+    finally:
+        teardown_overrides()
+        get_settings.cache_clear()
 
 
 def test_device_images_api_returns_404_when_device_missing():

@@ -45,6 +45,7 @@ from app.services.devices import (
 )
 from app.services.images import list_recent_images_for_device
 from app.services.readings import get_latest_reading_for_device, list_recent_readings_for_device
+from app.services.storage import image_client_url
 
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -316,7 +317,7 @@ def get_device_summary(
         latest_image=(
             DeviceSummaryImageRead(
                 id=latest_image.id,
-                content_url=str(request.url_for("image_content", image_id=latest_image.id)),
+                content_url=image_client_url(latest_image, request, get_settings()),
                 timestamp=latest_image.timestamp,
                 source_hardware_device_id=latest_image.source_hardware_device_id,
             )
@@ -374,7 +375,7 @@ def get_device_latest_image(
 
     return DeviceSummaryImageRead(
         id=latest_image.id,
-        content_url=str(request.url_for("image_content", image_id=latest_image.id)),
+        content_url=image_client_url(latest_image, request, get_settings()),
         timestamp=latest_image.timestamp,
         source_hardware_device_id=latest_image.source_hardware_device_id,
     )
@@ -396,7 +397,7 @@ def get_device_images(
     return [
         DeviceSummaryImageRead(
             id=image.id,
-            content_url=str(request.url_for("image_content", image_id=image.id)),
+            content_url=image_client_url(image, request, get_settings()),
             timestamp=image.timestamp,
             source_hardware_device_id=image.source_hardware_device_id,
         )
@@ -584,7 +585,7 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
         latest_image=(
             DeviceSummaryImageRead(
                 id=latest_image.id,
-                content_url=str(request.url_for("image_content", image_id=latest_image.id)),
+                content_url=image_client_url(latest_image, request, get_settings()),
                 timestamp=latest_image.timestamp,
                 source_hardware_device_id=latest_image.source_hardware_device_id,
             )

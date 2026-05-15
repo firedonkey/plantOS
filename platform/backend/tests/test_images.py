@@ -1,4 +1,7 @@
 from collections.abc import Generator
+from io import BytesIO
+import sys
+from types import ModuleType, SimpleNamespace
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -6,13 +9,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_current_user, get_optional_current_user
-from app.core.settings import get_settings
+from app.core.settings import Settings, get_settings
 from app.db.session import get_session
 from app.main import app
 from app.models import Device, Image, User
 from app.models.base import Base
 from app.services.device_nodes import upsert_device_node
-from app.services.storage import image_src
+from app.services import storage as storage_service
+from app.services.storage import GcsImageStorage, image_client_url, image_src
 
 
 def build_client_with_device(upload_dir: str) -> tuple[TestClient, int, int]:
@@ -238,3 +242,102 @@ def test_image_content_rejects_other_users_image(tmp_path, monkeypatch):
 def test_image_src_supports_local_paths_and_public_urls():
     assert image_src("data/uploads/device-1/plant.jpg") == "/data/uploads/device-1/plant.jpg"
     assert image_src("https://storage.googleapis.com/bucket/plant.jpg") == "https://storage.googleapis.com/bucket/plant.jpg"
+
+
+def test_gcs_upload_stores_canonical_gs_path_and_content_type(monkeypatch):
+    uploaded = {}
+
+    class FakeBlob:
+        def __init__(self, object_name: str):
+            self.object_name = object_name
+
+        def upload_from_file(self, file_obj, content_type=None):
+            uploaded["object_name"] = self.object_name
+            uploaded["data"] = file_obj.read()
+            uploaded["content_type"] = content_type
+
+    class FakeBucket:
+        def __init__(self, name: str):
+            self.name = name
+
+        def blob(self, object_name: str):
+            uploaded["bucket"] = self.name
+            return FakeBlob(object_name)
+
+    class FakeStorageClient:
+        def bucket(self, name: str):
+            return FakeBucket(name)
+
+    storage_module = ModuleType("google.cloud.storage")
+    storage_module.Client = FakeStorageClient
+    cloud_module = ModuleType("google.cloud")
+    cloud_module.storage = storage_module
+    google_module = ModuleType("google")
+    google_module.cloud = cloud_module
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud_module)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", storage_module)
+
+    upload_file = SimpleNamespace(file=BytesIO(b"fake-jpeg"), content_type="image/jpeg")
+
+    stored = GcsImageStorage("plantlab-images").save_image(upload_file, device_id=7, suffix=".jpg")
+
+    assert stored.path.startswith("gs://plantlab-images/device-7/")
+    assert stored.path.endswith(".jpg")
+    assert uploaded["bucket"] == "plantlab-images"
+    assert uploaded["object_name"].startswith("device-7/")
+    assert uploaded["data"] == b"fake-jpeg"
+    assert uploaded["content_type"] == "image/jpeg"
+
+
+def test_image_client_url_signs_gs_paths_with_configured_ttl(monkeypatch):
+    calls = []
+
+    def fake_signed_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+        calls.append((bucket_name, object_name, settings.image_signed_url_ttl_seconds))
+        return f"https://signed.example/{bucket_name}/{object_name}"
+
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fake_signed_url)
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(
+        storage_backend="gcs",
+        gcs_bucket_name="plantlab-images",
+        image_signed_url_ttl_seconds=600,
+    )
+    image = SimpleNamespace(id=42, path="gs://plantlab-images/device-1/rose%20one.jpg")
+
+    url = image_client_url(image, request, settings)
+
+    assert url == "https://signed.example/plantlab-images/device-1/rose one.jpg"
+    assert calls == [("plantlab-images", "device-1/rose one.jpg", 600)]
+
+
+def test_image_client_url_signs_existing_public_gcs_urls(monkeypatch):
+    calls = []
+
+    def fake_signed_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+        calls.append((bucket_name, object_name))
+        return "https://signed.example/legacy"
+
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fake_signed_url)
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(storage_backend="gcs", gcs_bucket_name="plantlab-images")
+    image = SimpleNamespace(
+        id=43,
+        path="https://storage.googleapis.com/legacy-bucket/device-1/old%20rose.jpg",
+    )
+
+    url = image_client_url(image, request, settings)
+
+    assert url == "https://signed.example/legacy"
+    assert calls == [("legacy-bucket", "device-1/old rose.jpg")]
+
+
+def test_image_client_url_uses_backend_proxy_for_local_storage():
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(storage_backend="local")
+    image = SimpleNamespace(id=44, path="data/uploads/device-1/plant.jpg")
+
+    url = image_client_url(image, request, settings)
+
+    assert url == "https://api.example/api/images/44/content"

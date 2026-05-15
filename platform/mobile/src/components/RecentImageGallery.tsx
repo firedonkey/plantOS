@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
@@ -20,6 +21,8 @@ export function RecentImageGallery({
   captureLabel = "Capture image",
   onCapture,
 }: RecentImageGalleryProps) {
+  const [failedImageKeys, setFailedImageKeys] = useState<Record<string, true>>({});
+
   return (
     <Card>
       <View style={styles.header}>
@@ -38,16 +41,35 @@ export function RecentImageGallery({
         <Text style={styles.subtitle}>No image available yet. The gallery will populate after the device uploads its next image.</Text>
       ) : (
         <View style={styles.grid}>
-          {images.map((image) => (
-            <View key={image.id} style={styles.item}>
-              <Image source={{ uri: image.url, headers: imageHeaders }} style={styles.image} />
-              <Text style={styles.meta}>Captured {new Date(image.capturedAt).toLocaleString()}</Text>
-            </View>
-          ))}
+          {images.map((image) => {
+            const imageKey = `${image.id}:${image.url}`;
+            const source = shouldUseImageHeaders(image.url) && imageHeaders ? { uri: image.url, headers: imageHeaders } : { uri: image.url };
+            return (
+              <View key={image.id} style={styles.item}>
+                {failedImageKeys[imageKey] ? (
+                  <View style={[styles.image, styles.imageFallback]}>
+                    <Text style={styles.fallbackText}>Image unavailable</Text>
+                  </View>
+                ) : (
+                  <Image
+                    source={source}
+                    style={styles.image}
+                    onError={() => setFailedImageKeys((current) => ({ ...current, [imageKey]: true }))}
+                  />
+                )}
+                <Text style={styles.meta}>Captured {new Date(image.capturedAt).toLocaleString()}</Text>
+              </View>
+            );
+          })}
         </View>
       )}
     </Card>
   );
+}
+
+function shouldUseImageHeaders(url: string): boolean {
+  const path = url.replace(/^https?:\/\/[^/]+/i, "");
+  return path.startsWith("/api/images/") && path.split("?")[0].endsWith("/content");
 }
 
 const styles = StyleSheet.create({
@@ -59,5 +81,7 @@ const styles = StyleSheet.create({
   grid: { gap: 12 },
   item: { gap: 8 },
   image: { width: "100%", height: 220, borderRadius: 8, backgroundColor: "#dfe5e9" },
+  imageFallback: { alignItems: "center", justifyContent: "center" },
+  fallbackText: { fontSize: 14, fontWeight: "600", color: theme.colors.textSecondary },
   meta: { fontSize: 13, color: theme.colors.textSecondary },
 });
