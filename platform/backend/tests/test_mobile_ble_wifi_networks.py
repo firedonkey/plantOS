@@ -51,7 +51,8 @@ def test_mobile_wifi_dropdown_uses_ble_not_softap_networks_endpoint():
 
     assert "loadBleWifiNetworks" in screen
     assert "readBleWifiNetworksFromDevice" in screen
-    assert "Scan nearby 2.4 GHz Wi-Fi" in screen
+    assert "Looking for nearby Wi-Fi networks..." in screen
+    assert "Scan nearby 2.4 GHz Wi-Fi" not in screen
     assert "http://10.42.0.1:8080/wifi/networks" not in screen
     assert '"/wifi/networks"' not in screen
     assert "http://10.42.0.1:8080/wifi/networks" not in ble_helper
@@ -227,10 +228,11 @@ def test_mobile_add_device_keeps_manual_and_softap_fallbacks_separate():
     assert "Open PlantLab-Setup page" in screen
     assert "openSoftApSetup" in screen
     assert "loadDeviceWifiNetworks" in screen
-    assert "Scanning nearby Wi-Fi networks..." in screen
-    assert "PlantLab can only join 2.4 GHz Wi-Fi" in screen
-    assert "No 2.4 GHz networks were reported by this device. You can still type your Wi-Fi name." in screen
-    assert "PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name." in screen
+    assert "Looking for nearby Wi-Fi networks..." in screen
+    assert "PlantLab supports 2.4 GHz Wi-Fi" in screen
+    assert "setWifiSsid(ssids[0])" in screen
+    assert "No nearby 2.4 GHz networks were found. You can still type your Wi-Fi name." in screen
+    assert "These networks come from your Smart Planter. If yours is missing, type it manually." in screen
 
 
 def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
@@ -247,7 +249,7 @@ def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
     assert "setupToken: handoff.setupToken" in screen
     assert "platformUrl: blePlatformUrl" in screen
     assert "backendUrl: handoff.provisioningApiUrl" in screen
-    assert "Retry BLE provisioning" in screen
+    assert "Retry setup" in screen
     assert "maskSecret(handoff.setupToken)" not in screen
     assert 'label="Home Wi-Fi password"' in screen
     assert "secureTextEntry" in screen
@@ -295,7 +297,7 @@ def test_mobile_add_device_waits_for_online_status_after_ble_provisioning():
     assert "router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`)" in wait_online
     assert "We could not confirm your Smart Planter is online yet." in screen
     assert "Retry online check" in screen
-    assert "Retry provisioning" in screen
+    assert "Retry setup" in screen
     assert "Connecting your Smart Planter... This may take a moment." in screen
     assert "getSetupStatus" in source
     assert 'params.set("expected_device_id", expectedDeviceId)' in source
@@ -309,7 +311,7 @@ def test_mobile_add_device_ble_identity_replaces_required_serial_in_normal_flow(
 
     assert "Find PlantLab device" in screen
     assert "showSerialFallback" in screen
-    assert "Use this only when BLE setup cannot find or read the device." in screen
+    assert "Use this only when the app cannot find or read the device automatically." in screen
     assert "Verify serial and create setup token" in screen
     assert "scanForBleProvisioningDevices()" in start_identity
     assert "devices.length > 1" in start_identity

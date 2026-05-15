@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Easing, Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 
@@ -57,7 +57,6 @@ export function AddDeviceScreen() {
   const [isWaitingForOnline, setIsWaitingForOnline] = useState(false);
   const [bleProvisioningMessage, setBleProvisioningMessage] = useState<string | null>(null);
   const [bleProvisioningTone, setBleProvisioningTone] = useState<"idle" | "success" | "error">("idle");
-  const [wifiPickerOpenSignal, setWifiPickerOpenSignal] = useState(0);
   const [step, setStep] = useState<AddDeviceStep>("find_device");
   const [showSerialFallback, setShowSerialFallback] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -118,20 +117,20 @@ export function AddDeviceScreen() {
       if (devices.length === 0) {
         throw new BleProvisioningError(
           "no_devices",
-          "No PlantLab BLE setup device was found. Keep the master in BLE provisioning mode and try again.",
+          "No PlantLab setup device was found. Keep the status light blinking and try again.",
         );
       }
       if (devices.length > 1) {
         setBleDeviceOptions(devices);
         setBleDevicePickerMode("identity");
         setIsBleDevicePickerOpen(true);
-        setWifiScanMessage("Choose the PlantLab device in setup mode. Use the name suffix or strongest signal if needed.");
+        setWifiScanMessage("Choose the PlantLab device in setup mode. Use the strongest signal if you only have one planter nearby.");
         return;
       }
       await createClaimTokenFromBleDevice(devices[0]);
     } catch (err) {
       setShowSerialFallback(true);
-      setError(err instanceof Error ? err.message : "Could not find a PlantLab BLE setup device.");
+      setError(err instanceof Error ? err.message : "Could not find a PlantLab setup device.");
     } finally {
       setIsFindingBleDevice(false);
     }
@@ -168,7 +167,7 @@ export function AddDeviceScreen() {
       setHandoff(null);
       setSelectedBleDevice(null);
       setShowSerialFallback(true);
-      setError(err instanceof Error ? err.message : "Unable to read device identity over BLE.");
+      setError(err instanceof Error ? err.message : "Unable to read this device identity.");
     } finally {
       setIsSubmitting(false);
     }
@@ -217,7 +216,7 @@ export function AddDeviceScreen() {
         setBleDeviceOptions(result.devices);
         setBleDevicePickerMode("wifi");
         setIsBleDevicePickerOpen(true);
-        setWifiScanMessage("Multiple PlantLab BLE setup devices were found. Select the device to read nearby Wi-Fi.");
+        setWifiScanMessage("Multiple PlantLab setup devices were found. Select the device to read nearby Wi-Fi.");
         return;
       }
       applyBleWifiNetworksResult(result);
@@ -255,19 +254,18 @@ export function AddDeviceScreen() {
     setBleProvisioningTone("idle");
     setBleProvisioningMessage(null);
     if (ssids.length > 0) {
-      if (!wifiSsid.trim() && ssids.length === 1) {
+      if (!wifiSsid.trim()) {
         setWifiSsid(ssids[0]);
         setIsManualWifiSsid(false);
       }
-      setWifiPickerOpenSignal((value) => value + 1);
       setWifiScanMessage(
-        `Loaded ${ssids.length} nearby 2.4 GHz Wi-Fi network(s) from ${result.device.name}.${
-          result.truncated ? " The BLE list was truncated; manual entry is still available." : ""
+        `Selected ${ssids[0]} from ${ssids.length} nearby 2.4 GHz Wi-Fi network(s).${
+          result.truncated ? " More networks may be available; manual entry is still available." : ""
         }`,
       );
     } else {
       setIsManualWifiSsid(true);
-      setWifiScanMessage("No 2.4 GHz networks were reported by this device. You can still type your Wi-Fi name.");
+      setWifiScanMessage("No nearby 2.4 GHz networks were found. You can still type your Wi-Fi name.");
     }
   }
 
@@ -283,7 +281,7 @@ export function AddDeviceScreen() {
       const device = selectedBleDevice ?? (await findSingleBleProvisioningDevice());
       if (!device) {
         setBleProvisioningTone("error");
-        setBleProvisioningMessage("Select the PlantLab BLE setup device, then retry provisioning.");
+        setBleProvisioningMessage("Select the PlantLab setup device, then retry setup.");
         return;
       }
       setSelectedBleDevice(device);
@@ -348,7 +346,7 @@ export function AddDeviceScreen() {
   async function findSingleBleProvisioningDevice(): Promise<BleProvisioningDevice | null> {
     const devices = await scanForBleProvisioningDevices();
     if (devices.length === 0) {
-      throw new BleProvisioningError("no_devices", "No PlantLab BLE setup device was found. Keep the master in BLE provisioning mode and try again.");
+      throw new BleProvisioningError("no_devices", "No PlantLab setup device was found. Keep the status light blinking and try again.");
     }
     if (devices.length > 1) {
       setBleDeviceOptions(devices);
@@ -375,14 +373,14 @@ export function AddDeviceScreen() {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>DEVICE ONBOARDING</Text>
         <Text style={styles.title}>
-          {step === "find_device" ? "Add PlantLab device" : step === "waiting_online" ? "Connecting device" : "Connect Wi-Fi"}
+          {step === "find_device" ? "Add PlantLab device" : step === "waiting_online" ? "Connecting device" : "Set up Wi-Fi"}
         </Text>
         <Text style={styles.subtitle}>
           {step === "find_device"
-            ? "Find a PlantLab device over BLE, then continue with Wi-Fi provisioning."
+            ? "Put your Smart Planter in setup mode, then connect it to this app."
             : step === "waiting_online"
-              ? "Waiting for backend confirmation that your Smart Planter is online."
-            : "Choose a Wi-Fi network reported by the device, then send credentials over BLE."}
+              ? "Your Smart Planter is joining Wi-Fi and checking in."
+            : "Confirm the home Wi-Fi network and enter the password."}
         </Text>
       </View>
 
@@ -399,15 +397,20 @@ export function AddDeviceScreen() {
             onPress={startBleIdentityOnboarding}
             disabled={isFindingBleDevice || isSubmitting}
           />
-          {isFindingBleDevice || isSubmitting ? <LoadingRow text="Connecting to your Smart Planter..." /> : null}
-          <Text style={styles.meta}>Long-press GPIO14 first so the master advertises as PlantLab-Setup.</Text>
+          {isFindingBleDevice || isSubmitting ? (
+            <SetupAnimation
+              title="Connecting to your Smart Planter"
+              detail="Keep the status light blinking while the app connects."
+            />
+          ) : null}
+          <Text style={styles.meta}>Press and hold the setup button until the status light blinks, then tap Find PlantLab device.</Text>
         </Card>
       ) : null}
 
       {step === "find_device" && showSerialFallback ? (
         <Card>
           <Text style={styles.cardTitle}>QR or serial fallback</Text>
-          <Text style={styles.cardSubtitle}>Use this only when BLE setup cannot find or read the device.</Text>
+          <Text style={styles.cardSubtitle}>Use this only when the app cannot find or read the device automatically.</Text>
           <LabeledInput label="Serial number" value={serialNumber} onChangeText={setSerialNumber} placeholder="SN-ESP32-001" />
           <PrimaryButton label="Scan QR code" tone="secondary" onPress={openScanner} />
           {scanError ? <Text style={styles.error}>{scanError}</Text> : null}
@@ -417,23 +420,18 @@ export function AddDeviceScreen() {
 
       {step === "wifi_provisioning" && handoff ? (
         <Card>
-          <Text style={styles.cardTitle}>BLE provisioning</Text>
-          <Text style={styles.cardSubtitle}>
-            PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name.
-          </Text>
-          <PrimaryButton
-            label={isLoadingWifiNetworks ? "Scanning..." : "Scan nearby 2.4 GHz Wi-Fi"}
-            onPress={loadDeviceWifiNetworks}
-            disabled={isLoadingWifiNetworks}
-          />
-          {isLoadingWifiNetworks ? <LoadingRow text="Scanning nearby Wi-Fi networks..." /> : null}
+          <Text style={styles.cardTitle}>Set up Wi-Fi</Text>
+          <Text style={styles.cardSubtitle}>PlantLab supports 2.4 GHz Wi-Fi. The app will use the strongest network reported by your Smart Planter.</Text>
+          {isLoadingWifiNetworks ? <LoadingRow text="Looking for nearby Wi-Fi networks..." /> : null}
           {wifiScanMessage ? <Text style={styles.meta}>{wifiScanMessage}</Text> : null}
-          {selectedBleDevice ? <Text style={styles.meta}>Selected BLE device: {bleDeviceLabel(selectedBleDevice)}</Text> : null}
+          {!isLoadingWifiNetworks && selectedBleDevice && wifiSsidOptions.length === 0 ? (
+            <PrimaryButton label="Refresh Wi-Fi networks" tone="secondary" onPress={loadDeviceWifiNetworks} disabled={isLoadingWifiNetworks} />
+          ) : null}
+          {selectedBleDevice ? <Text style={styles.meta}>Connected device: {bleDeviceLabel(selectedBleDevice)}</Text> : null}
           <WifiSsidPicker
             manualMode={isManualWifiSsid}
             onChangeManualMode={setIsManualWifiSsid}
             onChangeSsid={updateWifiSsid}
-            openSignal={wifiPickerOpenSignal}
             options={wifiSsidOptions}
             value={wifiSsid}
           />
@@ -441,7 +439,7 @@ export function AddDeviceScreen() {
             label="Home Wi-Fi password"
             onChangeText={updateWifiPassword}
             onToggleVisible={() => setShowWifiPassword((value) => !value)}
-            placeholder="Required for BLE provisioning"
+            placeholder="Wi-Fi password"
             value={wifiPassword}
             visible={showWifiPassword}
           />
@@ -451,16 +449,26 @@ export function AddDeviceScreen() {
             onPress={sendProvisioningOverBle}
             disabled={!canProvisionOverBle}
           />
-          {isProvisioningOverBle ? <LoadingRow text="Connecting your Smart Planter... This may take a moment." /> : null}
+          {isProvisioningOverBle ? (
+            <SetupAnimation
+              title="Connecting your Smart Planter"
+              detail="Sending Wi-Fi details and waiting for the device to restart."
+            />
+          ) : null}
           {!canConfirmWifiDetails ? <Text style={styles.meta}>Select or type your Wi-Fi name, then enter the Wi-Fi password to continue.</Text> : null}
-          {!blePlatformUrl ? <Text style={styles.error}>A reachable platform URL is required before BLE provisioning.</Text> : null}
+          {!blePlatformUrl ? <Text style={styles.error}>A reachable platform URL is required before setup can finish.</Text> : null}
           {bleProvisioningMessage ? (
             <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
               {bleProvisioningMessage}
             </Text>
           ) : null}
           {bleProvisioningTone === "error" ? (
-            <PrimaryButton label="Retry BLE provisioning" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
+            <>
+              <PrimaryButton label="Retry setup" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
+              {!isLoadingWifiNetworks ? (
+                <PrimaryButton label="Refresh Wi-Fi networks" tone="secondary" onPress={loadDeviceWifiNetworks} disabled={isLoadingWifiNetworks} />
+              ) : null}
+            </>
           ) : null}
         </Card>
       ) : null}
@@ -468,8 +476,13 @@ export function AddDeviceScreen() {
       {step === "waiting_online" && handoff ? (
         <Card>
           <Text style={styles.cardTitle}>Connecting your Smart Planter...</Text>
-          <Text style={styles.cardSubtitle}>This may take a moment.</Text>
-          {isWaitingForOnline ? <LoadingRow text="Connecting your Smart Planter... This may take a moment." /> : null}
+          <Text style={styles.cardSubtitle}>Your planter is joining Wi-Fi and checking in with PlantLab.</Text>
+          {isWaitingForOnline ? (
+            <SetupAnimation
+              title="Checking connection"
+              detail="Keep the planter powered on and close to your Wi-Fi router."
+            />
+          ) : null}
           {bleProvisioningMessage ? (
             <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
               {bleProvisioningMessage}
@@ -478,7 +491,7 @@ export function AddDeviceScreen() {
           {bleProvisioningTone === "error" ? (
             <>
               <PrimaryButton label="Retry online check" tone="secondary" onPress={() => waitForProvisionedDeviceOnline(selectedBleDevice)} disabled={isWaitingForOnline} />
-              <PrimaryButton label="Retry provisioning" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
+              <PrimaryButton label="Retry setup" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
             </>
           ) : null}
         </Card>
@@ -520,7 +533,7 @@ export function AddDeviceScreen() {
           <View style={styles.pickerPanel}>
             <Text style={styles.cardTitle}>Choose setup device</Text>
             <Text style={styles.cardSubtitle}>
-              Choose the PlantLab device in setup mode. Use the name suffix on the device label or serial monitor if needed.
+              Choose the PlantLab device in setup mode. Use the strongest signal if you only have one planter nearby.
             </Text>
             {bleDeviceOptions.map((device) => (
               <PrimaryButton
@@ -544,20 +557,13 @@ type WifiSsidPickerProps = {
   value: string;
   options: string[];
   manualMode: boolean;
-  openSignal: number;
   onChangeSsid: (value: string) => void;
   onChangeManualMode: (value: boolean) => void;
 };
 
-function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, onChangeManualMode }: WifiSsidPickerProps) {
+function WifiSsidPicker({ value, options, manualMode, onChangeSsid, onChangeManualMode }: WifiSsidPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const availableOptions = options;
-
-  useEffect(() => {
-    if (openSignal > 0 && availableOptions.length > 0) {
-      setIsOpen(true);
-    }
-  }, [availableOptions.length, openSignal]);
 
   function selectSsid(ssid: string) {
     onChangeSsid(ssid);
@@ -572,11 +578,11 @@ function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, 
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>Home Wi-Fi SSID</Text>
+      <Text style={styles.label}>Home Wi-Fi network</Text>
       <PrimaryButton
-        label={availableOptions.length > 0 ? `Choose scanned Wi-Fi (${availableOptions.length})` : "No scanned Wi-Fi networks"}
+        label={value && !manualMode ? `Selected: ${value}` : availableOptions.length > 0 ? "Choose Wi-Fi network" : "Type Wi-Fi name manually"}
         tone="secondary"
-        onPress={() => setIsOpen(true)}
+        onPress={availableOptions.length > 0 ? () => setIsOpen(true) : selectManual}
       />
       <TextInput
         autoCapitalize="none"
@@ -590,7 +596,7 @@ function WifiSsidPicker({ value, options, manualMode, openSignal, onChangeSsid, 
         style={styles.input}
         value={value}
       />
-      <Text style={styles.meta}>PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name.</Text>
+      <Text style={styles.meta}>These networks come from your Smart Planter. If yours is missing, type it manually.</Text>
 
       <Modal animationType="slide" visible={isOpen} onRequestClose={() => setIsOpen(false)} transparent>
         <View style={styles.pickerOverlay}>
@@ -663,9 +669,77 @@ function PasswordInput({ label, value, visible, onChangeText, onToggleVisible, p
           textContentType="password"
           value={value}
         />
-        <Pressable accessibilityRole="button" onPress={onToggleVisible} style={styles.passwordToggle}>
-          <Text style={styles.passwordToggleLabel}>{visible ? "Hide" : "Show"}</Text>
+        <Pressable
+          accessibilityLabel={visible ? "Hide Wi-Fi password" : "Show Wi-Fi password"}
+          accessibilityRole="button"
+          onPress={onToggleVisible}
+          style={styles.passwordToggle}
+        >
+          <View style={styles.eyeIcon}>
+            <View style={styles.eyePupil} />
+            {!visible ? <View style={styles.eyeSlash} /> : null}
+          </View>
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SetupAnimation({ title, detail }: { title: string; detail: string }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const ringScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const ringOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.55, 1],
+  });
+  const signalOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 1],
+  });
+
+  return (
+    <View style={styles.setupAnimation}>
+      <View style={styles.setupVisual}>
+        <Animated.View style={[styles.setupRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
+        <View style={styles.setupSprout}>
+          <View style={styles.setupStem} />
+          <View style={[styles.setupLeaf, styles.setupLeafLeft]} />
+          <View style={[styles.setupLeaf, styles.setupLeafRight]} />
+        </View>
+      </View>
+      <View style={styles.setupText}>
+        <Text style={styles.setupTitle}>{title}</Text>
+        <Text style={styles.meta}>{detail}</Text>
+        <View style={styles.signalDots}>
+          <Animated.View style={[styles.signalDot, { opacity: signalOpacity }]} />
+          <Animated.View style={[styles.signalDot, styles.signalDotMiddle, { opacity: ringOpacity }]} />
+          <Animated.View style={[styles.signalDot, { opacity: signalOpacity }]} />
+        </View>
       </View>
     </View>
   );
@@ -755,14 +829,14 @@ function wifiScanErrorMessage(err: unknown): string {
   if (err instanceof BleProvisioningError) {
     return err.message;
   }
-  return "Could not scan nearby 2.4 GHz Wi-Fi over BLE. Type the SSID manually or use the SoftAP compatibility fallback.";
+  return "Could not scan nearby 2.4 GHz Wi-Fi. Type the Wi-Fi name manually or use the compatibility fallback.";
 }
 
 function provisioningErrorMessage(err: unknown): string {
   if (err instanceof BleProvisioningError) {
     return err.message;
   }
-  return "Could not provision the device over BLE. Retry, or use the SoftAP compatibility fallback.";
+  return "Could not finish device setup. Retry, or use the compatibility fallback.";
 }
 
 const styles = StyleSheet.create({
@@ -796,7 +870,7 @@ const styles = StyleSheet.create({
   },
   passwordToggle: {
     minHeight: 44,
-    minWidth: 72,
+    minWidth: 52,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 8,
@@ -805,15 +879,110 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     paddingHorizontal: 12,
   },
-  passwordToggleLabel: {
-    color: theme.colors.textPrimary,
-    fontSize: 15,
-    fontWeight: "700",
+  eyeIcon: {
+    width: 25,
+    height: 16,
+    borderWidth: 2,
+    borderColor: theme.colors.textPrimary,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  eyePupil: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.textPrimary,
+  },
+  eyeSlash: {
+    position: "absolute",
+    width: 30,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: theme.colors.textPrimary,
+    transform: [{ rotate: "-35deg" }],
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  setupAnimation: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: "#f7faf6",
+    padding: 14,
+  },
+  setupVisual: {
+    width: 58,
+    height: 58,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  setupRing: {
+    position: "absolute",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: theme.colors.accent,
+    backgroundColor: "rgba(47, 125, 75, 0.08)",
+  },
+  setupSprout: {
+    width: 34,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  setupStem: {
+    width: 5,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: theme.colors.accent,
+  },
+  setupLeaf: {
+    position: "absolute",
+    top: 8,
+    width: 18,
+    height: 12,
+    borderTopLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    backgroundColor: theme.colors.accent,
+  },
+  setupLeafLeft: {
+    left: 2,
+    transform: [{ rotate: "28deg" }],
+  },
+  setupLeafRight: {
+    right: 2,
+    transform: [{ rotate: "-28deg" }],
+  },
+  setupText: {
+    flex: 1,
+    gap: 6,
+  },
+  setupTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  signalDots: {
+    flexDirection: "row",
+    gap: 5,
+    marginTop: 2,
+  },
+  signalDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: theme.colors.accent,
+  },
+  signalDotMiddle: {
+    width: 20,
   },
   meta: { fontSize: 13, color: theme.colors.textMuted },
   scannerScreen: {

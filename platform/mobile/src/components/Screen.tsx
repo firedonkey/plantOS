@@ -1,5 +1,5 @@
 import { PropsWithChildren, useEffect, useRef } from "react";
-import { RefreshControl, ScrollView, StyleSheet } from "react-native";
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet } from "react-native";
 
 import { theme } from "@/styles/theme";
 
@@ -19,28 +19,41 @@ export function Screen({ children, onRefresh, refreshing = false, scrollToTopSig
   }, [scrollToTopSignal]);
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
-        ) : undefined
-      }
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={24}
+      style={styles.container}
     >
-      {children}
-    </ScrollView>
+      <ScrollView
+        ref={scrollRef}
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
+        keyboardShouldPersistTaps="handled"
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
+          ) : undefined
+        }
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   scroll: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
   content: {
     padding: 20,
+    paddingBottom: 72,
     gap: 16,
   },
 });
