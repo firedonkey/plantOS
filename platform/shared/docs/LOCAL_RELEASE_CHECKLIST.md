@@ -15,7 +15,7 @@ Use this checklist before calling the local PlantLab stack "ready" for a real ha
 
   ```bash
   cd /Users/gary/plantOS
-  docker compose -f docker-compose.local.yml up -d --build platform
+  docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
   ```
 
 - [ ] Confirm backend health
@@ -46,7 +46,7 @@ Use this checklist before calling the local PlantLab stack "ready" for a real ha
   npm run build
   ```
 
-- [ ] Confirm `.env` points to the local backend
+- [ ] Confirm `platform/infra/env/.env` points to the local backend
 
   ```env
   VITE_API_BASE_URL=http://localhost:8000

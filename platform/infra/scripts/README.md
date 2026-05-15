@@ -85,7 +85,7 @@ Restart the local backend:
 
 ```bash
 cd /Users/gary/plantOS
-docker compose -f docker-compose.local.yml up -d --build platform
+docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
 ```
 
 Restart Expo with Node 22:
@@ -136,7 +136,7 @@ For a quick local demo bring-up:
 
 ```bash
 cd /Users/gary/plantOS
-docker compose -f docker-compose.local.yml up -d --build platform
+docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
 ```
 
 2. start standalone web:

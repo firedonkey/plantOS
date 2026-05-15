@@ -34,6 +34,10 @@ platform/backend/data/uploads/*
 !platform/backend/data/uploads/.gitkeep
 platform/gcp_debug.txt
 platform/gcp_setup_dump.sh
+platform/infra/env/.env
+platform/infra/env/.env.local
+platform/infra/env/.env.*
+platform/infra/cloud-run/.deploy_state
 
 # ESP32 local toolchain/build artifacts
 .pio-core/

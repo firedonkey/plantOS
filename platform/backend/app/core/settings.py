@@ -9,11 +9,14 @@ from dotenv import load_dotenv
 
 PLATFORM_DIR = Path(__file__).resolve().parents[2]
 ROOT_DIR = PLATFORM_DIR.parent
+INFRA_ENV_DIR = ROOT_DIR / "infra" / "env"
 DEFAULT_CLOUD_SQL_CONNECTION_NAME = "plantlab-493805:us-central1:plantlab"
 DEFAULT_DB_NAME = "plantlab"
 DEFAULT_DB_USER = "plantlab_user"
 
 load_dotenv(ROOT_DIR / ".env")
+load_dotenv(INFRA_ENV_DIR / ".env", override=True)
+load_dotenv(INFRA_ENV_DIR / ".env.local", override=True)
 load_dotenv(PLATFORM_DIR / ".env", override=True)
 
 

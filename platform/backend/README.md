@@ -20,7 +20,7 @@ Local Docker demo flow:
 
 ```bash
 cd /Users/gary/plantOS
-docker compose -f docker-compose.local.yml up -d --build platform
+docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
 ```
 
 Current local test flow:

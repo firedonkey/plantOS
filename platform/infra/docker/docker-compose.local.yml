@@ -1,3 +1,5 @@
+name: plantos
+
 services:
   postgres:
     image: postgres:16
@@ -19,12 +21,14 @@ services:
 
   platform:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../..
+      dockerfile: platform/infra/docker/Dockerfile.platform
     container_name: plantlab-local-platform
     restart: unless-stopped
     env_file:
-      - path: .env.local
+      - path: ../env/.env.local
+        required: false
+      - path: ../../../.env.local
         required: false
     depends_on:
       postgres:
@@ -48,10 +52,15 @@ services:
 
   provision-backend:
     build:
-      context: ./provision_backend
+      context: ../../../provision_backend
       dockerfile: Dockerfile
     container_name: plantlab-local-provision-backend
     restart: unless-stopped
+    env_file:
+      - path: ../env/.env.local
+        required: false
+      - path: ../../../.env.local
+        required: false
     depends_on:
       postgres:
         condition: service_healthy

@@ -14,5 +14,6 @@ platform/data
 Dockerfile*
 README.md
 deployment_readme.md
+docs/
 readme_PRD.md
 readme_provisioning.md

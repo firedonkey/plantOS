@@ -76,8 +76,9 @@ The software should include:
 
 ```text
 plantOS/
-  README.md
   docs/
+    README.md
+    deployment_readme.md
     design/
       README.md
       current_system_design.md

@@ -1,9 +1,12 @@
 # PlantLab Cloud Run Deployment Runbook
 
 This runbook prepares and executes the first controlled GCP production
-deployment for the PlantLab platform backend. It is intentionally manual:
+deployment for the PlantLab platform backend API. It is intentionally manual:
 verify every preflight item, deploy a staging or no-traffic candidate first,
 run migrations deliberately, then shift production traffic only after approval.
+
+This does not deploy the standalone web frontend. The web app should have a
+separate deployment script once the production hosting target is chosen.
 
 Do not paste secrets into shell history, logs, issue comments, or reports. Store
 secret values in Secret Manager and inject them into Cloud Run by secret name.
@@ -11,7 +14,7 @@ secret values in Secret Manager and inject them into Cloud Run by secret name.
 ## Deployment Targets
 
 - Backend entrypoint: `platform/backend/app/main.py`
-- Container entrypoint: root `Dockerfile`
+- Container entrypoint: `platform/infra/docker/Dockerfile.platform`
 - Runtime: Cloud Run service `plantlab-api`
 - Optional staging service: `plantlab-api-staging`
 - Region: `us-central1`
@@ -37,6 +40,65 @@ Deployment must pause for approval at these points:
 - Before deploying a production candidate.
 - Before shifting any production traffic.
 - Before changing custom domain mappings or client production API URLs.
+
+## Deployment Helper Script
+
+The deployment commands below are also available as subcommands in:
+
+```bash
+platform/infra/cloud-run/deploy_backend.sh
+```
+
+The helper keeps the deployment staged. It does not shift traffic unless
+`CONFIRM_SHIFT_TRAFFIC=yes` is set explicitly.
+
+Typical first production flow:
+
+```bash
+$EDITOR platform/infra/env/.env
+
+platform/infra/cloud-run/deploy_backend.sh print-config
+platform/infra/cloud-run/deploy_backend.sh preflight
+platform/infra/cloud-run/deploy_backend.sh test-local
+platform/infra/cloud-run/deploy_backend.sh build
+platform/infra/cloud-run/deploy_backend.sh backup
+platform/infra/cloud-run/deploy_backend.sh migrate
+platform/infra/cloud-run/deploy_backend.sh deploy-candidate
+platform/infra/cloud-run/deploy_backend.sh candidate-url
+```
+
+The deployment helper loads only `platform/infra/env/.env`. Keep
+`platform/infra/env/.env.local` for local Docker and direct development flows,
+not deployment.
+
+Minimum non-secret values for `platform/infra/env/.env`:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID="<oauth-client-id>"
+PLANTLAB_LOCAL_SETUP_URL="http://10.42.0.1:8080/"
+PLANTLAB_DEVICE_PLATFORM_URL="<production-api-url-or-custom-domain>"
+PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="<exact-production-web-origin-regex>"
+```
+
+After copying the candidate URL from `candidate-url`:
+
+```bash
+export VERIFY_URL="<candidate-tag-url>"
+platform/infra/cloud-run/deploy_backend.sh verify-health
+```
+
+Only after the full manual verification checklist passes:
+
+```bash
+CONFIRM_SHIFT_TRAFFIC=yes platform/infra/cloud-run/deploy_backend.sh shift-traffic
+```
+
+Rollback requires the previous stable revision name:
+
+```bash
+gcloud run revisions list --service plantlab-api --region us-central1
+ROLLBACK_REVISION="<previous-stable-revision>" platform/infra/cloud-run/deploy_backend.sh rollback
+```
 
 ## Preflight
 
@@ -64,11 +126,13 @@ git status --short
 git rev-parse --short HEAD
 ```
 
-Confirm real secrets are not tracked:
+Confirm real secrets are not tracked. Runtime/deployment env files should live
+under `platform/infra/env/`; root `.env` and `.env.local` may exist only as
+local compatibility symlinks:
 
 ```bash
-git status --short -- .env .env.local platform/.env platform/backend/.env
-git check-ignore .env .env.local platform/.env platform/backend/.env
+git status --short -- .env .env.local platform/infra/env/.env platform/infra/env/.env.local platform/.env platform/backend/.env
+git check-ignore .env .env.local platform/infra/env/.env platform/infra/env/.env.local platform/.env platform/backend/.env
 ```
 
 Confirm required APIs are enabled or explicitly approve enabling them:
@@ -172,6 +236,38 @@ PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab
 PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax
 ```
 
+Field meanings and where to find them:
+
+- `PLANTLAB_LOCAL_SETUP_URL`: the ESP32 SoftAP setup page URL used during
+  Wi-Fi onboarding. For the current firmware this should stay
+  `http://10.42.0.1:8080/` unless the ESP32 setup AP IP or port changes.
+- `PLANTLAB_DEVICE_PLATFORM_URL`: the platform API URL written into device
+  provisioning payloads. ESP32 hardware uses this URL for readings, heartbeats,
+  commands, and image upload after onboarding. Use the final production backend
+  URL that devices can reach, preferably the custom API domain. If no custom
+  domain is configured yet, use the Cloud Run service URL from:
+
+  ```bash
+  gcloud run services describe plantlab-api \
+    --region us-central1 \
+    --format='value(status.url)'
+  ```
+
+  For a no-traffic candidate, verify with the candidate tag URL first, but use
+  the stable production service URL or custom domain for device provisioning
+  once traffic is shifted.
+- `PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX`: the exact allowed browser origin for
+  the standalone web frontend. This controls production CORS/auth refresh
+  access. Get the origin from the deployed web app URL, for example
+  `https://app.example.com`, then anchor and escape it as a regex:
+
+  ```bash
+  export PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX='^https://app\.example\.com$'
+  ```
+
+  Do not use `.*` for production unless a temporary exception is explicitly
+  approved.
+
 Do not set `DATABASE_URL` for Cloud Run when using the Cloud SQL socket. The
 backend builds its PostgreSQL URL from `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and
 `CLOUD_SQL_CONNECTION_NAME`.
@@ -208,7 +304,9 @@ TAG="$(git rev-parse --short HEAD)-$(date -u +%Y%m%d%H%M%S)"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE_NAME}:${TAG}"
 
 gcloud auth configure-docker "${REGION}-docker.pkg.dev"
-gcloud builds submit --tag "$IMAGE_URI" .
+gcloud builds submit . \
+  --config platform/infra/docker/cloudbuild.platform.yaml \
+  --substitutions "_IMAGE_URI=${IMAGE_URI}"
 ```
 
 Record `IMAGE_URI` in the release notes after the build completes.

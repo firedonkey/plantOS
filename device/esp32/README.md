@@ -51,7 +51,7 @@ Start the local stack first:
 
 ```bash
 cd /Users/gary/plantOS
-docker compose --env-file .env.local -f docker-compose.local.yml up --build -d
+docker compose --env-file platform/infra/env/.env.local -f platform/infra/docker/docker-compose.local.yml up --build -d
 ```
 
 Health check:

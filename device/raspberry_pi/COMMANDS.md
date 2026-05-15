@@ -31,36 +31,37 @@ First time:
 
 ```bash
 cd ~/plantOS
-cp .env.local.example .env.local
-docker compose --env-file .env.local -f docker-compose.local.yml up --build
+mkdir -p platform/infra/env
+cp .env.local.example platform/infra/env/.env.local
+docker compose --env-file platform/infra/env/.env.local -f platform/infra/docker/docker-compose.local.yml up --build
 ```
 
 Later restarts:
 
 ```bash
 cd ~/plantOS
-docker compose --env-file .env.local -f docker-compose.local.yml up
+docker compose --env-file platform/infra/env/.env.local -f platform/infra/docker/docker-compose.local.yml up
 ```
 
 Run in background:
 
 ```bash
 cd ~/plantOS
-docker compose --env-file .env.local -f docker-compose.local.yml up -d
+docker compose --env-file platform/infra/env/.env.local -f platform/infra/docker/docker-compose.local.yml up -d
 ```
 
 Stop the stack:
 
 ```bash
 cd ~/plantOS
-docker compose -f docker-compose.local.yml down
+docker compose -f platform/infra/docker/docker-compose.local.yml down
 ```
 
 Stop and remove database volume too:
 
 ```bash
 cd ~/plantOS
-docker compose -f docker-compose.local.yml down -v
+docker compose -f platform/infra/docker/docker-compose.local.yml down -v
 ```
 
 Local URLs:
