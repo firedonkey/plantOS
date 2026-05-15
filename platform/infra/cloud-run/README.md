@@ -47,10 +47,22 @@ The deployment commands below are also available as subcommands in:
 
 ```bash
 platform/infra/cloud-run/deploy_backend.sh
+platform/infra/cloud-run/deploy_provisioning_backend.sh
 ```
 
-The helper keeps the deployment staged. It does not shift traffic unless
+The helpers keep deployment staged. They do not shift traffic unless
 `CONFIRM_SHIFT_TRAFFIC=yes` is set explicitly.
+
+PlantLab has two backend Cloud Run services:
+
+- `plantlab-provision-api`: Express provisioning service for setup-code,
+  BLE claim-token, and device registration during onboarding.
+- `plantlab-api`: FastAPI platform service for auth, dashboard data,
+  hardware readings, commands, images, and the legacy backend web routes.
+
+Deploy provisioning contract changes before platform API changes that depend on
+them. This prevents the platform API from sending a newer provisioning payload
+to an older provisioning service.
 
 Typical first production flow:
 
@@ -60,6 +72,14 @@ $EDITOR platform/infra/env/.env
 platform/infra/cloud-run/deploy_backend.sh print-config
 platform/infra/cloud-run/deploy_backend.sh preflight
 platform/infra/cloud-run/deploy_backend.sh test-local
+
+platform/infra/cloud-run/deploy_provisioning_backend.sh print-config
+platform/infra/cloud-run/deploy_provisioning_backend.sh preflight
+platform/infra/cloud-run/deploy_provisioning_backend.sh test-local
+platform/infra/cloud-run/deploy_provisioning_backend.sh build
+platform/infra/cloud-run/deploy_provisioning_backend.sh deploy-candidate
+platform/infra/cloud-run/deploy_provisioning_backend.sh candidate-url
+
 platform/infra/cloud-run/deploy_backend.sh build
 platform/infra/cloud-run/deploy_backend.sh backup
 platform/infra/cloud-run/deploy_backend.sh migrate
@@ -87,15 +107,26 @@ export VERIFY_URL="<candidate-tag-url>"
 platform/infra/cloud-run/deploy_backend.sh verify-health
 ```
 
+For the provisioning candidate:
+
+```bash
+export VERIFY_URL="<provisioning-candidate-tag-url>"
+platform/infra/cloud-run/deploy_provisioning_backend.sh verify-health
+```
+
 Only after the full manual verification checklist passes:
 
 ```bash
+CONFIRM_SHIFT_TRAFFIC=yes platform/infra/cloud-run/deploy_provisioning_backend.sh shift-traffic
 CONFIRM_SHIFT_TRAFFIC=yes platform/infra/cloud-run/deploy_backend.sh shift-traffic
 ```
 
 Rollback requires the previous stable revision name:
 
 ```bash
+gcloud run revisions list --service plantlab-provision-api --region us-central1
+ROLLBACK_REVISION="<previous-stable-revision>" platform/infra/cloud-run/deploy_provisioning_backend.sh rollback
+
 gcloud run revisions list --service plantlab-api --region us-central1
 ROLLBACK_REVISION="<previous-stable-revision>" platform/infra/cloud-run/deploy_backend.sh rollback
 ```

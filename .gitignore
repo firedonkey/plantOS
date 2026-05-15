@@ -38,6 +38,7 @@ platform/infra/env/.env
 platform/infra/env/.env.local
 platform/infra/env/.env.*
 platform/infra/cloud-run/.deploy_state
+platform/infra/cloud-run/.provisioning_deploy_state
 
 # ESP32 local toolchain/build artifacts
 .pio-core/
