@@ -833,11 +833,22 @@ def summarize_results(
 
 
 def main() -> int:
+    global MAX_RETRIES
+
     parser = argparse.ArgumentParser(description="Run the local agent pipeline.")
     parser.add_argument("--check", action="store_true", help="Validate workspace/model/test detection without running agents.")
     parser.add_argument("--resume-after-coder", action="store_true", help="Reuse outputs/<task_id>/.coder_attempt_1.md and continue with Tester/Reviewer.")
     parser.add_argument("--allow-dirty", action="store_true", help="Allow running with uncommitted changes or local commits ahead of upstream.")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=MAX_RETRIES,
+        help=f"Maximum Coder/Tester/Reviewer attempts before failing. Default: {MAX_RETRIES}.",
+    )
     args = parser.parse_args()
+    if args.max_retries < 1:
+        raise SystemExit("--max-retries must be at least 1")
+    MAX_RETRIES = args.max_retries
 
     context = task_context()
     if args.check:
