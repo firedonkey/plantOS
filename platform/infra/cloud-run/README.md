@@ -182,29 +182,32 @@ bucket-level role that satisfies the workflow.
 
 Create or update these Secret Manager secrets without printing their values:
 
-- `plantlab-db-password` -> `DB_PASSWORD`
-- `plantlab-app-secret-key` -> `APP_SECRET_KEY`
-- `plantlab-google-oauth-client-secret` -> `GOOGLE_OAUTH_CLIENT_SECRET`
-- `plantlab-provisioning-shared-secret` ->
+- `db-password` -> `DB_PASSWORD`
+- `app-secret-key` -> `APP_SECRET_KEY`
+- `google-oauth-client-id` -> `GOOGLE_OAUTH_CLIENT_ID`
+- `google-oauth-client-secret` -> `GOOGLE_OAUTH_CLIENT_SECRET`
+- `provisioning-shared-secret` ->
   `PLANTLAB_PROVISIONING_SHARED_SECRET`
 
 Confirm the secrets exist:
 
 ```bash
-gcloud secrets describe plantlab-db-password
-gcloud secrets describe plantlab-app-secret-key
-gcloud secrets describe plantlab-google-oauth-client-secret
-gcloud secrets describe plantlab-provisioning-shared-secret
+gcloud secrets describe db-password
+gcloud secrets describe app-secret-key
+gcloud secrets describe google-oauth-client-id
+gcloud secrets describe google-oauth-client-secret
+gcloud secrets describe provisioning-shared-secret
 ```
 
 Grant access to the runtime service account on each secret:
 
 ```bash
 for SECRET in \
-  plantlab-db-password \
-  plantlab-app-secret-key \
-  plantlab-google-oauth-client-secret \
-  plantlab-provisioning-shared-secret
+  db-password \
+  app-secret-key \
+  google-oauth-client-id \
+  google-oauth-client-secret \
+  provisioning-shared-secret
 do
   gcloud secrets add-iam-policy-binding "$SECRET" \
     --member "serviceAccount:${RUN_SA}" \
@@ -218,7 +221,6 @@ Required non-secret Cloud Run environment variables:
 
 ```bash
 APP_ENV=production
-PORT=8080
 GOOGLE_CLOUD_PROJECT=plantlab-493805
 PLANTLAB_STORAGE_BACKEND=gcs
 GCS_BUCKET_NAME=plantlab-images-garylu
@@ -323,8 +325,8 @@ gcloud run deploy "$STAGING_SERVICE_NAME" \
   --allow-unauthenticated \
   --service-account "$RUN_SA" \
   --add-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
-  --set-env-vars APP_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT="$PROJECT_ID",PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME="$BUCKET_NAME",DB_NAME="$DB_NAME",DB_USER="$DB_USER",CLOUD_SQL_CONNECTION_NAME="$CLOUD_SQL_CONNECTION_NAME",PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false,GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID",PLANTLAB_PROVISIONING_API_URL="$PROVISIONING_URL",PLANTLAB_PROVISIONING_PUBLIC_URL="$PROVISIONING_URL",PLANTLAB_LOCAL_SETUP_URL="$PLANTLAB_LOCAL_SETUP_URL",PLANTLAB_DEVICE_PLATFORM_URL="$PLANTLAB_DEVICE_PLATFORM_URL",PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="$PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX",PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab,PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax \
-  --set-secrets APP_SECRET_KEY=plantlab-app-secret-key:latest,DB_PASSWORD=plantlab-db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=plantlab-google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=plantlab-provisioning-shared-secret:latest
+  --set-env-vars APP_ENV=production,GOOGLE_CLOUD_PROJECT="$PROJECT_ID",PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME="$BUCKET_NAME",DB_NAME="$DB_NAME",DB_USER="$DB_USER",CLOUD_SQL_CONNECTION_NAME="$CLOUD_SQL_CONNECTION_NAME",PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false,PLANTLAB_PROVISIONING_API_URL="$PROVISIONING_URL",PLANTLAB_PROVISIONING_PUBLIC_URL="$PROVISIONING_URL",PLANTLAB_LOCAL_SETUP_URL="$PLANTLAB_LOCAL_SETUP_URL",PLANTLAB_DEVICE_PLATFORM_URL="$PLANTLAB_DEVICE_PLATFORM_URL",PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="$PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX",PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab,PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax \
+  --set-secrets GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=provisioning-shared-secret:latest
 ```
 
 ## Database Migrations
@@ -343,7 +345,9 @@ Before migration:
   service if the provisioning service shares this database.
 
 Use a Cloud Run Job with the same image, Cloud SQL attachment, service account,
-environment variables, and secrets as the API service:
+environment variables, and secrets as the API service. The migration job keeps
+`GOOGLE_OAUTH_CLIENT_ID` as a literal env var to match the existing job; the
+Cloud Run API service uses the `google-oauth-client-id` secret.
 
 ```bash
 MIGRATION_JOB=plantlab-api-migrate
@@ -359,13 +363,13 @@ gcloud run jobs "$JOB_ACTION" "$MIGRATION_JOB" \
   --image "$IMAGE_URI" \
   --region "$REGION" \
   --service-account "$RUN_SA" \
-  --add-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
+  --set-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
   --tasks 1 \
   --max-retries 0 \
   --command alembic \
   --args upgrade,head \
   --set-env-vars APP_ENV=production,GOOGLE_CLOUD_PROJECT="$PROJECT_ID",PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME="$BUCKET_NAME",DB_NAME="$DB_NAME",DB_USER="$DB_USER",CLOUD_SQL_CONNECTION_NAME="$CLOUD_SQL_CONNECTION_NAME",PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false,GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID",PLANTLAB_PROVISIONING_API_URL="$PROVISIONING_URL",PLANTLAB_PROVISIONING_PUBLIC_URL="$PROVISIONING_URL",PLANTLAB_LOCAL_SETUP_URL="$PLANTLAB_LOCAL_SETUP_URL",PLANTLAB_DEVICE_PLATFORM_URL="$PLANTLAB_DEVICE_PLATFORM_URL",PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="$PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX",PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab \
-  --set-secrets APP_SECRET_KEY=plantlab-app-secret-key:latest,DB_PASSWORD=plantlab-db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=plantlab-google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=plantlab-provisioning-shared-secret:latest
+  --set-secrets APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=provisioning-shared-secret:latest
 
 gcloud run jobs execute "$MIGRATION_JOB" --region "$REGION" --wait
 ```
@@ -384,8 +388,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --add-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
   --no-traffic \
   --tag candidate \
-  --set-env-vars APP_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT="$PROJECT_ID",PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME="$BUCKET_NAME",DB_NAME="$DB_NAME",DB_USER="$DB_USER",CLOUD_SQL_CONNECTION_NAME="$CLOUD_SQL_CONNECTION_NAME",PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false,GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID",PLANTLAB_PROVISIONING_API_URL="$PROVISIONING_URL",PLANTLAB_PROVISIONING_PUBLIC_URL="$PROVISIONING_URL",PLANTLAB_LOCAL_SETUP_URL="$PLANTLAB_LOCAL_SETUP_URL",PLANTLAB_DEVICE_PLATFORM_URL="$PLANTLAB_DEVICE_PLATFORM_URL",PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="$PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX",PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab,PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax \
-  --set-secrets APP_SECRET_KEY=plantlab-app-secret-key:latest,DB_PASSWORD=plantlab-db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=plantlab-google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=plantlab-provisioning-shared-secret:latest
+  --set-env-vars APP_ENV=production,GOOGLE_CLOUD_PROJECT="$PROJECT_ID",PLANTLAB_STORAGE_BACKEND=gcs,GCS_BUCKET_NAME="$BUCKET_NAME",DB_NAME="$DB_NAME",DB_USER="$DB_USER",CLOUD_SQL_CONNECTION_NAME="$CLOUD_SQL_CONNECTION_NAME",PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false,PLANTLAB_PROVISIONING_API_URL="$PROVISIONING_URL",PLANTLAB_PROVISIONING_PUBLIC_URL="$PROVISIONING_URL",PLANTLAB_LOCAL_SETUP_URL="$PLANTLAB_LOCAL_SETUP_URL",PLANTLAB_DEVICE_PLATFORM_URL="$PLANTLAB_DEVICE_PLATFORM_URL",PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="$PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX",PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab,PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax \
+  --set-secrets GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=provisioning-shared-secret:latest
 ```
 
 List the tagged URLs and use the candidate URL for verification before traffic

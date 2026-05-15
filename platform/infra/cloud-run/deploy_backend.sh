@@ -130,7 +130,7 @@ require_runtime_env() {
 
 runtime_env_vars() {
   require_runtime_env
-  printf '%s' "^~^APP_ENV=production~PORT=8080~GOOGLE_CLOUD_PROJECT=${PROJECT_ID}~PLANTLAB_STORAGE_BACKEND=gcs~GCS_BUCKET_NAME=${BUCKET_NAME}~DB_NAME=${DB_NAME}~DB_USER=${DB_USER}~CLOUD_SQL_CONNECTION_NAME=${CLOUD_SQL_CONNECTION_NAME}~PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false~GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}~PLANTLAB_PROVISIONING_API_URL=${PROVISIONING_URL}~PLANTLAB_PROVISIONING_PUBLIC_URL=${PROVISIONING_URL}~PLANTLAB_LOCAL_SETUP_URL=${PLANTLAB_LOCAL_SETUP_URL}~PLANTLAB_DEVICE_PLATFORM_URL=${PLANTLAB_DEVICE_PLATFORM_URL}~PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX=${PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX}~PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab~PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax"
+  printf '%s' "^~^APP_ENV=production~GOOGLE_CLOUD_PROJECT=${PROJECT_ID}~PLANTLAB_STORAGE_BACKEND=gcs~GCS_BUCKET_NAME=${BUCKET_NAME}~DB_NAME=${DB_NAME}~DB_USER=${DB_USER}~CLOUD_SQL_CONNECTION_NAME=${CLOUD_SQL_CONNECTION_NAME}~PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false~PLANTLAB_PROVISIONING_API_URL=${PROVISIONING_URL}~PLANTLAB_PROVISIONING_PUBLIC_URL=${PROVISIONING_URL}~PLANTLAB_LOCAL_SETUP_URL=${PLANTLAB_LOCAL_SETUP_URL}~PLANTLAB_DEVICE_PLATFORM_URL=${PLANTLAB_DEVICE_PLATFORM_URL}~PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX=${PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX}~PLANTLAB_STANDALONE_MOBILE_SCHEME=plantlab~PLANTLAB_STANDALONE_REFRESH_COOKIE_SAMESITE=lax"
 }
 
 migration_env_vars() {
@@ -139,7 +139,11 @@ migration_env_vars() {
 }
 
 secret_bindings() {
-  printf '%s' "APP_SECRET_KEY=plantlab-app-secret-key:latest,DB_PASSWORD=plantlab-db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=plantlab-google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=plantlab-provisioning-shared-secret:latest"
+  printf '%s' "APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=provisioning-shared-secret:latest"
+}
+
+service_secret_bindings() {
+  printf '%s' "GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,$(secret_bindings)"
 }
 
 cmd_print_config() {
@@ -196,10 +200,11 @@ cmd_preflight() {
   gcloud iam service-accounts describe "$RUN_SA"
 
   log "Confirming Secret Manager secrets exist"
-  gcloud secrets describe plantlab-db-password
-  gcloud secrets describe plantlab-app-secret-key
-  gcloud secrets describe plantlab-google-oauth-client-secret
-  gcloud secrets describe plantlab-provisioning-shared-secret
+  gcloud secrets describe db-password
+  gcloud secrets describe app-secret-key
+  gcloud secrets describe google-oauth-client-id
+  gcloud secrets describe google-oauth-client-secret
+  gcloud secrets describe provisioning-shared-secret
 
   log "Checking provisioning service health"
   curl -fsS "${PROVISIONING_URL}/health"
@@ -208,7 +213,31 @@ cmd_preflight() {
 
 cmd_test_local() {
   log "Running backend tests"
-  (cd "$REPO_ROOT/platform/backend" && ../../.venv/bin/python -m pytest tests)
+  (
+    cd "$REPO_ROOT/platform/backend"
+    env \
+      -u APP_ENV \
+      -u APP_SECRET_KEY \
+      -u CLOUD_SQL_CONNECTION_NAME \
+      -u DATABASE_URL \
+      -u DB_HOST \
+      -u DB_PASSWORD \
+      -u GCS_BUCKET_NAME \
+      -u GOOGLE_CLIENT_ID \
+      -u GOOGLE_CLIENT_SECRET \
+      -u GOOGLE_OAUTH_CLIENT_ID \
+      -u GOOGLE_OAUTH_CLIENT_SECRET \
+      -u PLANTLAB_DATABASE_URL \
+      -u PLANTLAB_DEVICE_PLATFORM_URL \
+      -u PLANTLAB_DEV_TOKEN_AUTH_ENABLED \
+      -u PLANTLAB_PROVISIONING_API_URL \
+      -u PLANTLAB_PROVISIONING_PUBLIC_URL \
+      -u PLANTLAB_PROVISIONING_SHARED_SECRET \
+      -u PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX \
+      -u PLANTLAB_STORAGE_BACKEND \
+      PLANTLAB_SKIP_DOTENV=1 \
+      ../../.venv/bin/python -m pytest tests
+  )
 }
 
 cmd_build() {
@@ -248,7 +277,7 @@ cmd_migrate() {
     --image "$IMAGE_URI" \
     --region "$REGION" \
     --service-account "$RUN_SA" \
-    --add-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
+    --set-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
     --tasks 1 \
     --max-retries 0 \
     --command alembic \
@@ -272,7 +301,7 @@ cmd_deploy_staging() {
     --service-account "$RUN_SA" \
     --add-cloudsql-instances "$CLOUD_SQL_CONNECTION_NAME" \
     --set-env-vars "$(runtime_env_vars)" \
-    --set-secrets "$(secret_bindings)"
+    --set-secrets "$(service_secret_bindings)"
 }
 
 cmd_deploy_candidate() {
@@ -289,7 +318,7 @@ cmd_deploy_candidate() {
     --no-traffic \
     --tag candidate \
     --set-env-vars "$(runtime_env_vars)" \
-    --set-secrets "$(secret_bindings)"
+    --set-secrets "$(service_secret_bindings)"
   cmd_candidate_url
 }
 
@@ -297,7 +326,8 @@ cmd_candidate_url() {
   require_command gcloud
   gcloud run services describe "$SERVICE_NAME" \
     --region "$REGION" \
-    --format='table(status.trafficStatuses.tag,status.trafficStatuses.url,status.trafficStatuses.percent)'
+    --flatten='status.traffic[]' \
+    --format='table(status.traffic.tag,status.traffic.url,status.traffic.percent,status.traffic.revisionName)'
 }
 
 cmd_verify_health() {
