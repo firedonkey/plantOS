@@ -30,14 +30,6 @@ export function DeviceListScreen() {
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {isLoading && devices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
-      {!isLoading && !error && devices.length === 0 ? (
-        <Card>
-          <Text style={styles.cardTitle}>No devices yet</Text>
-          <Text style={styles.cardSubtitle}>Start onboarding here, then come back to monitor it once the device reports.</Text>
-          <PrimaryButton label="Add device" onPress={() => router.push("/(app)/devices/add")} />
-        </Card>
-      ) : null}
-
       {devices.map((device) => (
         <Pressable key={device.id} onPress={() => router.push(`/(app)/devices/${device.id}`)}>
           <Card>

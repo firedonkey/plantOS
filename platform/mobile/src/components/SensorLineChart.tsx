@@ -70,8 +70,8 @@ export function SensorLineChart({ points, color, height = DEFAULT_HEIGHT }: Sens
               ]}
             />
           ))}
-          {chart.yAxisLabels.map((label) => (
-            <Text key={`y-axis-${label.text}`} style={[styles.yAxisLabel, { top: label.y - 7 }]}>
+          {chart.yAxisLabels.map((label, index) => (
+            <Text key={`y-axis-${index}-${label.text}`} style={[styles.yAxisLabel, { top: label.y - 7 }]}>
               {label.text}
             </Text>
           ))}
