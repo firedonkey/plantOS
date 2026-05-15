@@ -10,9 +10,45 @@
 
 namespace {
 constexpr uint32_t kHttpTimeoutMs = 10000;
+constexpr uint32_t kImageUploadTimeoutMs = 15000;
+constexpr uint32_t kImageUploadWriteIdleTimeoutMs = 5000;
+constexpr size_t kImageUploadChunkSize = 1024;
 constexpr char kDeviceTokenHeader[] = "X-Device-Token";
 constexpr char kJsonContentType[] = "application/json";
 constexpr char kMultipartContentType[] = "multipart/form-data; boundary=";
+
+bool write_all(Client& client, const uint8_t* bytes, size_t length, uint32_t idle_timeout_ms) {
+  size_t written_total = 0;
+  uint32_t last_progress_at = millis();
+  while (written_total < length) {
+    if (!client.connected()) {
+      return false;
+    }
+    if (millis() - last_progress_at >= idle_timeout_ms) {
+      return false;
+    }
+
+    const size_t remaining = length - written_total;
+    const size_t chunk_size = remaining > kImageUploadChunkSize ? kImageUploadChunkSize : remaining;
+    const size_t written = client.write(bytes + written_total, chunk_size);
+    if (written == 0) {
+      delay(10);
+      continue;
+    }
+
+    written_total += written;
+    last_progress_at = millis();
+  }
+  return true;
+}
+
+bool write_string(Client& client, const String& value, uint32_t idle_timeout_ms) {
+  return write_all(
+      client,
+      reinterpret_cast<const uint8_t*>(value.c_str()),
+      value.length(),
+      idle_timeout_ms);
+}
 }
 
 PlatformClient::PlatformClient(const char* base_url, int device_id, const char* device_token)
@@ -357,29 +393,32 @@ bool PlatformClient::upload_jpeg(
     set_error(error, "image upload connect failed");
     return false;
   }
+  client->setTimeout(kImageUploadTimeoutMs);
 
-  client->print("POST " + request_path + " HTTP/1.1\r\n");
-  client->print("Host: " + host + "\r\n");
-  client->print(String(kDeviceTokenHeader) + ": " + auth_header_value() + "\r\n");
-  client->print("Connection: close\r\n");
-  client->print("Content-Type: " + String(kMultipartContentType) + boundary + "\r\n");
-  client->print("Content-Length: " + String(content_length) + "\r\n\r\n");
-  client->print(prefix);
-  client->write(bytes, length);
-  client->print(suffix);
-
-  uint32_t started_at = millis();
-  while (client->connected() && !client->available() && millis() - started_at < kHttpTimeoutMs) {
-    delay(10);
-  }
-  if (!client->available()) {
-    set_error(error, "image upload timed out waiting for response");
+  const String headers =
+      "POST " + request_path + " HTTP/1.1\r\n"
+      "Host: " + host + "\r\n" +
+      String(kDeviceTokenHeader) + ": " + auth_header_value() + "\r\n"
+      "Connection: close\r\n"
+      "Content-Type: " + String(kMultipartContentType) + boundary + "\r\n"
+      "Content-Length: " + String(content_length) + "\r\n\r\n";
+  if (!write_string(*client, headers, kImageUploadWriteIdleTimeoutMs) ||
+      !write_string(*client, prefix, kImageUploadWriteIdleTimeoutMs) ||
+      !write_all(*client, bytes, length, kImageUploadWriteIdleTimeoutMs) ||
+      !write_string(*client, suffix, kImageUploadWriteIdleTimeoutMs)) {
+      set_error(error, "image upload write failed before response");
     client->stop();
     return false;
   }
 
   String status_line = client->readStringUntil('\n');
   status_line.trim();
+  if (status_line.length() == 0) {
+    set_error(error, "image upload timed out waiting for response");
+    client->stop();
+    return false;
+  }
+
   int status_code = 0;
   int first_space = status_line.indexOf(' ');
   if (first_space >= 0) {
@@ -387,6 +426,13 @@ bool PlatformClient::upload_jpeg(
     String code = second_space > first_space ? status_line.substring(first_space + 1, second_space)
                                              : status_line.substring(first_space + 1);
     status_code = code.toInt();
+  }
+  if (http_status_code != nullptr) {
+    *http_status_code = status_code;
+  }
+  if (status_code >= 200 && status_code < 300) {
+    client->stop();
+    return true;
   }
 
   bool headers_done = false;
@@ -404,17 +450,8 @@ bool PlatformClient::upload_jpeg(
   }
   client->stop();
 
-  if (status_code < 200 || status_code >= 300) {
-    if (http_status_code != nullptr) {
-      *http_status_code = status_code;
-    }
-    set_error(error, "image upload failed with HTTP " + String(status_code) + ": " + response_body);
-    return false;
-  }
-  if (http_status_code != nullptr) {
-    *http_status_code = status_code;
-  }
-  return true;
+  set_error(error, "image upload failed with HTTP " + String(status_code) + ": " + response_body);
+  return false;
 }
 
 bool PlatformClient::json_post(
