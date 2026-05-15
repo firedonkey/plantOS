@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 
-import { requestDeviceClaimToken, requestDeviceSetupCode } from "@/api/devices";
+import { getSetupStatus, requestDeviceClaimToken, requestDeviceSetupCode } from "@/api/devices";
 import type { DeviceSetupHandoff } from "@/api/devices";
 import { getApiBaseUrl } from "@/api/config";
 import {
@@ -17,7 +17,6 @@ import {
   readBleWifiNetworksFromDevice,
   scanForBleProvisioningDevices,
 } from "@/ble/bleProvisioning";
-import { maskSecret } from "@/ble/bleProvisioningPayload";
 import { Card } from "@/components/Card";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -25,14 +24,16 @@ import { StatusChip } from "@/components/StatusChip";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
 
-const DEFAULT_DEVICE_NAME = "esp32";
-const DEFAULT_DEVICE_LOCATION = "1";
-type AddDeviceStep = "find_device" | "wifi_provisioning";
+const DEFAULT_DEVICE_NAME = "Smart Planter";
+const ONLINE_POLL_INTERVAL_MS = 2000;
+const ONLINE_POLL_TIMEOUT_MS = 90000;
+const ONLINE_CONFIRMATION_TIMEOUT =
+  "We could not confirm your Smart Planter is online yet. Please make sure your Wi-Fi password is correct and the device is nearby.";
+type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online";
 
 export function AddDeviceScreen() {
   const { token } = useSession();
   const [deviceName, setDeviceName] = useState("");
-  const [location, setLocation] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [wifiSsid, setWifiSsid] = useState("");
   const [isManualWifiSsid, setIsManualWifiSsid] = useState(false);
@@ -53,6 +54,7 @@ export function AddDeviceScreen() {
   const [bleDevicePickerMode, setBleDevicePickerMode] = useState<"identity" | "wifi">("identity");
   const [isFindingBleDevice, setIsFindingBleDevice] = useState(false);
   const [isProvisioningOverBle, setIsProvisioningOverBle] = useState(false);
+  const [isWaitingForOnline, setIsWaitingForOnline] = useState(false);
   const [bleProvisioningMessage, setBleProvisioningMessage] = useState<string | null>(null);
   const [bleProvisioningTone, setBleProvisioningTone] = useState<"idle" | "success" | "error">("idle");
   const [wifiPickerOpenSignal, setWifiPickerOpenSignal] = useState(0);
@@ -64,7 +66,7 @@ export function AddDeviceScreen() {
   const canSubmit = serialNumber.trim().length > 0 && !isSubmitting;
   const canConfirmWifiDetails = wifiSsid.trim().length > 0 && wifiPassword.length > 0;
   const blePlatformUrl = handoff?.platformUrl?.trim() || getApiBaseUrl().trim();
-  const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle);
+  const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle && !isWaitingForOnline);
 
   function updateWifiSsid(value: string) {
     setWifiSsid(value);
@@ -86,7 +88,6 @@ export function AddDeviceScreen() {
         {
           serialNumber: serialNumber.trim(),
           deviceName: deviceName.trim() || DEFAULT_DEVICE_NAME,
-          location: location.trim() || DEFAULT_DEVICE_LOCATION,
         },
         token ?? undefined,
       );
@@ -151,7 +152,6 @@ export function AddDeviceScreen() {
       const result = await requestDeviceClaimToken(
         {
           deviceName: deviceName.trim() || DEFAULT_DEVICE_NAME,
-          location: location.trim() || DEFAULT_DEVICE_LOCATION,
           deviceIdentity: identity,
         },
         token ?? undefined,
@@ -230,7 +230,7 @@ export function AddDeviceScreen() {
 
   async function loadSelectedBleDeviceWifiNetworks(device: BleProvisioningDevice) {
     setIsBleDevicePickerOpen(false);
-    setWifiScanMessage("Scanning nearby 2.4 GHz Wi-Fi...");
+    setWifiScanMessage("Scanning nearby Wi-Fi networks...");
     setIsLoadingWifiNetworks(true);
     try {
       const result = await readBleWifiNetworksFromDevice(device.id);
@@ -255,6 +255,10 @@ export function AddDeviceScreen() {
     setBleProvisioningTone("idle");
     setBleProvisioningMessage(null);
     if (ssids.length > 0) {
+      if (!wifiSsid.trim() && ssids.length === 1) {
+        setWifiSsid(ssids[0]);
+        setIsManualWifiSsid(false);
+      }
       setWifiPickerOpenSignal((value) => value + 1);
       setWifiScanMessage(
         `Loaded ${ssids.length} nearby 2.4 GHz Wi-Fi network(s) from ${result.device.name}.${
@@ -292,12 +296,52 @@ export function AddDeviceScreen() {
         backendUrl: handoff.provisioningApiUrl,
         onProgress: handleBleProvisioningProgress,
       });
-      setBleProvisioningTone("success");
+      await waitForProvisionedDeviceOnline(device);
     } catch (err) {
       setBleProvisioningTone("error");
       setBleProvisioningMessage(provisioningErrorMessage(err));
     } finally {
       setIsProvisioningOverBle(false);
+    }
+  }
+
+  async function waitForProvisionedDeviceOnline(device?: BleProvisioningDevice | null) {
+    if (!handoff) {
+      return;
+    }
+    const expectedDeviceId = handoff.expectedDeviceId ?? device?.identity?.hardwareDeviceId;
+    const fallbackDeviceName = deviceName.trim() || DEFAULT_DEVICE_NAME;
+    setStep("waiting_online");
+    setIsWaitingForOnline(true);
+    setBleProvisioningTone("idle");
+    setBleProvisioningMessage("Connecting your Smart Planter... This may take a moment.");
+    try {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt <= ONLINE_POLL_TIMEOUT_MS) {
+        const result = await getSetupStatus(
+          {
+            expectedDeviceId,
+            deviceName: fallbackDeviceName,
+            expectImage: false,
+          },
+          token ?? undefined,
+        );
+        setUsedMock((current) => current || result.usedMock);
+        if (result.status.deviceId && (result.status.online || result.status.ready)) {
+          setBleProvisioningTone("success");
+          setBleProvisioningMessage("Smart Planter is online.");
+          router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`);
+          return;
+        }
+        await sleep(ONLINE_POLL_INTERVAL_MS);
+      }
+      setBleProvisioningTone("error");
+      setBleProvisioningMessage(ONLINE_CONFIRMATION_TIMEOUT);
+    } catch (err) {
+      setBleProvisioningTone("error");
+      setBleProvisioningMessage(err instanceof Error ? err.message : ONLINE_CONFIRMATION_TIMEOUT);
+    } finally {
+      setIsWaitingForOnline(false);
     }
   }
 
@@ -330,10 +374,14 @@ export function AddDeviceScreen() {
     <Screen scrollToTopSignal={step}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>DEVICE ONBOARDING</Text>
-        <Text style={styles.title}>{step === "find_device" ? "Add PlantLab device" : "Connect Wi-Fi"}</Text>
+        <Text style={styles.title}>
+          {step === "find_device" ? "Add PlantLab device" : step === "waiting_online" ? "Connecting device" : "Connect Wi-Fi"}
+        </Text>
         <Text style={styles.subtitle}>
           {step === "find_device"
             ? "Find a PlantLab device over BLE, then continue with Wi-Fi provisioning."
+            : step === "waiting_online"
+              ? "Waiting for backend confirmation that your Smart Planter is online."
             : "Choose a Wi-Fi network reported by the device, then send credentials over BLE."}
         </Text>
       </View>
@@ -346,13 +394,12 @@ export function AddDeviceScreen() {
           <Text style={styles.cardTitle}>Device details</Text>
           <LabeledInput label="Device name" value={deviceName} onChangeText={setDeviceName} placeholder={DEFAULT_DEVICE_NAME} />
           <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_NAME}.</Text>
-          <LabeledInput label="Location" value={location} onChangeText={setLocation} placeholder={DEFAULT_DEVICE_LOCATION} />
-          <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_LOCATION}.</Text>
           <PrimaryButton
             label={isFindingBleDevice || isSubmitting ? "Finding PlantLab device..." : "Find PlantLab device"}
             onPress={startBleIdentityOnboarding}
             disabled={isFindingBleDevice || isSubmitting}
           />
+          {isFindingBleDevice || isSubmitting ? <LoadingRow text="Connecting to your Smart Planter..." /> : null}
           <Text style={styles.meta}>Long-press GPIO14 first so the master advertises as PlantLab-Setup.</Text>
         </Card>
       ) : null}
@@ -375,10 +422,11 @@ export function AddDeviceScreen() {
             PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name.
           </Text>
           <PrimaryButton
-            label={isLoadingWifiNetworks ? "Scanning nearby 2.4 GHz Wi-Fi..." : "Scan nearby 2.4 GHz Wi-Fi"}
+            label={isLoadingWifiNetworks ? "Scanning..." : "Scan nearby 2.4 GHz Wi-Fi"}
             onPress={loadDeviceWifiNetworks}
             disabled={isLoadingWifiNetworks}
           />
+          {isLoadingWifiNetworks ? <LoadingRow text="Scanning nearby Wi-Fi networks..." /> : null}
           {wifiScanMessage ? <Text style={styles.meta}>{wifiScanMessage}</Text> : null}
           {selectedBleDevice ? <Text style={styles.meta}>Selected BLE device: {bleDeviceLabel(selectedBleDevice)}</Text> : null}
           <WifiSsidPicker
@@ -397,12 +445,13 @@ export function AddDeviceScreen() {
             value={wifiPassword}
             visible={showWifiPassword}
           />
-          {handoff.setupToken ? <Text style={styles.meta}>Setup token: {maskSecret(handoff.setupToken)}</Text> : null}
+          <Text style={styles.meta}>Enter the Wi-Fi password for this network.</Text>
           <PrimaryButton
-            label={isProvisioningOverBle ? "Provisioning over BLE..." : "Send provisioning over BLE"}
+            label={isProvisioningOverBle ? "Confirming..." : "Confirm"}
             onPress={sendProvisioningOverBle}
             disabled={!canProvisionOverBle}
           />
+          {isProvisioningOverBle ? <LoadingRow text="Connecting your Smart Planter... This may take a moment." /> : null}
           {!canConfirmWifiDetails ? <Text style={styles.meta}>Select or type your Wi-Fi name, then enter the Wi-Fi password to continue.</Text> : null}
           {!blePlatformUrl ? <Text style={styles.error}>A reachable platform URL is required before BLE provisioning.</Text> : null}
           {bleProvisioningMessage ? (
@@ -416,7 +465,26 @@ export function AddDeviceScreen() {
         </Card>
       ) : null}
 
-      {step === "wifi_provisioning" && handoff && bleProvisioningTone === "error" ? (
+      {step === "waiting_online" && handoff ? (
+        <Card>
+          <Text style={styles.cardTitle}>Connecting your Smart Planter...</Text>
+          <Text style={styles.cardSubtitle}>This may take a moment.</Text>
+          {isWaitingForOnline ? <LoadingRow text="Connecting your Smart Planter... This may take a moment." /> : null}
+          {bleProvisioningMessage ? (
+            <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
+              {bleProvisioningMessage}
+            </Text>
+          ) : null}
+          {bleProvisioningTone === "error" ? (
+            <>
+              <PrimaryButton label="Retry online check" tone="secondary" onPress={() => waitForProvisionedDeviceOnline(selectedBleDevice)} disabled={isWaitingForOnline} />
+              <PrimaryButton label="Retry provisioning" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {(step === "wifi_provisioning" || step === "waiting_online") && handoff && bleProvisioningTone === "error" ? (
         <Card>
           <Text style={styles.cardTitle}>Existing Wi-Fi setup fallback</Text>
           <Text style={styles.cardSubtitle}>
@@ -603,6 +671,15 @@ function PasswordInput({ label, value, visible, onChangeText, onToggleVisible, p
   );
 }
 
+function LoadingRow({ text }: { text: string }) {
+  return (
+    <View style={styles.loadingRow}>
+      <ActivityIndicator color={theme.colors.accent} />
+      <Text style={styles.meta}>{text}</Text>
+    </View>
+  );
+}
+
 function extractSerialNumberFromQr(rawValue: string): string {
   const value = rawValue.trim();
   if (!value) {
@@ -648,6 +725,10 @@ function mergeWifiSsidOptions(values: string[]): string[] {
     options.push(ssid);
   }
   return options;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function shortHardwareSuffix(value?: string): string | undefined {
@@ -728,6 +809,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
     fontSize: 15,
     fontWeight: "700",
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   meta: { fontSize: 13, color: theme.colors.textMuted },
   scannerScreen: {

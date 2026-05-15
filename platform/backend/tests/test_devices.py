@@ -907,6 +907,109 @@ def test_setup_status_api_reports_readiness():
         teardown_overrides()
 
 
+def test_setup_status_api_matches_expected_device_id_and_reports_online():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Smart Planter"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-a1b2c3",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=datetime.now(timezone.utc),
+            )
+
+        response = client.get(
+            "/api/setup/status",
+            params={"expected_device_id": "pl-esp32-a1b2c3", "device_name": "Smart Planter"},
+        )
+
+        assert response.status_code == 200
+        assert "no-store" in response.headers["cache-control"]
+        payload = response.json()
+        assert payload["device_found"] is True
+        assert payload["device_id"] == device_id
+        assert payload["online"] is True
+        assert payload["status"] == "online"
+        assert payload["last_heartbeat_at"] is not None
+        assert payload["ready"] is False
+        assert payload["has_reading"] is False
+        assert payload["has_image"] is False
+        assert payload["expect_image"] is False
+        assert payload["redirect_path"] is None
+    finally:
+        teardown_overrides()
+
+
+def test_setup_status_api_expected_device_id_requires_primary_node_match():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Smart Planter"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-a1b2c3",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.get("/api/setup/status", params={"expected_device_id": "pl-esp32-a1b2c3"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_found"] is False
+        assert payload["device_id"] is None
+        assert payload["online"] is False
+        assert payload["ready"] is False
+    finally:
+        teardown_overrides()
+
+
+def test_setup_status_api_expected_device_id_does_not_fall_back_to_name():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Smart Planter"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-existing",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=datetime.now(timezone.utc),
+            )
+
+        response = client.get(
+            "/api/setup/status",
+            params={
+                "expected_device_id": "pl-esp32-new",
+                "device_name": "Smart Planter",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_found"] is False
+        assert payload["device_id"] is None
+        assert payload["online"] is False
+        assert payload["ready"] is False
+    finally:
+        teardown_overrides()
+
+
 def test_device_detail_page_shows_latest_data():
     client, _ = build_client_with_user(set_session_cookie=True)
     try:

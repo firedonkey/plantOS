@@ -125,6 +125,16 @@ type ApiSetupCodeResponse = {
   provisioning_api_url: string;
 };
 
+type ApiSetupStatusResponse = {
+  ready: boolean;
+  device_found?: boolean;
+  device_id?: number | null;
+  online?: boolean;
+  last_heartbeat_at?: string | null;
+  status?: string | null;
+  redirect_path?: string | null;
+};
+
 type ApiDeleteResponse = {
   device_id: number;
   message: string;
@@ -139,6 +149,16 @@ export type DeviceSetupHandoff = {
   expectImage: boolean;
   platformUrl?: string;
   provisioningApiUrl?: string;
+};
+
+export type SetupStatusResult = {
+  ready: boolean;
+  deviceFound: boolean;
+  deviceId?: string;
+  online: boolean;
+  lastHeartbeatAt?: string;
+  status?: string;
+  redirectPath?: string;
 };
 
 export type DeviceSettingsDetails = {
@@ -585,6 +605,66 @@ export async function requestDeviceClaimToken(
         expectImage: true,
         platformUrl: undefined,
         provisioningApiUrl: undefined,
+      },
+    };
+  }
+}
+
+export async function getSetupStatus(
+  input: {
+    deviceName?: string;
+    location?: string;
+    expectedDeviceId?: string;
+    expectImage?: boolean;
+  },
+  token?: string,
+): Promise<{ status: SetupStatusResult; usedMock: boolean }> {
+  const params = new URLSearchParams();
+  const deviceName = input.deviceName?.trim();
+  const location = input.location?.trim();
+  const expectedDeviceId = input.expectedDeviceId?.trim();
+  if (deviceName) {
+    params.set("device_name", deviceName);
+  }
+  if (location) {
+    params.set("location", location);
+  }
+  if (expectedDeviceId) {
+    params.set("expected_device_id", expectedDeviceId);
+  }
+  params.set("expect_image", input.expectImage === false ? "0" : "1");
+
+  try {
+    const response = await apiRequest<ApiSetupStatusResponse>(
+      `/api/setup/status?${params.toString()}`,
+      {},
+      token,
+    );
+    return {
+      usedMock: false,
+      status: {
+        ready: response.ready,
+        deviceFound: response.device_found ?? false,
+        deviceId: response.device_id != null ? String(response.device_id) : undefined,
+        online: response.online ?? false,
+        lastHeartbeatAt: response.last_heartbeat_at ?? undefined,
+        status: response.status ?? undefined,
+        redirectPath: response.redirect_path ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      status: {
+        ready: true,
+        deviceFound: true,
+        deviceId: "1",
+        online: true,
+        status: "online",
+        redirectPath: "/devices/1?setup=complete",
       },
     };
   }

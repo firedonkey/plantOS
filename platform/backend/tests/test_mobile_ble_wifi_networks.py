@@ -227,7 +227,7 @@ def test_mobile_add_device_keeps_manual_and_softap_fallbacks_separate():
     assert "Open PlantLab-Setup page" in screen
     assert "openSoftApSetup" in screen
     assert "loadDeviceWifiNetworks" in screen
-    assert "Scanning nearby 2.4 GHz Wi-Fi..." in screen
+    assert "Scanning nearby Wi-Fi networks..." in screen
     assert "PlantLab can only join 2.4 GHz Wi-Fi" in screen
     assert "No 2.4 GHz networks were reported by this device. You can still type your Wi-Fi name." in screen
     assert "PlantLab can only join 2.4 GHz Wi-Fi. If your network is not listed, type its name." in screen
@@ -238,16 +238,17 @@ def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
 
     assert "const canConfirmWifiDetails = wifiSsid.trim().length > 0 && wifiPassword.length > 0" in screen
     assert (
-        "const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle)"
+        "const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle && !isWaitingForOnline)"
         in screen
     )
-    assert "Send provisioning over BLE" in screen
+    assert 'label={isProvisioningOverBle ? "Confirming..." : "Confirm"}' in screen
+    assert "Send provisioning over BLE" not in screen
     assert "provisionDeviceOverBle" in screen
     assert "setupToken: handoff.setupToken" in screen
     assert "platformUrl: blePlatformUrl" in screen
     assert "backendUrl: handoff.provisioningApiUrl" in screen
     assert "Retry BLE provisioning" in screen
-    assert "maskSecret(handoff.setupToken)" in screen
+    assert "maskSecret(handoff.setupToken)" not in screen
     assert 'label="Home Wi-Fi password"' in screen
     assert "secureTextEntry" in screen
     assert "wifiPassword" not in extract_function(screen, "function provisioningErrorMessage")
@@ -256,6 +257,49 @@ def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
     assert "Setup token: {handoff.setupToken}" not in screen
     assert "Expo Go does not write BLE characteristics directly" not in screen
     assert "Debug fallback: nRF Connect" not in screen
+
+
+def test_mobile_add_device_simplifies_onboarding_and_keeps_password_local():
+    screen = read_mobile_source(ADD_DEVICE_SCREEN)
+    submit = extract_function(screen, "async function onSubmit")
+    create_claim = extract_function(screen, "async function createClaimTokenFromBleDevice")
+
+    assert 'const DEFAULT_DEVICE_NAME = "Smart Planter"' in screen
+    assert "placeholder={DEFAULT_DEVICE_NAME}" in screen
+    assert "Leave blank to use {DEFAULT_DEVICE_NAME}." in screen
+    assert "deviceName: deviceName.trim() || DEFAULT_DEVICE_NAME" in submit
+    assert "deviceName: deviceName.trim() || DEFAULT_DEVICE_NAME" in create_claim
+    assert 'label="Device location"' not in screen
+    assert "setLocation" not in screen
+    assert "location:" not in submit
+    assert "location:" not in create_claim
+    assert "const [wifiPassword, setWifiPassword] = useState(\"\")" in screen
+    assert "Enter the Wi-Fi password for this network." in screen
+    assert "AsyncStorage" not in screen
+
+
+def test_mobile_add_device_waits_for_online_status_after_ble_provisioning():
+    screen = read_mobile_source(ADD_DEVICE_SCREEN)
+    send_over_ble = extract_function(screen, "async function sendProvisioningOverBle")
+    wait_online = extract_function(screen, "async function waitForProvisionedDeviceOnline")
+    source = read_mobile_source(MOBILE_DEVICES_API)
+
+    assert 'type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online"' in screen
+    assert "const ONLINE_POLL_INTERVAL_MS = 2000" in screen
+    assert "const ONLINE_POLL_TIMEOUT_MS = 90000" in screen
+    assert "await waitForProvisionedDeviceOnline(device)" in send_over_ble
+    assert 'setStep("waiting_online")' in wait_online
+    assert "const expectedDeviceId = handoff.expectedDeviceId ?? device?.identity?.hardwareDeviceId" in wait_online
+    assert "expectImage: false" in wait_online
+    assert "result.status.deviceId && (result.status.online || result.status.ready)" in wait_online
+    assert "router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`)" in wait_online
+    assert "We could not confirm your Smart Planter is online yet." in screen
+    assert "Retry online check" in screen
+    assert "Retry provisioning" in screen
+    assert "Connecting your Smart Planter... This may take a moment." in screen
+    assert "getSetupStatus" in source
+    assert 'params.set("expected_device_id", expectedDeviceId)' in source
+    assert "online: response.online ?? false" in source
 
 
 def test_mobile_add_device_ble_identity_replaces_required_serial_in_normal_flow():
@@ -316,6 +360,64 @@ def test_firmware_ble_scan_control_characteristic_contract():
     assert "wifi_scan_page" in source
     assert "parseCursor(value)" in source
     assert "pending_wifi_scan_request_ready_ = true" in source
+
+
+def test_firmware_ble_provisioning_priority_timeout_and_pause_contract():
+    source = read_source(ESP32_MAIN)
+
+    assert "constexpr uint32_t kBleProvisioningTimeoutMs = 4UL * 60UL * 1000UL" in source
+    assert "return g_provisioning_requested || g_provisioning_mode || g_ble_provisioning.active();" in source
+    assert 'Serial.println("[provisioning] provisioning_requested");' in source
+    assert 'Serial.println("[provisioning] normal_tasks_paused");' in source
+    assert 'Serial.println("[provisioning] normal_tasks_resumed");' in source
+    assert 'Serial.println("[provisioning] ble_advertising_started");' in source
+    assert 'Serial.println("[provisioning] provisioning_timeout");' in source
+    assert "g_provisioning_requested = true;" in source
+    assert "pauseNormalTasksForProvisioning();" in source
+    assert "resumeNormalTasksAfterProvisioning();" in source
+
+    check_button = extract_function(source, "void checkProvisioningButton() {")
+    assert "event == PowerButtonEvent::kLongPress" in check_button
+    assert "requestBleProvisioningMode(now)" in check_button
+
+    connect_wifi = extract_function(source, "bool connectToWiFi")
+    assert "if (!hasWifiCredentials() || provisioningPriorityActive())" in connect_wifi
+    assert "checkProvisioningButton();" in connect_wifi
+    assert "if (provisioningPriorityActive())" in connect_wifi
+    assert "WiFi.disconnect(false, false);" in connect_wifi
+
+    loop = extract_function(source, "void loop")
+    priority_return = loop.index("if (provisioningPriorityActive())")
+    command_poll = loop.index("poll_platform_commands(now)")
+    capture_schedule = loop.index("pollCameraCaptureSchedule(now)")
+    heartbeat = loop.index("send_platform_status(now)")
+    reading = loop.index("send_platform_reading(now)")
+    assert priority_return < command_poll
+    assert priority_return < capture_schedule
+    assert priority_return < heartbeat
+    assert priority_return < reading
+
+
+def test_firmware_ble_provisioning_lifecycle_logs_without_secret_values():
+    source = read_source(ESP32_MAIN)
+
+    for expected_log in (
+        "[provisioning] credentials_received",
+        "[provisioning] wifi_connecting ssid=%s",
+        "[provisioning] wifi_connected",
+        "[provisioning] backend_confirming",
+        "[provisioning] device_online_confirmed",
+        "[provisioning] provisioning_success",
+        "[provisioning] provisioning_failed reason=",
+    ):
+        assert expected_log in source
+
+    assert "password_len=%u" in source
+    assert "claim_present=%u" in source
+    assert "device_token_present=%u" in source
+    assert "password=%s" not in source
+    assert "claim_token=%s" not in source
+    assert "device_token=%s" not in source
 
 
 def test_firmware_ble_identity_characteristic_contract():

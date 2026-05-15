@@ -342,6 +342,7 @@ void BleProvisioningService::handleWifiScanControlWrite(const std::string& value
 
 void BleProvisioningService::handleConnect() {
   connected_ = true;
+  Serial.println("[provisioning] ble_connected");
   publishStatus(true);
 }
 

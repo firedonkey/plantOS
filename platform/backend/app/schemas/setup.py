@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -48,4 +50,7 @@ class SetupStatusRead(BaseModel):
     has_reading: bool = False
     has_image: bool = False
     expect_image: bool = True
+    online: bool = False
+    last_heartbeat_at: datetime | None = None
+    status: str | None = None
     redirect_path: str | None = None

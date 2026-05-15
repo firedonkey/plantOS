@@ -38,7 +38,7 @@ constexpr char kSoftwareVersion[] = "0.1.0";
 constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
-constexpr uint32_t kBleProvisioningTimeoutMs = 10UL * 60UL * 1000UL;
+constexpr uint32_t kBleProvisioningTimeoutMs = 4UL * 60UL * 1000UL;
 constexpr uint32_t kBleWifiScanTimeoutMs = 15000UL;
 constexpr uint32_t kBleWifiScanRetryDelayMs = 750UL;
 constexpr uint8_t kBleWifiScanMaxRetries = 3;
@@ -136,6 +136,8 @@ unsigned long g_last_platform_status_ms = 0;
 unsigned long g_last_command_poll_ms = 0;
 unsigned long g_last_wifi_attempt_ms = 0;
 bool g_provisioning_mode = false;
+bool g_provisioning_requested = false;
+bool g_normal_tasks_paused_for_provisioning = false;
 bool g_softap_provisioning_active = false;
 bool g_wifi_ready = false;
 bool g_web_routes_registered = false;
@@ -194,6 +196,11 @@ void noteEspNowSend(
     const uint8_t* target_mac,
     unsigned long now);
 void startProvisioningMode();
+bool provisioningPriorityActive();
+void pauseNormalTasksForProvisioning();
+void resumeNormalTasksAfterProvisioning();
+bool requestBleProvisioningMode(unsigned long now);
+void checkProvisioningButton();
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -370,6 +377,27 @@ void rebuildPlatformClient() {
 
 bool platform_enabled() {
   return g_platform_client != nullptr && g_platform_client->configured();
+}
+
+bool provisioningPriorityActive() {
+  return g_provisioning_requested || g_provisioning_mode || g_ble_provisioning.active();
+}
+
+void pauseNormalTasksForProvisioning() {
+  if (g_normal_tasks_paused_for_provisioning) {
+    return;
+  }
+  g_normal_tasks_paused_for_provisioning = true;
+  Serial.println("[provisioning] normal_tasks_paused");
+}
+
+void resumeNormalTasksAfterProvisioning() {
+  if (!g_normal_tasks_paused_for_provisioning) {
+    return;
+  }
+  g_normal_tasks_paused_for_provisioning = false;
+  g_provisioning_requested = false;
+  Serial.println("[provisioning] normal_tasks_resumed");
 }
 
 void scheduleRestart(unsigned long delay_ms, const char* reason) {
@@ -1282,11 +1310,11 @@ bool loadConfig() {
   g_config.platform_url.trim();
 
   Serial.printf(
-      "[provisioning] config loaded: ssid=%s password_len=%u claim=%s device_token=%s platform_id=%d backend=%s platform=%s\n",
+      "[provisioning] config loaded: ssid=%s password_len=%u claim_present=%u device_token_present=%u platform_id=%d backend=%s platform=%s\n",
       g_config.wifi_ssid.length() > 0 ? g_config.wifi_ssid.c_str() : "<empty>",
       static_cast<unsigned>(g_config.wifi_password.length()),
-      g_config.claim_token.length() > 0 ? "<set>" : "<empty>",
-      g_config.device_token.length() > 0 ? "<set>" : "<empty>",
+      g_config.claim_token.length() > 0 ? 1U : 0U,
+      g_config.device_token.length() > 0 ? 1U : 0U,
       g_config.platform_device_id,
       g_config.backend_url.length() > 0 ? g_config.backend_url.c_str() : "<empty>",
       g_config.platform_url.length() > 0 ? g_config.platform_url.c_str() : "<empty>");
@@ -1940,13 +1968,17 @@ void stopBleProvisioningMode() {
   if (!g_softap_provisioning_active) {
     g_provisioning_mode = false;
   }
+  resumeNormalTasksAfterProvisioning();
 }
 
 bool startBleProvisioningMode() {
   if (g_ble_provisioning.active()) {
+    pauseNormalTasksForProvisioning();
     return true;
   }
 
+  g_provisioning_requested = true;
+  pauseNormalTasksForProvisioning();
   g_ble_had_previous_config = hasWifiCredentials();
   g_ble_provisioning_started_at_ms = millis();
   g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_BLE;
@@ -1966,10 +1998,11 @@ bool startBleProvisioningMode() {
   const String fallback_platform_url = runtimePlatformUrl();
   const String device_identity_json = bleProvisioningDeviceIdentityJson(advertised_name);
   if (!g_ble_provisioning.begin(
-          advertised_name.c_str(),
-          fallback_platform_url.c_str(),
-          device_identity_json.c_str())) {
+      advertised_name.c_str(),
+      fallback_platform_url.c_str(),
+      device_identity_json.c_str())) {
     Serial.println("[provisioning] BLE setup failed");
+    Serial.println("[provisioning] provisioning_failed reason=ble_init_failed");
     g_ble_provisioning.stop();
     g_provisioning_mode = false;
     if (g_ble_had_previous_config) {
@@ -1981,11 +2014,14 @@ bool startBleProvisioningMode() {
       g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
       g_device_mode = DeviceMode::kWifiFailed;
     }
+    resumeNormalTasksAfterProvisioning();
     updateStatusLed();
     return false;
   }
   publishBleWifiScanStatus(plantlab::kBleWifiScanStatusIdle);
 
+  g_provisioning_requested = false;
+  Serial.println("[provisioning] ble_advertising_started");
   Serial.printf(
       "[provisioning] BLE provisioning started: name=%s service=%s write=%s status=%s wifi_networks=%s wifi_scan_control=%s device_identity=%s hardware_id=%s\n",
       advertised_name.c_str(),
@@ -1997,6 +2033,16 @@ bool startBleProvisioningMode() {
       plantlab::kBleProvisioningDeviceIdentityCharacteristicUuid,
       stableHardwareDeviceId().c_str());
   return true;
+}
+
+bool requestBleProvisioningMode(unsigned long now) {
+  (void)now;
+  if (!g_provisioning_requested && !g_ble_provisioning.active()) {
+    Serial.println("[provisioning] provisioning_requested");
+  }
+  g_provisioning_requested = true;
+  pauseNormalTasksForProvisioning();
+  return startBleProvisioningMode();
 }
 
 void serviceBleProvisioning(unsigned long now) {
@@ -2012,14 +2058,17 @@ void serviceBleProvisioning(unsigned long now) {
       Serial.printf(
           "[provisioning] BLE payload rejected: %s\n",
           plantlab::provisioningParseErrorCode(result.error));
+      Serial.printf(
+          "[provisioning] provisioning_failed reason=%s\n",
+          plantlab::provisioningParseErrorCode(result.error));
       return;
     }
 
+    Serial.println("[provisioning] credentials_received");
     Serial.printf(
-        "[provisioning] BLE payload accepted: ssid=%s password_len=%u token=%s platform=%s backend=%s\n",
+        "[provisioning] BLE payload accepted: ssid=%s password_len=%u platform=%s backend=%s\n",
         result.payload.ssid.c_str(),
         static_cast<unsigned>(result.payload.password.length()),
-        plantlab::maskSecretForLog(result.payload.plantlab_token).c_str(),
         result.payload.platform_url.empty() ? "<empty>" : result.payload.platform_url.c_str(),
         result.payload.backend_url.empty() ? "<empty>" : result.payload.backend_url.c_str());
 
@@ -2034,6 +2083,7 @@ void serviceBleProvisioning(unsigned long now) {
           g_provisioning_state,
           plantlab::ProvisioningParseError::kSaveFailed);
       Serial.println("[provisioning] BLE config save failed");
+      Serial.println("[provisioning] provisioning_failed reason=save_failed");
       updateStatusLed();
       return;
     }
@@ -2042,6 +2092,7 @@ void serviceBleProvisioning(unsigned long now) {
     g_ble_provisioning.setStatus(g_provisioning_state);
     scheduleRestart(2500UL, "ble_credentials_saved");
     updateStatusLed();
+    Serial.println("[provisioning] provisioning_success");
     Serial.println("[provisioning] BLE credentials saved, reboot scheduled");
     return;
   }
@@ -2049,6 +2100,7 @@ void serviceBleProvisioning(unsigned long now) {
   if (!g_restart_scheduled && now - g_ble_provisioning_started_at_ms >= kBleProvisioningTimeoutMs) {
     g_provisioning_state = plantlab::provisioningStateAfterTimeout(g_ble_had_previous_config);
     g_ble_provisioning.setStatus(g_provisioning_state, plantlab::ProvisioningParseError::kTimeout);
+    Serial.println("[provisioning] provisioning_timeout");
     Serial.printf(
         "[provisioning] BLE provisioning timed out, next_state=%s\n",
         plantlab::provisioningStateName(g_provisioning_state));
@@ -2136,7 +2188,7 @@ void startProvisioningMode() {
 }
 
 bool connectToWiFi() {
-  if (!hasWifiCredentials() || g_provisioning_mode) {
+  if (!hasWifiCredentials() || provisioningPriorityActive()) {
     return false;
   }
 
@@ -2146,6 +2198,9 @@ bool connectToWiFi() {
       g_device_mode = DeviceMode::kConnected;
       g_provisioning_state = plantlab::ProvisioningState::NORMAL;
       updateStatusLed();
+      if (hasPendingClaim()) {
+        Serial.println("[provisioning] wifi_connected");
+      }
       Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
     }
     return true;
@@ -2162,6 +2217,9 @@ bool connectToWiFi() {
   g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
   updateStatusLed();
 
+  if (hasPendingClaim()) {
+    Serial.printf("[provisioning] wifi_connecting ssid=%s\n", g_config.wifi_ssid.c_str());
+  }
   Serial.printf(
       "[wifi] connecting to %s password_len=%u status=%s\n",
       g_config.wifi_ssid.c_str(),
@@ -2172,7 +2230,13 @@ bool connectToWiFi() {
 
   const unsigned long started_at = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started_at < PLANTLAB_WIFI_CONNECT_TIMEOUT_MS) {
-    g_status_led.update(millis());
+    const unsigned long loop_now = millis();
+    checkProvisioningButton();
+    if (provisioningPriorityActive()) {
+      WiFi.disconnect(false, false);
+      return false;
+    }
+    g_status_led.update(loop_now);
     delay(250);
   }
 
@@ -2181,6 +2245,9 @@ bool connectToWiFi() {
     g_device_mode = DeviceMode::kConnected;
     g_provisioning_state = plantlab::ProvisioningState::NORMAL;
     updateStatusLed();
+    if (hasPendingClaim()) {
+      Serial.println("[provisioning] wifi_connected");
+    }
     Serial.printf("[wifi] connected ip=%s\n", WiFi.localIP().toString().c_str());
     return true;
   }
@@ -2190,6 +2257,9 @@ bool connectToWiFi() {
   g_device_mode = DeviceMode::kWifiFailed;
   g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
   updateStatusLed();
+  if (hasPendingClaim()) {
+    Serial.println("[provisioning] provisioning_failed reason=wifi_connect_timeout");
+  }
   Serial.printf("[wifi] connect timed out status=%s\n", wifiStatusLabel(final_status));
   return false;
 }
@@ -2202,11 +2272,13 @@ bool registerProvisionedDevice() {
   platform_url.trim();
   if (platform_url.length() == 0) {
     Serial.println("[provisioning] cannot register: platform URL is not configured");
+    Serial.println("[provisioning] provisioning_failed reason=missing_platform_url");
     return false;
   }
 
   g_provisioning_state = plantlab::ProvisioningState::BACKEND_REGISTERING;
   updateStatusLed();
+  Serial.println("[provisioning] backend_confirming");
   Serial.println("[provisioning] registering device with setup code");
   StaticJsonDocument<384> payload;
   payload["device_id"] = stableHardwareDeviceId();
@@ -2232,6 +2304,7 @@ bool registerProvisionedDevice() {
   const String url = platform_url + "/api/devices/register-provisioned";
   if (!http.begin(url)) {
     Serial.println("[provisioning] register request setup failed");
+    Serial.println("[provisioning] provisioning_failed reason=register_request_setup_failed");
     return false;
   }
   http.addHeader("Content-Type", "application/json");
@@ -2240,7 +2313,8 @@ bool registerProvisionedDevice() {
   http.end();
 
   if (status_code < 200 || status_code >= 300) {
-    Serial.printf("[provisioning] registration failed HTTP %d: %s\n", status_code, response_body.c_str());
+    Serial.printf("[provisioning] registration failed HTTP %d\n", status_code);
+    Serial.println("[provisioning] provisioning_failed reason=backend_register_failed");
     return false;
   }
 
@@ -2248,6 +2322,7 @@ bool registerProvisionedDevice() {
   const DeserializationError json_error = deserializeJson(response, response_body);
   if (json_error) {
     Serial.println("[provisioning] registration response JSON parse failed");
+    Serial.println("[provisioning] provisioning_failed reason=backend_response_invalid_json");
     return false;
   }
 
@@ -2255,6 +2330,7 @@ bool registerProvisionedDevice() {
   const char* device_access_token = response["device_access_token"] | "";
   if (platform_device_id <= 0 || String(device_access_token).length() == 0) {
     Serial.println("[provisioning] registration response missing platform device id or device token");
+    Serial.println("[provisioning] provisioning_failed reason=backend_response_missing_fields");
     return false;
   }
 
@@ -2265,6 +2341,8 @@ bool registerProvisionedDevice() {
   resetCameraProvisioningRuntime();
   g_provisioning_state = plantlab::ProvisioningState::NORMAL;
   updateStatusLed();
+  Serial.println("[provisioning] device_online_confirmed");
+  Serial.println("[provisioning] provisioning_success");
   Serial.printf("[provisioning] registration complete, platform_device_id=%d\n", g_config.platform_device_id);
   return true;
 }
@@ -2314,7 +2392,7 @@ void checkProvisioningButton() {
 
   if (event == PowerButtonEvent::kLongPress && !g_provisioning_mode) {
     Serial.println("[button] long press detected -> BLE provisioning mode");
-    startBleProvisioningMode();
+    requestBleProvisioningMode(now);
     return;
   }
   if (event == PowerButtonEvent::kLongPress && g_ble_provisioning.active()) {
@@ -2567,6 +2645,10 @@ void loop() {
     if (g_provisioning_mode) {
       return;
     }
+  }
+
+  if (provisioningPriorityActive()) {
+    return;
   }
 
   connectToWiFi();
