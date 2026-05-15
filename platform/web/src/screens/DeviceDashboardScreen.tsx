@@ -167,9 +167,6 @@ export function DeviceDashboardScreen() {
             ) : null}
           </div>
 
-          <Link className="text-link" to={`/devices/${deviceId}/history`}>
-            View history
-          </Link>
           <Link className="text-link" to={`/devices/${deviceId}/settings`}>
             Device settings
           </Link>

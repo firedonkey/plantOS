@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { SensorLineChart } from "@/components/SensorLineChart";
 import { SensorReading } from "@/types";
 import { theme } from "@/styles/theme";
 
@@ -20,6 +21,30 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
   { key: "7d", label: "7d" },
   { key: "30d", label: "30d" },
   { key: "all", label: "All" },
+];
+
+const SENSOR_SERIES = [
+  {
+    key: "temperature",
+    label: "Temperature",
+    unit: "C",
+    color: "#c96f2d",
+    getValue: (reading: SensorReading) => reading.temperatureC,
+  },
+  {
+    key: "humidity",
+    label: "Humidity",
+    unit: "%",
+    color: "#2f75b5",
+    getValue: (reading: SensorReading) => reading.humidityPercent,
+  },
+  {
+    key: "soil-moisture",
+    label: "Soil moisture",
+    unit: "%",
+    color: theme.colors.accent,
+    getValue: (reading: SensorReading) => reading.soilMoisturePercent,
+  },
 ];
 
 export function ReadingTrendSection({
@@ -56,9 +81,16 @@ export function ReadingTrendSection({
         <Text style={styles.subtitle}>No readings are available in this range yet.</Text>
       ) : (
         <View style={styles.grid}>
-          <TrendCard label="Temperature" unit="C" values={history.map((reading) => reading.temperatureC)} latest={history.at(-1)?.temperatureC} />
-          <TrendCard label="Humidity" unit="%" values={history.map((reading) => reading.humidityPercent)} latest={history.at(-1)?.humidityPercent} />
-          <TrendCard label="Soil moisture" unit="%" values={history.map((reading) => reading.soilMoisturePercent)} latest={history.at(-1)?.soilMoisturePercent} />
+          {SENSOR_SERIES.map((series) => (
+            <TrendCard
+              key={series.key}
+              color={series.color}
+              label={series.label}
+              readings={history}
+              unit={series.unit}
+              getValue={series.getValue}
+            />
+          ))}
           <StateCard readings={history} />
         </View>
       )}
@@ -69,28 +101,32 @@ export function ReadingTrendSection({
 function TrendCard({
   label,
   unit,
-  values,
-  latest,
+  color,
+  readings,
+  getValue,
 }: {
   label: string;
   unit: string;
-  values: Array<number | undefined>;
-  latest?: number;
+  color: string;
+  readings: SensorReading[];
+  getValue: (reading: SensorReading) => number | undefined;
 }) {
+  const values = readings.map(getValue);
   const numericValues = values.filter((value): value is number => typeof value === "number");
   const minimum = numericValues.length ? Math.min(...numericValues) : undefined;
   const maximum = numericValues.length ? Math.max(...numericValues) : undefined;
+  const latestReading = readings.at(-1);
+  const latest = latestReading ? getValue(latestReading) : undefined;
+  const chartPoints = readings.map((reading) => ({
+    timestamp: reading.timestamp,
+    value: getValue(reading),
+  }));
 
   return (
     <View style={styles.trendCard}>
       <Text style={styles.cardLabel}>{label}</Text>
-      <Text style={styles.cardValue}>{latest !== undefined ? `${latest.toFixed(1)} ${unit}` : "--"}</Text>
-      <View style={styles.bars}>
-        {values.map((value, index) => {
-          const height = normalizeValue(value, minimum, maximum);
-          return <View key={`${label}-${index}`} style={[styles.bar, { height: `${height}%` }]} />;
-        })}
-      </View>
+      <Text style={styles.cardValue}>{latest !== undefined ? `Current ${latest.toFixed(1)} ${unit}` : "Current --"}</Text>
+      <SensorLineChart points={chartPoints} color={color} />
       <Text style={styles.meta}>
         Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"} • Max {maximum !== undefined ? `${maximum.toFixed(1)} ${unit}` : "--"}
       </Text>
@@ -122,16 +158,6 @@ function StateCard({ readings }: { readings: SensorReading[] }) {
   );
 }
 
-function normalizeValue(value: number | undefined, minimum: number | undefined, maximum: number | undefined): number {
-  if (value === undefined || minimum === undefined || maximum === undefined) {
-    return 20;
-  }
-  if (maximum === minimum) {
-    return 60;
-  }
-  return 20 + ((value - minimum) / (maximum - minimum)) * 80;
-}
-
 const styles = StyleSheet.create({
   header: { gap: 10 },
   title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
@@ -154,16 +180,14 @@ const styles = StyleSheet.create({
   grid: { gap: 12 },
   trendCard: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: "#dfe6ea",
     borderRadius: 8,
-    backgroundColor: "#f8fafb",
+    backgroundColor: "#fbfcfd",
     padding: 14,
     gap: 10,
   },
   cardLabel: { color: theme.colors.textSecondary, fontWeight: "600" },
   cardValue: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
-  bars: { flexDirection: "row", alignItems: "flex-end", gap: 4, minHeight: 92 },
-  bar: { flex: 1, minWidth: 6, backgroundColor: theme.colors.accent, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   stateMetrics: { flexDirection: "row", gap: 16 },
   metricStrong: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
   meta: { fontSize: 13, color: theme.colors.textSecondary },

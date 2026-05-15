@@ -141,9 +141,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             ) : null}
           </Card>
 
-          <Link href={`/(app)/devices/${deviceId}/history`} style={styles.historyLink}>
-            View history
-          </Link>
           <Link href={`/(app)/devices/${deviceId}/settings`} style={styles.historyLink}>
             Device settings
           </Link>
