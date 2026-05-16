@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+using OtaChunkCallback = bool (*)(const uint8_t* bytes, size_t length, void* context);
+
 struct PlatformCommand {
   int id;
   String target;
@@ -31,6 +33,7 @@ struct PlatformStatus {
   bool light_on;
   bool pump_on;
   String message;
+  String software_version;
 };
 
 class PlatformClient {
@@ -78,6 +81,26 @@ class PlatformClient {
       const char* software_version,
       const char* capabilities_json,
       String* error = nullptr);
+  bool fetch_ota_manifest(
+      const char* hardware_device_id,
+      const char* node_role,
+      const char* current_version,
+      String* response_body,
+      String* error = nullptr);
+  bool report_ota_status(
+      const char* hardware_device_id,
+      const char* status,
+      const char* release_id,
+      const char* target_version,
+      const char* installed_version,
+      int progress,
+      const char* error_message,
+      String* error = nullptr);
+  bool download_ota_artifact(
+      const String& artifact_path,
+      OtaChunkCallback callback,
+      void* callback_context,
+      String* error = nullptr);
 
  private:
   bool json_post(const String& path, const String& json_body, int* status_code, String* response_body);
@@ -85,6 +108,7 @@ class PlatformClient {
   bool parse_url(String* host, uint16_t* port, String* path, bool* secure) const;
   String auth_header_value() const;
   String join_url(const String& path) const;
+  String url_encode(const String& value) const;
   void set_error(String* error, const String& message) const;
 
   String base_url_;

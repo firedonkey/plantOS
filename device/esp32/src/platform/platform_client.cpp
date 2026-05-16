@@ -10,6 +10,7 @@
 
 namespace {
 constexpr uint32_t kHttpTimeoutMs = 10000;
+constexpr uint32_t kOtaDownloadTimeoutMs = 30000;
 constexpr uint32_t kImageUploadTimeoutMs = 15000;
 constexpr uint32_t kImageUploadWriteIdleTimeoutMs = 5000;
 constexpr size_t kImageUploadChunkSize = 1024;
@@ -154,6 +155,9 @@ bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
   doc["light_on"] = status.light_on;
   doc["pump_on"] = status.pump_on;
   doc["message"] = status.message;
+  if (status.software_version.length() > 0) {
+    doc["software_version"] = status.software_version;
+  }
 
   String body;
   serializeJson(doc, body);
@@ -172,7 +176,7 @@ bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
 }
 
 bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, String* error) {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<320> doc;
   if (status.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = status.hardware_device_id;
   }
@@ -183,6 +187,9 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
   doc["light_on"] = status.light_on;
   doc["pump_on"] = status.pump_on;
   doc["message"] = status.message;
+  if (status.software_version.length() > 0) {
+    doc["software_version"] = status.software_version;
+  }
 
   String body;
   serializeJson(doc, body);
@@ -528,6 +535,142 @@ bool PlatformClient::register_device_node(
   return true;
 }
 
+bool PlatformClient::fetch_ota_manifest(
+    const char* hardware_device_id,
+    const char* node_role,
+    const char* current_version,
+    String* response_body,
+    String* error) {
+  String path = "/api/hardware/ota/manifest?hardware_device_id=" +
+      url_encode(String(hardware_device_id == nullptr ? "" : hardware_device_id)) +
+      "&node_role=" + url_encode(String(node_role == nullptr ? "" : node_role));
+  if (current_version != nullptr && String(current_version).length() > 0) {
+    path += "&current_version=" + url_encode(String(current_version));
+  }
+
+  int status_code = 0;
+  String body;
+  if (!json_get(path, &status_code, &body)) {
+    set_error(error, body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "OTA manifest failed with HTTP " + String(status_code) + ": " + body);
+    return false;
+  }
+  if (response_body != nullptr) {
+    *response_body = body;
+  }
+  return true;
+}
+
+bool PlatformClient::report_ota_status(
+    const char* hardware_device_id,
+    const char* status,
+    const char* release_id,
+    const char* target_version,
+    const char* installed_version,
+    int progress,
+    const char* error_message,
+    String* error) {
+  StaticJsonDocument<512> doc;
+  doc["hardware_device_id"] = hardware_device_id == nullptr ? "" : hardware_device_id;
+  doc["status"] = status == nullptr ? "failed" : status;
+  if (release_id != nullptr && String(release_id).length() > 0) {
+    doc["release_id"] = release_id;
+  }
+  if (target_version != nullptr && String(target_version).length() > 0) {
+    doc["target_version"] = target_version;
+  }
+  if (installed_version != nullptr && String(installed_version).length() > 0) {
+    doc["installed_version"] = installed_version;
+  }
+  if (progress >= 0) {
+    doc["progress"] = progress;
+  }
+  if (error_message != nullptr && String(error_message).length() > 0) {
+    doc["error"] = error_message;
+  }
+
+  String body;
+  serializeJson(doc, body);
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post("/api/hardware/ota/status", body, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "OTA status failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
+bool PlatformClient::download_ota_artifact(
+    const String& artifact_path,
+    OtaChunkCallback callback,
+    void* callback_context,
+    String* error) {
+  if (!artifact_path.startsWith("/api/hardware/ota/artifacts/")) {
+    set_error(error, "OTA artifact path rejected");
+    return false;
+  }
+  if (callback == nullptr) {
+    set_error(error, "OTA callback missing");
+    return false;
+  }
+
+  HTTPClient http;
+  http.setTimeout(kOtaDownloadTimeoutMs);
+  if (!http.begin(join_url(artifact_path))) {
+    set_error(error, "OTA artifact request setup failed");
+    return false;
+  }
+  http.addHeader(kDeviceTokenHeader, auth_header_value());
+  const int status_code = http.GET();
+  if (status_code < 200 || status_code >= 300) {
+    const String body = status_code > 0 ? http.getString() : http.errorToString(status_code);
+    http.end();
+    set_error(error, "OTA artifact failed with HTTP " + String(status_code) + ": " + body);
+    return false;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  uint8_t buffer[kImageUploadChunkSize];
+  int remaining = http.getSize();
+  uint32_t last_progress_at = millis();
+  while (http.connected() && (remaining > 0 || remaining == -1)) {
+    const size_t available = stream->available();
+    if (available == 0) {
+      if (millis() - last_progress_at >= kOtaDownloadTimeoutMs) {
+        http.end();
+        set_error(error, "OTA artifact download timed out");
+        return false;
+      }
+      delay(10);
+      continue;
+    }
+    const size_t read_size = available > sizeof(buffer) ? sizeof(buffer) : available;
+    const int read = stream->readBytes(buffer, read_size);
+    if (read <= 0) {
+      continue;
+    }
+    if (!callback(buffer, static_cast<size_t>(read), callback_context)) {
+      http.end();
+      set_error(error, "OTA artifact write failed");
+      return false;
+    }
+    if (remaining > 0) {
+      remaining -= read;
+    }
+    last_progress_at = millis();
+  }
+  http.end();
+  return remaining <= 0;
+}
+
 bool PlatformClient::json_post(
     const String& path,
     const String& json_body,
@@ -629,6 +772,23 @@ String PlatformClient::join_url(const String& path) const {
     return base_url_ + path;
   }
   return base_url_ + "/" + path;
+}
+
+String PlatformClient::url_encode(const String& value) const {
+  String encoded;
+  const char* hex = "0123456789ABCDEF";
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value.charAt(i);
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+        c == '-' || c == '_' || c == '.' || c == '~') {
+      encoded += c;
+    } else {
+      encoded += '%';
+      encoded += hex[(static_cast<uint8_t>(c) >> 4) & 0x0F];
+      encoded += hex[static_cast<uint8_t>(c) & 0x0F];
+    }
+  }
+  return encoded;
 }
 
 void PlatformClient::set_error(String* error, const String& message) const {

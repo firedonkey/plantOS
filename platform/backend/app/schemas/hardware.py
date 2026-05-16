@@ -39,6 +39,7 @@ class HardwareHeartbeatCreate(BaseModel):
     hardware_device_id: str | None = Field(default=None, max_length=120)
     node_role: str | None = Field(default=None, min_length=3, max_length=40)
     status: str = Field(default="online", min_length=2, max_length=40)
+    software_version: str | None = Field(default=None, max_length=120)
     light_on: bool | None = None
     pump_on: bool | None = None
     message: str | None = Field(default=None, max_length=160)
@@ -49,6 +50,7 @@ class HardwareHeartbeatRead(BaseModel):
     status: str
     hardware_device_id: str | None
     node_role: str | None
+    software_version: str | None = None
     light_on: bool | None
     pump_on: bool | None
     message: str | None
@@ -59,4 +61,3 @@ class HardwareHeartbeatRead(BaseModel):
 class HardwarePollEnvelopeRead(BaseModel):
     device_id: int
     commands: list
-

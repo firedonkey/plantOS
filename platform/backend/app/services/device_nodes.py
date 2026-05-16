@@ -117,6 +117,7 @@ def update_node_heartbeat(
     hardware_device_id: str,
     *,
     status: str,
+    software_version: str | None = None,
     seen_at: datetime | None = None,
 ) -> DeviceNode | None:
     node = get_node_by_hardware_id(session, hardware_device_id)
@@ -124,6 +125,8 @@ def update_node_heartbeat(
         return None
 
     node.status = status
+    if software_version:
+        node.software_version = software_version
     node.last_seen_at = seen_at or datetime.now(timezone.utc)
     node.updated_at = datetime.now(timezone.utc)
     session.add(node)
@@ -201,6 +204,17 @@ def _node_summary_item(node: DeviceNode) -> dict:
         "node_role": node.node_role,
         "node_index": node.node_index,
         "display_name": node.display_name,
+        "hardware_model": node.hardware_model,
+        "hardware_version": node.hardware_version,
+        "software_version": node.software_version,
+        "ota_status": node.ota_status,
+        "ota_available_version": node.ota_available_version,
+        "ota_target_version": node.ota_target_version,
+        "ota_release_id": node.ota_release_id,
+        "ota_progress": node.ota_progress,
+        "ota_error": node.ota_error,
+        "ota_updated_at": node.ota_updated_at.isoformat() if node.ota_updated_at is not None else None,
+        "ota_last_success_at": node.ota_last_success_at.isoformat() if node.ota_last_success_at is not None else None,
         "status": _normalized_node_status(node.status),
         "last_seen_at": node.last_seen_at.isoformat() if node.last_seen_at is not None else None,
     }

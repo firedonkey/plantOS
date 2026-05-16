@@ -8,6 +8,7 @@ class DeviceNodeHeartbeatCreate(BaseModel):
     hardware_device_id: str = Field(min_length=3, max_length=120)
     node_role: str = Field(min_length=3, max_length=40)
     status: str = Field(min_length=2, max_length=40)
+    software_version: str | None = Field(default=None, max_length=120)
 
 
 class DeviceNodeHeartbeatRead(BaseModel):
@@ -15,6 +16,7 @@ class DeviceNodeHeartbeatRead(BaseModel):
     hardware_device_id: str
     node_role: str
     status: str
+    software_version: str | None = None
     last_seen_at: datetime | None
 
 

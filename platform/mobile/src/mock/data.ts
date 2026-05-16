@@ -83,6 +83,11 @@ const hardwareHealth: HardwareHealth = {
     nodeRole: "master",
     displayName: "Master",
     status: "online",
+    softwareVersion: "0.1.0",
+    otaStatus: "available",
+    otaAvailableVersion: "0.1.1",
+    otaTargetVersion: "0.1.1",
+    otaProgress: 0,
     capabilities: {
       pump: false,
       moisture_sensor: false,

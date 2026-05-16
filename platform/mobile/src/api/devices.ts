@@ -68,6 +68,17 @@ type ApiHealthNode = {
   display_name?: string | null;
   status: string;
   health_status?: string | null;
+  hardware_model?: string | null;
+  hardware_version?: string | null;
+  software_version?: string | null;
+  ota_status?: string | null;
+  ota_available_version?: string | null;
+  ota_target_version?: string | null;
+  ota_release_id?: string | null;
+  ota_progress?: number | null;
+  ota_error?: string | null;
+  ota_updated_at?: string | null;
+  ota_last_success_at?: string | null;
   capabilities?: Record<string, unknown> | null;
   last_seen_at?: string | null;
 };
@@ -317,6 +328,17 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
     healthStatus: normalizeFreshnessStatus(node.health_status),
+    hardwareModel: node.hardware_model ?? undefined,
+    hardwareVersion: node.hardware_version ?? undefined,
+    softwareVersion: node.software_version ?? undefined,
+    otaStatus: normalizeOtaStatus(node.ota_status),
+    otaAvailableVersion: node.ota_available_version ?? undefined,
+    otaTargetVersion: node.ota_target_version ?? undefined,
+    otaReleaseId: node.ota_release_id ?? undefined,
+    otaProgress: node.ota_progress ?? undefined,
+    otaError: node.ota_error ?? undefined,
+    otaUpdatedAt: node.ota_updated_at ?? undefined,
+    otaLastSuccessAt: node.ota_last_success_at ?? undefined,
     capabilities: node.capabilities ?? undefined,
     lastSeenAt: node.last_seen_at ?? undefined,
   };
@@ -379,6 +401,21 @@ function normalizeFreshnessStatus(status?: string | null): Device["status"] | un
     normalized === "stale" ||
     normalized === "warning" ||
     normalized === "waiting"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizeOtaStatus(status?: string | null): HardwareNodeHealth["otaStatus"] | undefined {
+  const normalized = status?.toLowerCase();
+  if (
+    normalized === "idle" ||
+    normalized === "available" ||
+    normalized === "downloading" ||
+    normalized === "installing" ||
+    normalized === "success" ||
+    normalized === "failed"
   ) {
     return normalized;
   }

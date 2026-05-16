@@ -1,4 +1,5 @@
 export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded" | "stale" | "warning" | "waiting";
+export type FirmwareOtaStatus = "idle" | "available" | "downloading" | "installing" | "success" | "failed";
 
 export type Device = {
   id: string;
@@ -18,6 +19,17 @@ export type HardwareNodeHealth = {
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
   healthStatus?: DeviceConnectionState;
+  hardwareModel?: string;
+  hardwareVersion?: string;
+  softwareVersion?: string;
+  otaStatus?: FirmwareOtaStatus;
+  otaAvailableVersion?: string;
+  otaTargetVersion?: string;
+  otaReleaseId?: string;
+  otaProgress?: number;
+  otaError?: string;
+  otaUpdatedAt?: string;
+  otaLastSuccessAt?: string;
   capabilities?: Record<string, unknown>;
   lastSeenAt?: string;
 };

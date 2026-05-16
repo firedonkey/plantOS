@@ -42,6 +42,7 @@ platform/infra/cloud-run/.provisioning_deploy_state
 
 # ESP32 local toolchain/build artifacts
 .pio-core/
+.platformio-core/
 device/esp32/.pio/
 device/esp32/include/platform_secrets.h
 tools/

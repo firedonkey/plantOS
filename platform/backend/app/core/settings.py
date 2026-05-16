@@ -32,6 +32,10 @@ class Settings:
     gcs_bucket_name: str | None = None
     image_url_strategy: str | None = None
     image_signed_url_ttl_seconds: int = 30 * 60
+    firmware_storage_backend: str = "local"
+    firmware_local_dir: str = "data/firmware"
+    firmware_bucket_name: str | None = None
+    firmware_prefix: str = "firmware"
     session_secret: str = "dev-only-change-me"
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -78,6 +82,12 @@ class Settings:
             raise ValueError("GCS_BUCKET_NAME is required when PLANTLAB_STORAGE_BACKEND=gcs.")
         if self.image_url_strategy is not None and self.image_url_strategy not in {"signed_url", "proxy"}:
             raise ValueError("PLANTLAB_IMAGE_URL_STRATEGY must be 'signed_url' or 'proxy'.")
+        if self.firmware_storage_backend not in {"local", "gcs"}:
+            raise ValueError("PLANTLAB_FIRMWARE_STORAGE_BACKEND must be 'local' or 'gcs'.")
+        if self.firmware_storage_backend == "local" and not self.firmware_local_dir:
+            raise ValueError("PLANTLAB_FIRMWARE_LOCAL_DIR is required when firmware storage is local.")
+        if self.firmware_storage_backend == "gcs" and not self.firmware_bucket_name:
+            raise ValueError("PLANTLAB_FIRMWARE_BUCKET_NAME is required when firmware storage is gcs.")
         if not 60 <= self.image_signed_url_ttl_seconds <= 7 * 24 * 60 * 60:
             raise ValueError("PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS must be between 60 and 604800.")
         if bool(self.google_client_id) != bool(self.google_client_secret):
@@ -117,6 +127,13 @@ def get_settings() -> Settings:
             "PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS",
             default=Settings.image_signed_url_ttl_seconds,
         ),
+        firmware_storage_backend=os.getenv(
+            "PLANTLAB_FIRMWARE_STORAGE_BACKEND",
+            Settings.firmware_storage_backend,
+        ).lower(),
+        firmware_local_dir=os.getenv("PLANTLAB_FIRMWARE_LOCAL_DIR", Settings.firmware_local_dir),
+        firmware_bucket_name=_optional_env("PLANTLAB_FIRMWARE_BUCKET_NAME") or _optional_env("GCS_BUCKET_NAME"),
+        firmware_prefix=os.getenv("PLANTLAB_FIRMWARE_PREFIX", Settings.firmware_prefix).strip().strip("/"),
         session_secret=_required_or_default_secret("APP_SECRET_KEY", legacy_name="PLANTLAB_SESSION_SECRET"),
         google_client_id=_optional_env("GOOGLE_OAUTH_CLIENT_ID", legacy_name="GOOGLE_CLIENT_ID"),
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),

@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
 from app.api.errors import api_http_exception_handler, api_validation_exception_handler
-from app.api.routes import auth, commands, device_nodes, devices, hardware, health, images, readings, setup, status
+from app.api.routes import auth, commands, device_nodes, devices, firmware, hardware, health, images, readings, setup, status
 from app.core.settings import get_settings
 from app.db.session import init_db
 from app.web.routes import router as web_router
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(commands.router)
     app.include_router(device_nodes.router)
     app.include_router(devices.router)
+    app.include_router(firmware.router)
     app.include_router(hardware.router)
     app.include_router(images.router)
     app.include_router(readings.router)

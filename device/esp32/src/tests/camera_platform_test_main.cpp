@@ -12,6 +12,7 @@
 #include "camera/xiao_camera.h"
 #include "config.h"
 #include "espnow_test_protocol.h"
+#include "firmware_version.h"
 #include "platform/platform_client.h"
 
 extern "C" {
@@ -30,7 +31,7 @@ constexpr char kConfigKeyPlatformUrl[] = "plat_url";
 constexpr char kConfigKeyDeviceToken[] = "dev_token";
 constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kNodeRoleCamera[] = "camera";
-constexpr char kCameraSoftwareVersion[] = "0.1.0";
+constexpr const char* kCameraSoftwareVersion = plantlab::kCameraSoftwareVersion;
 XiaoCamera g_camera;
 Preferences g_preferences;
 std::unique_ptr<PlatformClient> g_platform_client;
@@ -453,6 +454,7 @@ bool sendHeartbeat() {
     heartbeat.node_role = kNodeRoleCamera;
     heartbeat.status = "online";
     heartbeat.message = "camera online";
+    heartbeat.software_version = kCameraSoftwareVersion;
 
     String error;
     if (g_platform_client->send_hardware_heartbeat(heartbeat, &error)) {

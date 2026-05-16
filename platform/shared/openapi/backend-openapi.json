@@ -62,6 +62,176 @@
         }
       }
     },
+    "/api/auth/google/start": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Standalone Google Start",
+        "operationId": "standalone_google_start_api_auth_google_start_get",
+        "parameters": [
+          {
+            "name": "client",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "web",
+              "title": "Client"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Standalone Auth Callback",
+        "operationId": "standalone_auth_callback_api_auth_google_callback_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Refresh",
+        "operationId": "refresh_api_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthRefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthRefreshRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Standalone Logout",
+        "operationId": "standalone_logout_api_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthLogoutRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me": {
       "get": {
         "tags": [
@@ -514,6 +684,47 @@
         }
       }
     },
+    "/api/devices/claim-token": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Create Device Claim Token",
+        "operationId": "create_device_claim_token_api_devices_claim_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceClaimTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSetupCodeRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{device_id}": {
       "get": {
         "tags": [
@@ -629,6 +840,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeviceDeleteRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}/release": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Release Device",
+        "operationId": "release_device_api_devices__device_id__release_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceReleaseRead"
                 }
               }
             }
@@ -1104,6 +1357,159 @@
         }
       }
     },
+    "/api/hardware/ota/manifest": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Ota Manifest",
+        "operationId": "ota_manifest_api_hardware_ota_manifest_get",
+        "parameters": [
+          {
+            "name": "hardware_device_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 120,
+              "title": "Hardware Device Id"
+            }
+          },
+          {
+            "name": "node_role",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 40,
+              "title": "Node Role"
+            }
+          },
+          {
+            "name": "current_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmwareManifestRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hardware/ota/status": {
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Ota Status",
+        "operationId": "ota_status_api_hardware_ota_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirmwareOtaStatusCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmwareOtaStatusRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hardware/ota/artifacts/{release_id}": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Ota Artifact",
+        "operationId": "ota_artifact_api_hardware_ota_artifacts__release_id__get",
+        "parameters": [
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Release Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hardware/readings": {
       "post": {
         "tags": [
@@ -1438,6 +1844,16 @@
             }
           },
           {
+            "name": "expected_device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Expected Device Id"
+            }
+          },
+          {
             "name": "expect_image",
             "in": "query",
             "required": false,
@@ -1455,6 +1871,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SetupStatusRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/claim-token/status": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Get Claim Token Status",
+        "operationId": "get_claim_token_status_api_setup_claim_token_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTokenStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimTokenStatusRead"
                 }
               }
             }
@@ -1883,6 +2340,99 @@
   },
   "components": {
     "schemas": {
+      "AuthLogoutRequest": {
+        "properties": {
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "title": "AuthLogoutRequest"
+      },
+      "AuthRefreshRead": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "standalone"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthUserRead"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in",
+          "expires_at",
+          "user"
+        ],
+        "title": "AuthRefreshRead"
+      },
+      "AuthRefreshRequest": {
+        "properties": {
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          },
+          "handoff_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handoff Code"
+          }
+        },
+        "type": "object",
+        "title": "AuthRefreshRequest"
+      },
       "AuthSessionRead": {
         "properties": {
           "token": {
@@ -1952,6 +2502,140 @@
         ],
         "title": "AuthUserRead"
       },
+      "BleDeviceIdentityRequest": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "device_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Device Id"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "hardware_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Version"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
+          },
+          "node_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Role"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "ble_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ble Name"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "BleDeviceIdentityRequest"
+      },
       "Body_upload_image_api_image_post": {
         "properties": {
           "device_id": {
@@ -1981,6 +2665,71 @@
           "file"
         ],
         "title": "Body_upload_image_api_image_post"
+      },
+      "ClaimTokenStatusRead": {
+        "properties": {
+          "used": {
+            "type": "boolean",
+            "title": "Used",
+            "default": false
+          },
+          "used_by_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used By Device Id"
+          },
+          "expected_device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Device Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "expired": {
+            "type": "boolean",
+            "title": "Expired",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ClaimTokenStatusRead"
+      },
+      "ClaimTokenStatusRequest": {
+        "properties": {
+          "setup_token": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 6,
+            "title": "Setup Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "setup_token"
+        ],
+        "title": "ClaimTokenStatusRequest"
       },
       "CommandAck": {
         "properties": {
@@ -2242,6 +2991,42 @@
           "password"
         ],
         "title": "DevLoginRequest"
+      },
+      "DeviceClaimTokenRequest": {
+        "properties": {
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "device_identity": {
+            "$ref": "#/components/schemas/BleDeviceIdentityRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_identity"
+        ],
+        "title": "DeviceClaimTokenRequest"
       },
       "DeviceCommandEnvelopeRead": {
         "properties": {
@@ -2686,6 +3471,129 @@
             "type": "string",
             "title": "Status"
           },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "hardware_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Version"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
+          },
+          "ota_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Status"
+          },
+          "ota_available_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Available Version"
+          },
+          "ota_target_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Target Version"
+          },
+          "ota_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Release Id"
+          },
+          "ota_progress": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Progress"
+          },
+          "ota_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Error"
+          },
+          "ota_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Updated At"
+          },
+          "ota_last_success_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Last Success At"
+          },
           "last_seen_at": {
             "anyOf": [
               {
@@ -2743,6 +3651,18 @@
             "maxLength": 40,
             "minLength": 2,
             "title": "Status"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
           }
         },
         "type": "object",
@@ -2771,6 +3691,17 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
           },
           "last_seen_at": {
             "anyOf": [
@@ -3043,6 +3974,41 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "release_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Reason"
+          },
           "status": {
             "anyOf": [
               {
@@ -3108,11 +4074,58 @@
         ],
         "title": "DeviceRead"
       },
+      "DeviceReleaseRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Released At"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "device_id",
+          "released_at",
+          "message"
+        ],
+        "title": "DeviceReleaseRead"
+      },
       "DeviceSetupCodeRead": {
         "properties": {
           "serial_number": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Serial Number"
+          },
+          "expected_device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Device Id"
           },
           "setup_code": {
             "anyOf": [
@@ -3182,7 +4195,6 @@
         },
         "type": "object",
         "required": [
-          "serial_number",
           "local_setup_url",
           "provisioning_api_url",
           "setup_finishing_url",
@@ -3574,6 +4586,316 @@
         "type": "object",
         "title": "DeviceUpdate"
       },
+      "FirmwareManifestRead": {
+        "properties": {
+          "update_available": {
+            "type": "boolean",
+            "title": "Update Available"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "default": 1
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "node_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Role"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "version_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Code"
+          },
+          "artifact_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Url"
+          },
+          "artifact_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Size Bytes"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update_available"
+        ],
+        "title": "FirmwareManifestRead"
+      },
+      "FirmwareOtaStatusCreate": {
+        "properties": {
+          "hardware_device_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Hardware Device Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "available",
+              "downloading",
+              "installing",
+              "success",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version"
+          },
+          "installed_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed Version"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hardware_device_id",
+          "status"
+        ],
+        "title": "FirmwareOtaStatusCreate"
+      },
+      "FirmwareOtaStatusRead": {
+        "properties": {
+          "hardware_device_id": {
+            "type": "string",
+            "title": "Hardware Device Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "available",
+              "downloading",
+              "installing",
+              "success",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version"
+          },
+          "available_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Version"
+          },
+          "installed_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed Version"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hardware_device_id",
+          "status"
+        ],
+        "title": "FirmwareOtaStatusRead"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3679,6 +5001,18 @@
             "title": "Status",
             "default": "online"
           },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
+          },
           "light_on": {
             "anyOf": [
               {
@@ -3748,6 +5082,17 @@
               }
             ],
             "title": "Node Role"
+          },
+          "software_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Software Version"
           },
           "light_on": {
             "anyOf": [
@@ -4247,6 +5592,34 @@
             "type": "boolean",
             "title": "Expect Image",
             "default": true
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online",
+            "default": false
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "redirect_path": {
             "anyOf": [

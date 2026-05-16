@@ -100,7 +100,12 @@ def hardware_heartbeat(
             raise HTTPException(status_code=404, detail="Device node not found.")
         if payload.node_role and node.node_role != payload.node_role:
             raise HTTPException(status_code=409, detail="Device node role does not match registration.")
-        updated_node = update_node_heartbeat(session, payload.hardware_device_id, status=payload.status)
+        updated_node = update_node_heartbeat(
+            session,
+            payload.hardware_device_id,
+            status=payload.status,
+            software_version=payload.software_version,
+        )
         if updated_node is None:
             raise HTTPException(status_code=404, detail="Device node not found.")
         last_seen_at = updated_node.last_seen_at
@@ -120,6 +125,7 @@ def hardware_heartbeat(
         status=payload.status,
         hardware_device_id=payload.hardware_device_id,
         node_role=node_role,
+        software_version=updated_node.software_version if payload.hardware_device_id and updated_node is not None else None,
         light_on=status_read.light_on,
         pump_on=status_read.pump_on,
         message=status_read.message,

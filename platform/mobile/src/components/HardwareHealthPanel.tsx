@@ -45,6 +45,12 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
           <View style={styles.grid}>
             <HealthItem title="Master" tone={health.masterStatus ?? health.primary?.status ?? "unknown"} value={formatNodeStatus(health.primary?.displayName ?? "Master", health.masterStatus ?? health.primary?.status ?? "unknown")} detail={formatAge(health.primary?.lastSeenAt, "Last heartbeat")} />
             <HealthItem
+              title="Firmware"
+              tone={otaTone(health.primary?.otaStatus)}
+              value={formatFirmwareValue(health)}
+              detail={formatFirmwareDetail(health)}
+            />
+            <HealthItem
               title="Camera"
               tone={health.cameraStatus ?? health.imageStatus ?? "waiting"}
               value={
@@ -133,6 +139,65 @@ function commandTone(status: string): DeviceConnectionState {
     return "offline";
   }
   return "waiting";
+}
+
+function otaTone(status: string | undefined): DeviceConnectionState {
+  if (status === "success" || status === "idle") {
+    return "online";
+  }
+  if (status === "failed") {
+    return "offline";
+  }
+  if (status === "available") {
+    return "warning";
+  }
+  if (status === "downloading" || status === "installing") {
+    return "waiting";
+  }
+  return "unknown";
+}
+
+function formatFirmwareValue(health: HardwareHealth) {
+  const version = health.primary?.softwareVersion ?? "Unknown version";
+  const status = formatOtaStatus(health.primary?.otaStatus);
+  return `${version} · ${status}`;
+}
+
+function formatFirmwareDetail(health: HardwareHealth) {
+  const primary = health.primary;
+  if (!primary) {
+    return "Firmware: waiting";
+  }
+  if (primary.otaStatus === "failed" && primary.otaError) {
+    return primary.otaError;
+  }
+  if (primary.otaTargetVersion) {
+    const progress = typeof primary.otaProgress === "number" ? ` · ${primary.otaProgress}%` : "";
+    return `Target: ${primary.otaTargetVersion}${progress}`;
+  }
+  if (primary.otaAvailableVersion) {
+    return `Available: ${primary.otaAvailableVersion}`;
+  }
+  return primary.otaLastSuccessAt ? formatAge(primary.otaLastSuccessAt, "Last update") : "No update pending";
+}
+
+function formatOtaStatus(status: string | undefined) {
+  switch (status) {
+    case "idle":
+      return "Idle";
+    case "available":
+      return "Update available";
+    case "downloading":
+      return "Downloading";
+    case "installing":
+      return "Installing";
+    case "success":
+      return "Updated";
+    case "failed":
+      return "Failed";
+    default:
+      return "Unknown";
+  }
 }
 
 function formatNodeStatus(name: string, status: string) {

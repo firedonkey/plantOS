@@ -83,6 +83,24 @@ def _apply_lightweight_migrations(selected_engine) -> None:
                 connection.execute(
                     text("ALTER TABLE device_hardware_ids ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'provisioning'")
                 )
+            if "software_version" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN software_version VARCHAR(120)"))
+            if "ota_status" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_status VARCHAR(40) NOT NULL DEFAULT 'idle'"))
+            if "ota_available_version" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_available_version VARCHAR(120)"))
+            if "ota_target_version" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_target_version VARCHAR(120)"))
+            if "ota_release_id" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_release_id VARCHAR(80)"))
+            if "ota_progress" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_progress INTEGER"))
+            if "ota_error" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_error VARCHAR(240)"))
+            if "ota_updated_at" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_updated_at DATETIME"))
+            if "ota_last_success_at" not in node_columns:
+                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_last_success_at DATETIME"))
 
 
 def get_session() -> Generator[Session, None, None]:

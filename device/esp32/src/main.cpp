@@ -16,6 +16,8 @@
 #include "actuators/pump_controller.h"
 #include "config.h"
 #include "espnow_test_protocol.h"
+#include "firmware_version.h"
+#include "ota/ota_update_manager.h"
 #include "platform/platform_client.h"
 #include "provisioning/ble_provisioning.h"
 #include "provisioning/wifi_networks_payload.h"
@@ -41,7 +43,7 @@ constexpr char kConfigKeyPendingPlatformUrl[] = "pend_plat";
 constexpr char kConfigKeyPendingAttachDeviceId[] = "pend_attach";
 constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kProvisioningApName[] = "PlantLab-Setup";
-constexpr char kSoftwareVersion[] = "0.1.0";
+constexpr const char* kSoftwareVersion = plantlab::kMasterSoftwareVersion;
 constexpr uint16_t kProvisioningPort = 8080;
 constexpr uint32_t kReconnectRetryMs = 5000UL;
 constexpr uint32_t kHttpTimeoutMs = 20000UL;
@@ -148,6 +150,7 @@ Preferences g_preferences;
 WebServer g_web_server(kProvisioningPort);
 plantlab::BleProvisioningService g_ble_provisioning;
 std::unique_ptr<PlatformClient> g_platform_client;
+std::unique_ptr<plantlab::OtaUpdateManager> g_ota_update_manager;
 MasterCaptureScheduleState g_camera_capture_schedule{};
 
 DeviceConfig g_config;
@@ -400,6 +403,7 @@ const char* espnowAckToString(EspNowAckStatus status) {
 }
 
 void rebuildPlatformClient() {
+  g_ota_update_manager.reset();
   g_platform_client.reset();
   g_master_node_registered = false;
   g_last_master_node_register_attempt_ms = 0;
@@ -416,6 +420,13 @@ void rebuildPlatformClient() {
 
   g_platform_client.reset(
       new PlatformClient(platform_url.c_str(), g_config.platform_device_id, g_config.device_token.c_str()));
+  g_ota_update_manager.reset(new plantlab::OtaUpdateManager(
+      g_platform_client.get(),
+      stableHardwareDeviceId().c_str(),
+      "esp32_master",
+      kSoftwareVersion,
+      plantlab::kMasterSoftwareVersionCode));
+  g_ota_update_manager->begin();
   Serial.printf("[platform] base_url: %s\n", g_platform_client->base_url().c_str());
   Serial.printf("[platform] device_id: %d\n", g_platform_client->device_id());
 }
@@ -2813,6 +2824,7 @@ PlatformStatus platform_status(const String& message) {
   status.light_on = g_growing_light.is_on();
   status.pump_on = g_pump.is_on();
   status.message = message;
+  status.software_version = kSoftwareVersion;
   return status;
 }
 
@@ -3125,6 +3137,9 @@ void loop() {
     pollCameraCaptureSchedule(now);
     send_platform_status(now);
     send_platform_reading(now);
+    if (g_ota_update_manager && !hasPendingClaim() && !provisioningPriorityActive()) {
+      g_ota_update_manager->service(now);
+    }
   }
 
   if (now - g_last_dht22_read_ms >= DHT22_READ_INTERVAL_MS) {

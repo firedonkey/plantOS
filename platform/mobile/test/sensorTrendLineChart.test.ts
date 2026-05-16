@@ -52,7 +52,7 @@ test("mobile dashboard shows the new water hardware surface without pump or mois
   for (const requiredText of [
     'label="Water temp"',
     'label="Water level"',
-    'label="Grow LED"',
+    "<Text style={styles.sectionTitle}>Grow LED</Text>",
     '"Turn on"',
     '"Turn off"',
     "nextLightAction",

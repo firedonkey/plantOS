@@ -26,6 +26,17 @@ class DeviceHealthNodeRead(BaseModel):
     node_index: int | None
     display_name: str | None
     status: str
+    hardware_model: str | None = None
+    hardware_version: str | None = None
+    software_version: str | None = None
+    ota_status: str | None = None
+    ota_available_version: str | None = None
+    ota_target_version: str | None = None
+    ota_release_id: str | None = None
+    ota_progress: int | None = None
+    ota_error: str | None = None
+    ota_updated_at: datetime | None = None
+    ota_last_success_at: datetime | None = None
     last_seen_at: datetime | None = None
     health_status: str | None = None
 
