@@ -6,13 +6,15 @@ type CommandActivityPanelProps = {
 
 export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
   return (
-    <div className="card stack-form">
-      <div className="section-header">
+    <details className="card stack-form collapsible-panel">
+      <summary className="collapsible-summary">
         <div>
           <h3>Command activity</h3>
-          <p className="subtitle">Recent light, pump, and capture commands from the shared backend command history.</p>
+          <p className="subtitle">Recent grow LED and capture commands from the shared backend command history.</p>
         </div>
-      </div>
+        <span className="chip chip-unknown">{commands.length}</span>
+        <span className="collapsible-indicator" aria-hidden="true" />
+      </summary>
 
       {!commands.length ? (
         <p className="subtitle">No recent commands yet. Command activity will appear here after you use the controls.</p>
@@ -32,16 +34,16 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
           ))}
         </div>
       )}
-    </div>
+    </details>
   );
 }
 
 function formatAction(action: DeviceCommand["action"]): string {
   switch (action) {
     case "light_on":
-      return "Light on";
+      return "Grow LED on";
     case "light_off":
-      return "Light off";
+      return "Grow LED off";
     case "pump_run":
       return "Pump run";
     case "capture_image":

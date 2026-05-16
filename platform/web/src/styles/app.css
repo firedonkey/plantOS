@@ -172,6 +172,80 @@ input {
   font-size: 28px;
 }
 
+.metric-card-control {
+  justify-content: space-between;
+}
+
+.metric-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 108px;
+  height: 48px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+
+.toggle-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.toggle-switch-on {
+  justify-content: flex-start;
+  background: #2f855a;
+}
+
+.toggle-switch-off {
+  justify-content: flex-end;
+  background: #d7dee3;
+}
+
+.toggle-switch-label {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  z-index: 1;
+}
+
+.toggle-switch-off .toggle-switch-label {
+  color: #55635d;
+}
+
+.toggle-switch-knob {
+  position: absolute;
+  top: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.toggle-switch-on .toggle-switch-knob {
+  right: 7px;
+}
+
+.toggle-switch-off .toggle-switch-knob {
+  left: 7px;
+}
+
+.dashboard-action-button {
+  width: 100%;
+  text-decoration: none;
+}
+
 .capture-image {
   width: 100%;
   max-width: 680px;
@@ -254,6 +328,43 @@ input {
 .chip-mock {
   background: #efe7ff;
   color: #6941c6;
+}
+
+.collapsible-panel {
+  display: block;
+}
+
+.collapsible-panel > *:not(summary) {
+  margin-top: 10px;
+}
+
+.collapsible-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-indicator {
+  color: #2f855a;
+  font-size: 13px;
+  font-weight: 700;
+  padding-top: 6px;
+  white-space: nowrap;
+}
+
+.collapsible-indicator::after {
+  content: "Show";
+}
+
+.collapsible-panel[open] .collapsible-indicator::after {
+  content: "Hide";
 }
 
 .centered-page {
@@ -456,17 +567,6 @@ input {
   background: #e7f3ec;
   color: #2f855a;
   font-weight: 700;
-}
-
-.state-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.state-metrics strong {
-  display: block;
-  font-size: 24px;
 }
 
 .image-gallery-grid {

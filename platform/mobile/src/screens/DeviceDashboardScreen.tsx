@@ -1,11 +1,10 @@
 import { Link } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { CommandActivityPanel } from "@/components/CommandActivityPanel";
 import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { MetricCard } from "@/components/MetricCard";
-import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { Screen } from "@/components/Screen";
@@ -36,6 +35,20 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const { token } = useSession();
+  const growLedOn = dashboard?.device.latestReading?.lightOn === true;
+  const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
+  const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
+  const nextLightAction = growLedOn ? "light_off" : "light_on";
+  const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
+  const lightToggleLabel = pendingLightOn
+    ? "Turning on..."
+    : pendingLightOff
+      ? "Turning off..."
+      : isCommandRunning
+        ? "Working..."
+        : growLedOn
+          ? "Turn off"
+          : "Turn on";
 
   if (!deviceId) {
     return (
@@ -77,23 +90,20 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
 
           <Card>
             <View style={styles.metricsGrid}>
-              <MetricCard label="Temperature" value={`${dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C`} />
+              <MetricCard label="Air temp" value={`${dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C`} />
               <MetricCard label="Humidity" value={`${dashboard.device.latestReading?.humidityPercent?.toFixed(1) ?? "--"}%`} />
-              <MetricCard label="Soil Moisture" value={`${dashboard.device.latestReading?.soilMoisturePercent?.toFixed(1) ?? "--"}%`} />
-              <MetricCard label="Water Level" value={`${dashboard.device.latestReading?.waterLevelPercent?.toFixed(0) ?? "--"}%`} />
-              <MetricCard label="Light" value={dashboard.device.latestReading?.lightOn ? "On" : "Off"} />
-              <MetricCard label="Pump" value={dashboard.device.latestReading?.pumpOn ? "On" : "Off"} />
+              <MetricCard label="Water temp" value={`${dashboard.device.latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C`} />
+              <MetricCard label="Water level" value={formatWaterLevel(dashboard.device.latestReading?.waterLevelState, dashboard.device.latestReading?.waterLevelRaw)} />
+              <MetricCard label="Grow LED" value={growLedOn ? "On" : "Off"}>
+                <ToggleButton
+                  disabled={lightToggleDisabled}
+                  label={lightToggleLabel}
+                  on={growLedOn}
+                  onPress={() => runCommand(nextLightAction)}
+                />
+              </MetricCard>
             </View>
           </Card>
-
-          <ReadingTrendSection
-            history={dashboard.history}
-            title="Sensor trends"
-            subtitle="Use the range tabs to request matching backend history windows for temperature, humidity, and soil moisture."
-            selectedRange={selectedRange}
-            onRangeChange={setSelectedRange}
-            loading={isLoading}
-          />
 
           <RecentImageGallery
             images={dashboard.recentImages}
@@ -109,40 +119,23 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             onCapture={() => runCommand("capture_image")}
           />
 
+          <ReadingTrendSection
+            history={dashboard.history}
+            title="Sensor trends"
+            subtitle="Use the range tabs to request matching backend history windows for air and water readings."
+            selectedRange={selectedRange}
+            onRangeChange={setSelectedRange}
+            loading={isLoading}
+          />
+
           <HardwareHealthPanel health={dashboard.hardwareHealth} />
 
           <CommandActivityPanel commands={dashboard.recentCommands} />
 
-          <Card>
-            <Text style={styles.sectionTitle}>Manual controls</Text>
-            <View style={styles.buttonRow}>
-              <PrimaryButton
-                disabled={isCommandRunning || isActionBlocked("light_on")}
-                label={activeCommandAction === "light_on" || isActionBlocked("light_on") ? "Light on pending" : isCommandRunning ? "Working..." : "Light on"}
-                onPress={() => runCommand("light_on")}
-              />
-              <PrimaryButton
-                disabled={isCommandRunning || isActionBlocked("light_off")}
-                label={activeCommandAction === "light_off" || isActionBlocked("light_off") ? "Light off pending" : "Light off"}
-                onPress={() => runCommand("light_off")}
-              />
-            </View>
-            <View style={styles.buttonRow}>
-              <PrimaryButton
-                disabled={isCommandRunning || isActionBlocked("pump_run")}
-                label={activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
-                onPress={() => runCommand("pump_run")}
-              />
-            </View>
-            {dashboard.hardwareHealth?.lastCommand ? (
-              <Text style={styles.meta}>
-                Last command: {formatActionLabel(dashboard.hardwareHealth.lastCommand.action)} {formatStatusLabel(dashboard.hardwareHealth.lastCommand.status).toLowerCase()}.
-              </Text>
-            ) : null}
-          </Card>
-
-          <Link href={`/(app)/devices/${deviceId}/settings`} style={styles.historyLink}>
-            Device settings
+          <Link href={`/(app)/devices/${deviceId}/settings`} asChild>
+            <Pressable accessibilityRole="button" style={styles.settingsButton}>
+              <Text style={styles.settingsButtonLabel}>Device settings</Text>
+            </Pressable>
           </Link>
         </>
       ) : error ? (
@@ -154,34 +147,25 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
   );
 }
 
-function formatActionLabel(action: string) {
-  switch (action) {
-    case "light_on":
-      return "Light on";
-    case "light_off":
-      return "Light off";
-    case "pump_run":
-      return "Pump run";
-    default:
-      return "Capture image";
-  }
+function ToggleButton({ disabled, label, on, onPress }: { disabled: boolean; label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.toggleSwitch, on ? styles.toggleSwitchOn : styles.toggleSwitchOff, disabled ? styles.toggleSwitchDisabled : null]}
+    >
+      <Text style={[styles.toggleLabel, on ? styles.toggleLabelOn : styles.toggleLabelOff]}>{on ? "ON" : "OFF"}</Text>
+      <View style={[styles.toggleKnob, on ? styles.toggleKnobOn : styles.toggleKnobOff]} />
+    </Pressable>
+  );
 }
 
-function formatStatusLabel(status: string) {
-  switch (status) {
-    case "completed":
-      return "Completed";
-    case "in_progress":
-      return "In progress";
-    case "pending":
-      return "Pending";
-    case "sent":
-      return "Sent";
-    case "failed":
-      return "Failed";
-    default:
-      return "Unknown";
-  }
+function formatWaterLevel(state?: string, raw?: number) {
+  const label = state ? state.charAt(0).toUpperCase() + state.slice(1) : "--";
+  return raw !== undefined ? `${label} (${raw})` : label;
 }
 
 const styles = StyleSheet.create({
@@ -197,6 +181,47 @@ const styles = StyleSheet.create({
   feedbackSuccess: { color: theme.colors.accent, backgroundColor: "#dff7e8" },
   feedbackError: { color: "#b42318", backgroundColor: "#fde4e4" },
   feedbackInfo: { color: "#6941c6", backgroundColor: "#efe7ff" },
-  buttonRow: { gap: 10 },
-  historyLink: { color: theme.colors.accent, fontSize: 16, fontWeight: "700" },
+  toggleSwitch: {
+    width: 108,
+    height: 48,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    position: "relative",
+  },
+  toggleSwitchOn: { backgroundColor: theme.colors.accent },
+  toggleSwitchOff: { backgroundColor: "#d7dee3" },
+  toggleSwitchDisabled: { opacity: 0.6 },
+  toggleLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0,
+    zIndex: 1,
+  },
+  toggleLabelOn: { color: "#ffffff" },
+  toggleLabelOff: { color: theme.colors.textSecondary, marginLeft: 44 },
+  toggleKnob: {
+    position: "absolute",
+    top: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+  },
+  toggleKnobOn: { right: 7 },
+  toggleKnobOff: { left: 7 },
+  settingsButton: {
+    width: "100%",
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    backgroundColor: theme.colors.accent,
+  },
+  settingsButtonLabel: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
 });

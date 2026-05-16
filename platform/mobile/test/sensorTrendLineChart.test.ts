@@ -26,17 +26,41 @@ test("reading trend cards render line charts for the approved sensor series", as
   assert.match(trendSource, /Current \$\{latest\.toFixed\(1\)\}/);
 
   for (const requiredText of [
-    "Temperature",
+    "Air temp",
     "Humidity",
-    "Soil moisture",
+    "Water temp",
+    "Water level raw",
     "temperatureC",
     "humidityPercent",
-    "soilMoisturePercent",
+    "waterTemperatureC",
+    "waterLevelRaw",
   ]) {
     assert.match(trendSource, new RegExp(requiredText));
   }
 
+  assert.doesNotMatch(trendSource, /Soil moisture|soilMoisturePercent|Grow LED \/ water level/);
   assert.doesNotMatch(trendSource, /styles\.bars|styles\.bar\b|maxRange|barHeight/);
+});
+
+test("mobile dashboard shows the new water hardware surface without pump or moisture controls", async () => {
+  const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
+
+  for (const requiredText of [
+    'label="Water temp"',
+    'label="Water level"',
+    'label="Grow LED"',
+    '"Turn on"',
+    '"Turn off"',
+    "nextLightAction",
+    "formatWaterLevel",
+    "ToggleButton",
+    'accessibilityRole="switch"',
+  ]) {
+    assert.match(dashboardSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  assert.doesNotMatch(dashboardSource, /label="Soil moisture"|soilMoisturePercent/);
+  assert.doesNotMatch(dashboardSource, /label="Pump"|runPump|pumpOn/);
 });
 
 test("sensor line chart keeps safeguards for empty, sparse, missing, and dense histories", async () => {

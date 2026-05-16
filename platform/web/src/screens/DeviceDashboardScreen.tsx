@@ -29,6 +29,20 @@ export function DeviceDashboardScreen() {
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
+  const growLedOn = dashboard?.device.latestReading?.lightOn === true;
+  const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
+  const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
+  const nextLightAction = growLedOn ? "light_off" : "light_on";
+  const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
+  const lightToggleLabel = pendingLightOn
+    ? "Turning on..."
+    : pendingLightOff
+      ? "Turning off..."
+      : isCommandRunning
+        ? "Working..."
+        : growLedOn
+          ? "Turn off"
+          : "Turn on";
 
   useEffect(() => {
     if (!dashboard?.recentImages.length) {
@@ -119,22 +133,28 @@ export function DeviceDashboardScreen() {
           ) : null}
 
           <div className="metrics-grid">
-            <div className="metric-card"><span>Temperature</span><strong>{dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C</strong></div>
+            <div className="metric-card"><span>Air temp</span><strong>{dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C</strong></div>
             <div className="metric-card"><span>Humidity</span><strong>{dashboard.device.latestReading?.humidityPercent?.toFixed(1) ?? "--"}%</strong></div>
-            <div className="metric-card"><span>Soil Moisture</span><strong>{dashboard.device.latestReading?.soilMoisturePercent?.toFixed(1) ?? "--"}%</strong></div>
-            <div className="metric-card"><span>Water Level</span><strong>{dashboard.device.latestReading?.waterLevelPercent?.toFixed(0) ?? "--"}%</strong></div>
-            <div className="metric-card"><span>Light</span><strong>{dashboard.device.latestReading?.lightOn ? "On" : "Off"}</strong></div>
-            <div className="metric-card"><span>Pump</span><strong>{dashboard.device.latestReading?.pumpOn ? "On" : "Off"}</strong></div>
+            <div className="metric-card"><span>Water temp</span><strong>{dashboard.device.latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C</strong></div>
+            <div className="metric-card"><span>Water level</span><strong>{formatWaterLevel(dashboard.device.latestReading?.waterLevelState, dashboard.device.latestReading?.waterLevelRaw)}</strong></div>
+            <div className="metric-card metric-card-control">
+              <span>Grow LED</span>
+              <div className="metric-control-row">
+                <strong>{growLedOn ? "On" : "Off"}</strong>
+                <button
+                  aria-label={lightToggleLabel}
+                  aria-pressed={growLedOn}
+                  className={`toggle-switch ${growLedOn ? "toggle-switch-on" : "toggle-switch-off"}`}
+                  disabled={lightToggleDisabled}
+                  onClick={() => runCommand(nextLightAction)}
+                  type="button"
+                >
+                  <span className="toggle-switch-label">{growLedOn ? "ON" : "OFF"}</span>
+                  <span className="toggle-switch-knob" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
           </div>
-
-          <ReadingTrendSection
-            history={dashboard.history}
-            title="Sensor trends"
-            subtitle="Use the range tabs to request matching backend history windows for temperature, humidity, and soil moisture."
-            selectedRange={selectedRange}
-            onRangeChange={setSelectedRange}
-            loading={isLoading}
-          />
 
           <RecentImageGallery
             images={dashboard.recentImages.map((image) => ({
@@ -152,31 +172,20 @@ export function DeviceDashboardScreen() {
             onCapture={() => runCommand("capture_image")}
           />
 
+          <ReadingTrendSection
+            history={dashboard.history}
+            title="Sensor trends"
+            subtitle="Use the range tabs to request matching backend history windows for air and water readings."
+            selectedRange={selectedRange}
+            onRangeChange={setSelectedRange}
+            loading={isLoading}
+          />
+
           <HardwareHealthPanel health={dashboard.hardwareHealth} />
 
           <CommandActivityPanel commands={dashboard.recentCommands} />
 
-          <div className="card">
-            <h3>Manual controls</h3>
-            <div className="button-row">
-              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("light_on")} onClick={() => runCommand("light_on")}>
-                {activeCommandAction === "light_on" || isActionBlocked("light_on") ? "Light on pending" : isCommandRunning ? "Working..." : "Light on"}
-              </button>
-              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("light_off")} onClick={() => runCommand("light_off")}>
-                {activeCommandAction === "light_off" || isActionBlocked("light_off") ? "Light off pending" : "Light off"}
-              </button>
-              <button className="primary-button" disabled={isCommandRunning || isActionBlocked("pump_run")} onClick={() => runCommand("pump_run")}>
-                {activeCommandAction === "pump_run" || isActionBlocked("pump_run") ? "Pump run pending" : "Pump run"}
-              </button>
-            </div>
-            {dashboard.hardwareHealth?.lastCommand ? (
-              <p className="meta-text">
-                Last command: {formatActionLabel(dashboard.hardwareHealth.lastCommand.action)} {formatStatusLabel(dashboard.hardwareHealth.lastCommand.status).toLowerCase()}.
-              </p>
-            ) : null}
-          </div>
-
-          <Link className="text-link" to={`/devices/${deviceId}/settings`}>
+          <Link className="primary-button dashboard-action-button" to={`/devices/${deviceId}/settings`}>
             Device settings
           </Link>
           <Link className="text-link" to={`/devices/${deviceId}/remove`}>
@@ -197,32 +206,7 @@ function shouldUseImageAuthHeaders(url: string): boolean {
   return path.startsWith("/api/images/") && path.split("?")[0].endsWith("/content");
 }
 
-function formatActionLabel(action: string) {
-  switch (action) {
-    case "light_on":
-      return "Light on";
-    case "light_off":
-      return "Light off";
-    case "pump_run":
-      return "Pump run";
-    default:
-      return "Capture image";
-  }
-}
-
-function formatStatusLabel(status: string) {
-  switch (status) {
-    case "completed":
-      return "Completed";
-    case "in_progress":
-      return "In progress";
-    case "pending":
-      return "Pending";
-    case "sent":
-      return "Sent";
-    case "failed":
-      return "Failed";
-    default:
-      return "Unknown";
-  }
+function formatWaterLevel(state?: string, raw?: number) {
+  const label = state ? state.charAt(0).toUpperCase() + state.slice(1) : "--";
+  return raw !== undefined ? `${label} (${raw})` : label;
 }

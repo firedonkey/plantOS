@@ -55,7 +55,7 @@ export function ReadingTrendSection({
       ) : (
         <div className="trend-grid">
           <TrendCard
-            label="Temperature"
+            label="Air temp"
             unit="C"
             values={history.map((reading) => reading.temperatureC)}
             latest={latestReading?.temperatureC}
@@ -67,12 +67,17 @@ export function ReadingTrendSection({
             latest={latestReading?.humidityPercent}
           />
           <TrendCard
-            label="Soil moisture"
-            unit="%"
-            values={history.map((reading) => reading.soilMoisturePercent)}
-            latest={latestReading?.soilMoisturePercent}
+            label="Water temp"
+            unit="C"
+            values={history.map((reading) => reading.waterTemperatureC)}
+            latest={latestReading?.waterTemperatureC}
           />
-          <StateCard label="Light / pump state" readings={history} />
+          <TrendCard
+            label="Water level raw"
+            unit=""
+            values={history.map((reading) => reading.waterLevelRaw)}
+            latest={latestReading?.waterLevelRaw}
+          />
         </div>
       )}
     </div>
@@ -109,32 +114,6 @@ function TrendCard({
       <p className="meta-text">
         Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"} • Max {maximum !== undefined ? `${maximum.toFixed(1)} ${unit}` : "--"}
       </p>
-    </div>
-  );
-}
-
-function StateCard({ label, readings }: { label: string; readings: SensorReading[] }) {
-  const lightOnCount = readings.filter((reading) => reading.lightOn).length;
-  const pumpOnCount = readings.filter((reading) => reading.pumpOn).length;
-  const latest = readings.length ? readings[readings.length - 1] : undefined;
-
-  return (
-    <div className="trend-card">
-      <div className="trend-card-header">
-        <span>{label}</span>
-        <strong>{latest ? `${latest.lightOn ? "Light on" : "Light off"} • ${latest.pumpOn ? "Pump on" : "Pump off"}` : "--"}</strong>
-      </div>
-      <div className="state-metrics">
-        <div>
-          <span className="meta-text">Light on</span>
-          <strong>{lightOnCount}</strong>
-        </div>
-        <div>
-          <span className="meta-text">Pump on</span>
-          <strong>{pumpOnCount}</strong>
-        </div>
-      </div>
-      <p className="meta-text">Counts are based on the readings currently loaded in this range.</p>
     </div>
   );
 }

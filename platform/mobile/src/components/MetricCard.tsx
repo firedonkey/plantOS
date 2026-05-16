@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { theme } from "@/styles/theme";
@@ -5,13 +6,21 @@ import { theme } from "@/styles/theme";
 type MetricCardProps = {
   label: string;
   value: string;
+  children?: ReactNode;
 };
 
-export function MetricCard({ label, value }: MetricCardProps) {
+export function MetricCard({ label, value, children }: MetricCardProps) {
   return (
     <View style={styles.card}>
       <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+      {children ? (
+        <View style={styles.valueRow}>
+          <Text style={styles.value}>{value}</Text>
+          {children}
+        </View>
+      ) : (
+        <Text style={styles.value}>{value}</Text>
+      )}
     </View>
   );
 }
@@ -36,5 +45,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "700",
     color: theme.colors.textPrimary,
+  },
+  valueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
 });

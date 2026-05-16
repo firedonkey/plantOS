@@ -7,20 +7,23 @@ type HardwareHealthPanelProps = {
 export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
   if (!health) {
     return (
-      <div className="card stack-form">
-        <div className="section-header">
+      <details className="card stack-form collapsible-panel">
+        <summary className="collapsible-summary">
           <div>
             <h3>Hardware health</h3>
             <p className="subtitle">Waiting for backend hardware health details.</p>
           </div>
-        </div>
-      </div>
+          <span className="chip chip-unknown">Waiting</span>
+          <span className="collapsible-indicator" aria-hidden="true" />
+        </summary>
+        <p className="subtitle">Waiting for backend hardware health details.</p>
+      </details>
     );
   }
 
   return (
-    <div className="card stack-form">
-      <div className="section-header">
+    <details className="card stack-form collapsible-panel">
+      <summary className="collapsible-summary">
         <div>
           <h3>Hardware health</h3>
           <p className="subtitle">Live heartbeat, node, image, and command status from the shared backend contract.</p>
@@ -28,7 +31,8 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
         <span className={`chip chip-${health.overallStatus === "degraded" ? "degraded" : health.overallStatus === "online" ? "online" : health.overallStatus === "offline" ? "offline" : "unknown"}`}>
           {formatStatusLabel(health.overallStatus)}
         </span>
-      </div>
+        <span className="collapsible-indicator" aria-hidden="true" />
+      </summary>
 
       <div className="health-grid">
         <div className="health-item">
@@ -54,7 +58,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
       </div>
 
       {health.lastCommand?.message ? <p className="meta-text">{health.lastCommand.message}</p> : null}
-    </div>
+    </details>
   );
 }
 
@@ -99,9 +103,9 @@ function formatCommandStatus(status: string): string {
 function formatAction(action: string): string {
   switch (action) {
     case "light_on":
-      return "Light on";
+      return "Grow LED on";
     case "light_off":
-      return "Light off";
+      return "Grow LED off";
     case "pump_run":
       return "Pump run";
     case "capture_image":

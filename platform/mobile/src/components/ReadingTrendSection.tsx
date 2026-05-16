@@ -26,7 +26,7 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
 const SENSOR_SERIES = [
   {
     key: "temperature",
-    label: "Temperature",
+    label: "Air temp",
     unit: "C",
     color: "#c96f2d",
     getValue: (reading: SensorReading) => reading.temperatureC,
@@ -39,11 +39,18 @@ const SENSOR_SERIES = [
     getValue: (reading: SensorReading) => reading.humidityPercent,
   },
   {
-    key: "soil-moisture",
-    label: "Soil moisture",
-    unit: "%",
+    key: "water-temperature",
+    label: "Water temp",
+    unit: "C",
     color: theme.colors.accent,
-    getValue: (reading: SensorReading) => reading.soilMoisturePercent,
+    getValue: (reading: SensorReading) => reading.waterTemperatureC,
+  },
+  {
+    key: "water-level",
+    label: "Water level raw",
+    unit: "",
+    color: "#6f7d45",
+    getValue: (reading: SensorReading) => reading.waterLevelRaw,
   },
 ];
 
@@ -91,7 +98,6 @@ export function ReadingTrendSection({
               getValue={series.getValue}
             />
           ))}
-          <StateCard readings={history} />
         </View>
       )}
     </Card>
@@ -134,30 +140,6 @@ function TrendCard({
   );
 }
 
-function StateCard({ readings }: { readings: SensorReading[] }) {
-  const lightOnCount = readings.filter((reading) => reading.lightOn).length;
-  const pumpOnCount = readings.filter((reading) => reading.pumpOn).length;
-  const latest = readings.at(-1);
-
-  return (
-    <View style={styles.trendCard}>
-      <Text style={styles.cardLabel}>Light / pump state</Text>
-      <Text style={styles.cardValue}>{latest ? `${latest.lightOn ? "Light on" : "Light off"} • ${latest.pumpOn ? "Pump on" : "Pump off"}` : "--"}</Text>
-      <View style={styles.stateMetrics}>
-        <View>
-          <Text style={styles.meta}>Light on</Text>
-          <Text style={styles.metricStrong}>{lightOnCount}</Text>
-        </View>
-        <View>
-          <Text style={styles.meta}>Pump on</Text>
-          <Text style={styles.metricStrong}>{pumpOnCount}</Text>
-        </View>
-      </View>
-      <Text style={styles.meta}>Counts are based on the readings currently loaded in this range.</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   header: { gap: 10 },
   title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
@@ -188,7 +170,5 @@ const styles = StyleSheet.create({
   },
   cardLabel: { color: theme.colors.textSecondary, fontWeight: "600" },
   cardValue: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
-  stateMetrics: { flexDirection: "row", gap: 16 },
-  metricStrong: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
   meta: { fontSize: 13, color: theme.colors.textSecondary },
 });

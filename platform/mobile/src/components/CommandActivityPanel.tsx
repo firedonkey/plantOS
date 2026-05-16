@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { DeviceCommand } from "@/types";
@@ -9,12 +10,24 @@ type CommandActivityPanelProps = {
 };
 
 export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <Card>
-      <Text style={styles.title}>Command activity</Text>
-      <Text style={styles.subtitle}>Recent light, pump, and capture commands from the shared backend command history.</Text>
+      <Pressable accessibilityRole="button" onPress={() => setExpanded((value) => !value)} style={styles.header}>
+        <View style={{ flex: 1, gap: 6 }}>
+          <Text style={styles.title}>Command activity</Text>
+          <Text style={styles.subtitle}>Recent grow LED and capture commands from the shared backend command history.</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{commands.length}</Text>
+          </View>
+          <Text style={styles.expandText}>{expanded ? "Hide" : "Show"}</Text>
+        </View>
+      </Pressable>
 
-      {!commands.length ? (
+      {!expanded ? null : !commands.length ? (
         <Text style={styles.subtitle}>No recent commands yet. Command activity will appear here after you use the controls.</Text>
       ) : (
         <View style={styles.list}>
@@ -41,9 +54,9 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
 function formatAction(action: DeviceCommand["action"]): string {
   switch (action) {
     case "light_on":
-      return "Light on";
+      return "Grow LED on";
     case "light_off":
-      return "Light off";
+      return "Grow LED off";
     case "pump_run":
       return "Pump run";
     case "capture_image":
@@ -67,8 +80,13 @@ function formatStatus(status: DeviceCommand["status"]): string {
 }
 
 const styles = StyleSheet.create({
+  header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  headerRight: { alignItems: "flex-end", gap: 8 },
   title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
   subtitle: { fontSize: 14, color: theme.colors.textSecondary },
+  expandText: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
+  countBadge: { minWidth: 28, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: "#eceff3", alignItems: "center" },
+  countText: { fontSize: 12, fontWeight: "700", color: theme.colors.textSecondary },
   list: { gap: 12 },
   row: {
     flexDirection: "row",
