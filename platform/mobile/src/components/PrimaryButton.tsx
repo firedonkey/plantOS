@@ -32,7 +32,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
+    minHeight: 46,
   },
   primaryButton: {
     backgroundColor: theme.colors.accent,
@@ -43,8 +45,8 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   dangerButton: {
-    backgroundColor: "#d92d20",
-    borderColor: "#d92d20",
+    backgroundColor: theme.colors.dangerStrong,
+    borderColor: theme.colors.dangerStrong,
   },
   pressed: {
     opacity: 0.85,
@@ -53,11 +55,11 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   label: {
-    fontSize: 15,
+    fontSize: theme.typography.body,
     fontWeight: "700",
   },
   primaryLabel: {
-    color: "#ffffff",
+    color: theme.colors.white,
   },
   secondaryLabel: {
     color: theme.colors.textPrimary,

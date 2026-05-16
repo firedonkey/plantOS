@@ -52,8 +52,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
-    padding: 20,
+    padding: theme.spacing.xl,
     paddingBottom: 72,
-    gap: 16,
+    gap: theme.spacing.lg,
   },
 });

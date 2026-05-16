@@ -65,7 +65,7 @@ export function SensorLineChart({ points, color, height = DEFAULT_HEIGHT }: Sens
                   top: y,
                   left: PADDING.left,
                   right: PADDING.right,
-                  backgroundColor: hexToRgba(theme.colors.border, 0.42),
+                  backgroundColor: hexToRgba(theme.colors.chartGrid, 0.42),
                 },
               ]}
             />
@@ -84,7 +84,7 @@ export function SensorLineChart({ points, color, height = DEFAULT_HEIGHT }: Sens
                   left: x,
                   top: PADDING.top,
                   bottom: PADDING.bottom,
-                  backgroundColor: hexToRgba(theme.colors.border, 0.22),
+                  backgroundColor: hexToRgba(theme.colors.chartGrid, 0.22),
                 },
               ]}
             />
@@ -517,8 +517,8 @@ const styles = StyleSheet.create({
   container: {
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: hexToRgba(theme.colors.border, 0.64),
-    borderRadius: 8,
+    borderColor: hexToRgba(theme.colors.borderSoft, 0.92),
+    borderRadius: theme.radii.md,
     backgroundColor: theme.colors.surface,
   },
   noData: {
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   noDataText: {
-    color: theme.colors.textMuted,
+    color: theme.colors.chartAxis,
     fontSize: 13,
     fontWeight: "600",
   },
@@ -541,14 +541,14 @@ const styles = StyleSheet.create({
   },
   xAxisLabel: {
     bottom: 6,
-    color: theme.colors.textMuted,
+    color: theme.colors.chartAxis,
     fontSize: 10,
     fontWeight: "600",
     position: "absolute",
     width: 40,
   },
   yAxisLabel: {
-    color: theme.colors.textMuted,
+    color: theme.colors.chartAxis,
     fontSize: 10,
     fontWeight: "600",
     left: 4,
@@ -561,20 +561,20 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   lineSegment: {
-    borderRadius: 999,
+    borderRadius: theme.radii.pill,
     height: 2,
     position: "absolute",
   },
   latestMarker: {
     backgroundColor: theme.colors.surface,
-    borderRadius: 999,
+    borderRadius: theme.radii.pill,
     borderWidth: 2,
     height: 8,
     position: "absolute",
     width: 8,
   },
   pointMarker: {
-    borderRadius: 999,
+    borderRadius: theme.radii.pill,
     height: 4,
     position: "absolute",
     width: 4,

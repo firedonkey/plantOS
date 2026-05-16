@@ -6,12 +6,13 @@ import { DeviceConnectionState } from "@/types";
 type StatusChipProps = {
   label: string;
   tone?: DeviceConnectionState | "mock";
+  compact?: boolean;
 };
 
-export function StatusChip({ label, tone = "unknown" }: StatusChipProps) {
+export function StatusChip({ label, tone = "unknown", compact = false }: StatusChipProps) {
   return (
-    <View style={[styles.chip, toneStyles[tone]]}>
-      <Text style={[styles.label, textStyles[tone]]}>{label}</Text>
+    <View style={[styles.chip, compact ? styles.compactChip : null, toneStyles[tone]]}>
+      <Text style={[styles.label, compact ? styles.compactLabel : null, textStyles[tone]]}>{label}</Text>
     </View>
   );
 }
@@ -20,33 +21,40 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: theme.radii.pill,
     alignSelf: "flex-start",
   },
+  compactChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   label: {
-    fontSize: 12,
+    fontSize: theme.typography.caption,
     fontWeight: "600",
+  },
+  compactLabel: {
+    fontSize: 11,
   },
 });
 
 const toneStyles = StyleSheet.create({
-  online: { backgroundColor: "#dff7e8" },
-  offline: { backgroundColor: "#fde4e4" },
-  unknown: { backgroundColor: "#eceff3" },
-  degraded: { backgroundColor: "#fff1d6" },
-  stale: { backgroundColor: "#fff1d6" },
-  warning: { backgroundColor: "#fff1d6" },
-  waiting: { backgroundColor: "#e8f1ff" },
-  mock: { backgroundColor: "#efe7ff" },
+  online: { backgroundColor: theme.colors.successSoft },
+  offline: { backgroundColor: theme.colors.dangerSoft },
+  unknown: { backgroundColor: theme.colors.surfaceInset },
+  degraded: { backgroundColor: theme.colors.warningSoft },
+  stale: { backgroundColor: theme.colors.warningSoft },
+  warning: { backgroundColor: theme.colors.warningSoft },
+  waiting: { backgroundColor: theme.colors.infoSoft },
+  mock: { backgroundColor: theme.colors.mockSoft },
 });
 
 const textStyles = StyleSheet.create({
-  online: { color: "#157347" },
-  offline: { color: "#b42318" },
+  online: { color: theme.colors.success },
+  offline: { color: theme.colors.danger },
   unknown: { color: theme.colors.textSecondary },
-  degraded: { color: "#9a6700" },
-  stale: { color: "#9a6700" },
-  warning: { color: "#9a6700" },
-  waiting: { color: "#175cd3" },
-  mock: { color: "#6941c6" },
+  degraded: { color: theme.colors.warning },
+  stale: { color: theme.colors.warning },
+  warning: { color: theme.colors.warning },
+  waiting: { color: theme.colors.info },
+  mock: { color: theme.colors.mock },
 });

@@ -1,8 +1,11 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { Screen } from "@/components/Screen";
+import { SkeletonCard } from "@/components/Skeleton";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { theme } from "@/styles/theme";
 
@@ -27,13 +30,10 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
         </Text>
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {isLoading && !dashboard ? <Text style={styles.meta}>Loading readings…</Text> : null}
+      {error ? <FeedbackBanner tone="error" message={error} /> : null}
+      {isLoading && !dashboard ? <SkeletonCard /> : null}
       {!isLoading && !error && !dashboard?.history.length ? (
-        <Card>
-          <Text style={styles.timestamp}>No readings yet</Text>
-          <Text style={styles.row}>Once the device reports sensor data, the recent history will appear here.</Text>
-        </Card>
+        <EmptyState title="No readings yet" message="Once the device reports sensor data, recent history and trend charts will appear here." />
       ) : null}
 
       {dashboard?.history.length ? (
@@ -48,12 +48,12 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
       ) : null}
 
       {displayHistory.map((reading) => (
-        <Card key={reading.timestamp}>
+        <Card key={reading.timestamp} variant="inset">
           <Text style={styles.timestamp}>{new Date(reading.timestamp).toLocaleString()}</Text>
           <Text style={styles.row}>
-            {reading.temperatureC?.toFixed(1) ?? "--"} C • {reading.humidityPercent?.toFixed(1) ?? "--"}% • {reading.soilMoisturePercent?.toFixed(1) ?? "--"}%
+            Air {reading.temperatureC?.toFixed(1) ?? "--"} C | Humidity {reading.humidityPercent?.toFixed(1) ?? "--"}% | Water {reading.waterTemperatureC?.toFixed(1) ?? "--"} C
           </Text>
-          <Text style={styles.meta}>Light {reading.lightOn ? "on" : "off"} • Pump {reading.pumpOn ? "on" : "off"}</Text>
+          <Text style={styles.meta}>Grow LED {reading.lightOn ? "on" : "off"} | Water level {reading.waterLevelState ?? "unknown"} {reading.waterLevelRaw !== undefined ? `(${reading.waterLevelRaw})` : ""}</Text>
         </Card>
       ))}
     </Screen>
@@ -62,11 +62,10 @@ export function HistoryScreen({ deviceId }: HistoryScreenProps) {
 
 const styles = StyleSheet.create({
   header: { gap: 8 },
-  eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  title: { fontSize: 30, fontWeight: "800", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 16, color: theme.colors.textSecondary },
-  meta: { fontSize: 14, color: theme.colors.textSecondary },
-  timestamp: { fontSize: 14, fontWeight: "700", color: theme.colors.textPrimary },
-  row: { fontSize: 15, color: theme.colors.textSecondary },
-  error: { color: "#b42318" },
+  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
+  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary, lineHeight: 22 },
+  meta: { fontSize: theme.typography.body, color: theme.colors.textSecondary, lineHeight: 20 },
+  timestamp: { fontSize: theme.typography.body, fontWeight: "800", color: theme.colors.textPrimary },
+  row: { fontSize: 15, color: theme.colors.textSecondary, lineHeight: 21 },
 });

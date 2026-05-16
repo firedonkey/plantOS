@@ -25,3 +25,19 @@ test("recent image gallery shows fallback UI when an image fails to load", async
   assert.match(source, /Image unavailable/);
   assert.match(source, /styles\.imageFallback/);
 });
+
+test("recent image gallery keeps latest capture prominent with stable empty states", async () => {
+  const source = await readText("../src/components/RecentImageGallery.tsx");
+
+  for (const requiredText of [
+    "const latestImage = images[0];",
+    "const olderImages = images.slice(1, 4);",
+    "Latest capture ${formatImageAge(latestImage.capturedAt)}",
+    '<EmptyState title="No image yet"',
+    "aspectRatio: 4 / 3",
+    "aspectRatio: 1",
+    "Captured {formatTimestamp(image.capturedAt)}",
+  ]) {
+    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});

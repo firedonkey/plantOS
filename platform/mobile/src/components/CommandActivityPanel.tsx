@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { StatusChip } from "@/components/StatusChip";
 import { DeviceCommand } from "@/types";
 import { theme } from "@/styles/theme";
 
@@ -13,11 +15,11 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Card>
+    <Card variant="inset">
       <Pressable accessibilityRole="button" onPress={() => setExpanded((value) => !value)} style={styles.header}>
         <View style={{ flex: 1, gap: 6 }}>
           <Text style={styles.title}>Command activity</Text>
-          <Text style={styles.subtitle}>Recent grow LED and capture commands from the shared backend command history.</Text>
+          <Text style={styles.subtitle}>{commands.length ? `${commands.length} recent control event${commands.length === 1 ? "" : "s"}` : "No control events yet"}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.countBadge}>
@@ -28,7 +30,7 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
       </Pressable>
 
       {!expanded ? null : !commands.length ? (
-        <Text style={styles.subtitle}>No recent commands yet. Command activity will appear here after you use the controls.</Text>
+        <EmptyState title="No commands yet" message="Control activity will appear after the grow LED or camera actions run." />
       ) : (
         <View style={styles.list}>
           {commands.map((command) => (
@@ -38,11 +40,7 @@ export function CommandActivityPanel({ commands }: CommandActivityPanelProps) {
                 <Text style={styles.meta}>{new Date(command.createdAt).toLocaleString()}</Text>
                 {command.detail ? <Text style={styles.meta}>{command.detail}</Text> : null}
               </View>
-              <View style={[styles.badge, command.status === "completed" ? styles.badgeSuccess : command.status === "failed" ? styles.badgeError : styles.badgeNeutral]}>
-                <Text style={[styles.badgeText, command.status === "completed" ? styles.badgeTextSuccess : command.status === "failed" ? styles.badgeTextError : styles.badgeTextNeutral]}>
-                  {formatStatus(command.status)}
-                </Text>
-              </View>
+              <StatusChip label={formatStatus(command.status)} tone={command.status === "completed" ? "online" : command.status === "failed" ? "offline" : "waiting"} compact />
             </View>
           ))}
         </View>
@@ -80,31 +78,23 @@ function formatStatus(status: DeviceCommand["status"]): string {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  headerRight: { alignItems: "flex-end", gap: 8 },
-  title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 14, color: theme.colors.textSecondary },
-  expandText: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  countBadge: { minWidth: 28, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: "#eceff3", alignItems: "center" },
-  countText: { fontSize: 12, fontWeight: "700", color: theme.colors.textSecondary },
-  list: { gap: 12 },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md },
+  headerRight: { alignItems: "flex-end", gap: theme.spacing.sm },
+  title: { fontSize: theme.typography.sectionTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
+  expandText: { fontSize: theme.typography.meta, fontWeight: "700", color: theme.colors.accent },
+  countBadge: { minWidth: 28, borderRadius: theme.radii.pill, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: theme.colors.surfaceInset, alignItems: "center" },
+  countText: { fontSize: theme.typography.caption, fontWeight: "700", color: theme.colors.textSecondary },
+  list: { gap: theme.spacing.md },
   row: {
     flexDirection: "row",
-    gap: 12,
+    gap: theme.spacing.md,
     alignItems: "center",
     justifyContent: "space-between",
     borderTopWidth: 1,
-    borderTopColor: "#e7ecef",
-    paddingTop: 12,
+    borderTopColor: theme.colors.borderSoft,
+    paddingTop: theme.spacing.md,
   },
-  label: { fontSize: 15, fontWeight: "700", color: theme.colors.textPrimary },
-  meta: { fontSize: 13, color: theme.colors.textSecondary },
-  badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  badgeSuccess: { backgroundColor: "#dff7e8" },
-  badgeError: { backgroundColor: "#fde4e4" },
-  badgeNeutral: { backgroundColor: "#eceff3" },
-  badgeText: { fontSize: 12, fontWeight: "700" },
-  badgeTextSuccess: { color: "#157347" },
-  badgeTextError: { color: "#b42318" },
-  badgeTextNeutral: { color: theme.colors.textSecondary },
+  label: { fontSize: 15, fontWeight: "800", color: theme.colors.textPrimary },
+  meta: { fontSize: theme.typography.meta, color: theme.colors.textSecondary },
 });

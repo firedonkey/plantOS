@@ -27,6 +27,9 @@ type ApiDeviceSummary = {
     moisture?: number | null;
     temperature?: number | null;
     humidity?: number | null;
+    water_temperature_c?: number | null;
+    water_level_raw?: number | null;
+    water_level_state?: string | null;
     light_on?: boolean | null;
     pump_on?: boolean | null;
   } | null;
@@ -65,6 +68,7 @@ type ApiHealthNode = {
   display_name?: string | null;
   status: string;
   health_status?: string | null;
+  capabilities?: Record<string, unknown> | null;
   last_seen_at?: string | null;
 };
 
@@ -82,6 +86,9 @@ type ApiSensorReading = {
   moisture?: number | null;
   temperature?: number | null;
   humidity?: number | null;
+  water_temperature_c?: number | null;
+  water_level_raw?: number | null;
+  water_level_state?: string | null;
   light_on?: boolean | null;
   pump_on?: boolean | null;
 };
@@ -266,7 +273,9 @@ function mapReading(reading?: ApiDeviceSummary["latest_reading"] | ApiSensorRead
     timestamp: reading.timestamp,
     temperatureC: reading.temperature ?? undefined,
     humidityPercent: reading.humidity ?? undefined,
-    soilMoisturePercent: reading.moisture ?? undefined,
+    waterTemperatureC: reading.water_temperature_c ?? undefined,
+    waterLevelRaw: reading.water_level_raw ?? undefined,
+    waterLevelState: reading.water_level_state ?? undefined,
     lightOn: reading.light_on ?? undefined,
     pumpOn: reading.pump_on ?? undefined,
   };
@@ -308,6 +317,7 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
     healthStatus: normalizeFreshnessStatus(node.health_status),
+    capabilities: node.capabilities ?? undefined,
     lastSeenAt: node.last_seen_at ?? undefined,
   };
 }

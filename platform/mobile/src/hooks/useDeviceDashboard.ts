@@ -206,9 +206,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
 function friendlyCommandLabel(action: DeviceCommand["action"]): string {
   switch (action) {
     case "light_on":
-      return "Light on";
+      return "Grow LED on";
     case "light_off":
-      return "Light off";
+      return "Grow LED off";
     case "pump_run":
       return "Pump run";
     case "capture_image":

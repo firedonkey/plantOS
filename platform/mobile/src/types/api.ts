@@ -18,6 +18,7 @@ export type HardwareNodeHealth = {
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
   healthStatus?: DeviceConnectionState;
+  capabilities?: Record<string, unknown>;
   lastSeenAt?: string;
 };
 
@@ -25,8 +26,9 @@ export type SensorReading = {
   timestamp: string;
   temperatureC?: number;
   humidityPercent?: number;
-  soilMoisturePercent?: number;
-  waterLevelPercent?: number;
+  waterTemperatureC?: number;
+  waterLevelRaw?: number;
+  waterLevelState?: string;
   lightOn?: boolean;
   pumpOn?: boolean;
 };

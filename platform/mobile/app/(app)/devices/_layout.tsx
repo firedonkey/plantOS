@@ -8,6 +8,7 @@ export default function DevicesLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: theme.colors.background },
         headerShadowVisible: false,
+        headerTitleStyle: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: "800" },
         headerTintColor: theme.colors.textPrimary,
         contentStyle: { backgroundColor: theme.colors.background },
       }}

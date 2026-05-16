@@ -8,11 +8,13 @@ export default function AppLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: theme.colors.background },
         headerShadowVisible: false,
+        headerTitleStyle: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: "800" },
         headerTintColor: theme.colors.textPrimary,
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
         },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: "700" },
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
       }}

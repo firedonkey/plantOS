@@ -24,6 +24,10 @@ test("reading trend cards render line charts for the approved sensor series", as
   assert.match(trendSource, /import \{ SensorLineChart \}/);
   assert.match(trendSource, /<SensorLineChart points=\{chartPoints\} color=\{color\} \/>/);
   assert.match(trendSource, /Current \$\{latest\.toFixed\(1\)\}/);
+  assert.match(trendSource, /<EmptyState title="No readings in range"/);
+  assert.match(trendSource, /disabled=\{loading\}/);
+  assert.match(trendSource, /Min \{minimum !== undefined \? `\$\{minimum\.toFixed\(1\)\} \$\{unit\}` : "--"\}/);
+  assert.match(trendSource, /Max \{maximum !== undefined \? `\$\{maximum\.toFixed\(1\)\} \$\{unit\}` : "--"\}/);
 
   for (const requiredText of [
     "Air temp",

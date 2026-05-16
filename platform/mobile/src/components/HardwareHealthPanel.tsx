@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
 import { StatusChip } from "@/components/StatusChip";
 import { DeviceConnectionState, HardwareHealth } from "@/types";
 import { theme } from "@/styles/theme";
@@ -23,7 +24,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
           title="Hardware health"
           onPress={() => setExpanded((value) => !value)}
         />
-        {expanded ? <Text style={styles.subtitle}>Waiting for backend hardware health details.</Text> : null}
+        {expanded ? <EmptyState title="Waiting for health" message="Node heartbeat, camera, and command details will appear after the device reports health." /> : null}
       </Card>
     );
   }
@@ -34,7 +35,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
         expanded={expanded}
         statusLabel={formatStatusLabel(health.overallStatus)}
         statusTone={health.overallStatus === "provisioning" || health.overallStatus === "error" ? "unknown" : health.overallStatus}
-        subtitle="Live heartbeat, node, image, and command status from the shared backend contract."
+        subtitle={formatAge(health.lastHeartbeatAt ?? health.primary?.lastSeenAt, "Heartbeat")}
         title="Hardware health"
         onPress={() => setExpanded((value) => !value)}
       />
@@ -42,9 +43,10 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
       {!expanded ? null : (
         <>
           <View style={styles.grid}>
-            <HealthItem title="Master" value={formatNodeStatus(health.primary?.displayName ?? "Master", health.masterStatus ?? health.primary?.status ?? "unknown")} detail={formatAge(health.primary?.lastSeenAt, "Last heartbeat")} />
+            <HealthItem title="Master" tone={health.masterStatus ?? health.primary?.status ?? "unknown"} value={formatNodeStatus(health.primary?.displayName ?? "Master", health.masterStatus ?? health.primary?.status ?? "unknown")} detail={formatAge(health.primary?.lastSeenAt, "Last heartbeat")} />
             <HealthItem
               title="Camera"
+              tone={health.cameraStatus ?? health.imageStatus ?? "waiting"}
               value={
                 health.cameras.length
                   ? health.cameras
@@ -54,9 +56,10 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
               }
               detail={formatAge(health.lastImageAt, "Last image")}
             />
-            <HealthItem title="Reading" value={formatAge(health.lastReadingAt, "Last reading")} detail={formatAge(health.lastHeartbeatAt, "Last heartbeat")} />
+            <HealthItem title="Reading" tone={health.readingStatus ?? "waiting"} value={formatAge(health.lastReadingAt, "Last reading")} detail={formatAge(health.lastHeartbeatAt, "Last heartbeat")} />
             <HealthItem
               title="Last command"
+              tone={health.lastCommand ? commandTone(health.lastCommand.status) : "waiting"}
               value={health.lastCommand ? `${formatAction(health.lastCommand.action)} · ${formatCommandStatus(health.lastCommand.status)}` : "No recent commands"}
               detail={health.lastCommand ? formatAge(health.lastCommand.timestamp, "Updated") : "Command history will appear here after the first control action."}
             />
@@ -91,21 +94,45 @@ function PanelHeader({
         <Text style={styles.subtitle}>{subtitle}</Text>
       </View>
       <View style={styles.headerRight}>
-        <StatusChip label={statusLabel} tone={statusTone} />
+        <StatusChip label={statusLabel} tone={statusTone} compact />
         <Text style={styles.expandText}>{expanded ? "Hide" : "Show"}</Text>
       </View>
     </Pressable>
   );
 }
 
-function HealthItem({ title, value, detail }: { title: string; value: string; detail: string }) {
+function HealthItem({
+  title,
+  tone,
+  value,
+  detail,
+}: {
+  title: string;
+  tone: DeviceConnectionState | "provisioning" | "error";
+  value: string;
+  detail: string;
+}) {
+  const chipTone = tone === "provisioning" || tone === "error" ? "unknown" : tone;
   return (
     <View style={styles.item}>
-      <Text style={styles.itemTitle}>{title}</Text>
+      <View style={styles.itemHeader}>
+        <Text style={styles.itemTitle}>{title}</Text>
+        <StatusChip label={formatStatusLabel(tone)} tone={chipTone} compact />
+      </View>
       <Text style={styles.itemValue}>{value}</Text>
       <Text style={styles.itemDetail}>{detail}</Text>
     </View>
   );
+}
+
+function commandTone(status: string): DeviceConnectionState {
+  if (status === "completed") {
+    return "online";
+  }
+  if (status === "failed") {
+    return "offline";
+  }
+  return "waiting";
 }
 
 function formatNodeStatus(name: string, status: string) {
@@ -120,10 +147,18 @@ function formatStatusLabel(status: string) {
       return "Offline";
     case "degraded":
       return "Degraded";
+    case "stale":
+      return "Stale";
+    case "warning":
+      return "Warning";
+    case "waiting":
+      return "Waiting";
     case "provisioning":
       return "Provisioning";
     case "error":
       return "Error";
+    case "unknown":
+      return "Unknown";
     default:
       return "Unknown";
   }
@@ -176,21 +211,22 @@ function formatAge(timestamp: string | undefined, label: string) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  headerRight: { alignItems: "flex-end", gap: 8 },
-  title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 14, color: theme.colors.textSecondary },
-  expandText: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  grid: { gap: 12 },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md },
+  headerRight: { alignItems: "flex-end", gap: theme.spacing.sm },
+  title: { fontSize: theme.typography.sectionTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
+  expandText: { fontSize: theme.typography.meta, fontWeight: "700", color: theme.colors.accent },
+  grid: { gap: theme.spacing.md },
   item: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    padding: 14,
-    backgroundColor: "#f8fafb",
-    gap: 6,
+    borderColor: theme.colors.borderSoft,
+    borderRadius: theme.radii.md,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    gap: theme.spacing.sm,
   },
-  itemTitle: { fontSize: 15, fontWeight: "700", color: theme.colors.textPrimary },
+  itemHeader: { flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md, alignItems: "center" },
+  itemTitle: { fontSize: 15, fontWeight: "800", color: theme.colors.textPrimary },
   itemValue: { fontSize: 14, color: theme.colors.textPrimary },
   itemDetail: { fontSize: 13, color: theme.colors.textSecondary },
   meta: { fontSize: 13, color: theme.colors.textSecondary },

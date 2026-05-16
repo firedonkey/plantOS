@@ -3,8 +3,11 @@ import { useCallback, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { SkeletonCard } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { useDevices } from "@/hooks/useDevices";
 import { theme } from "@/styles/theme";
@@ -40,15 +43,20 @@ export function DeviceListScreen() {
             {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh when you are ready."}
           </Text>
         </View>
-        <PrimaryButton label="Add device" onPress={() => router.push("/(app)/devices/add")} />
+        <View style={styles.addButton}>
+          <PrimaryButton label="Add device" onPress={() => router.push("/(app)/devices/add")} />
+        </View>
       </View>
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {isLoading && visibleDevices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
+      {error ? <FeedbackBanner tone="error" message={error} /> : null}
+      {isLoading && visibleDevices.length === 0 ? <SkeletonCard /> : null}
+      {!isLoading && visibleDevices.length === 0 ? (
+        <EmptyState title="No devices yet" message="Add a PlantLab device to start tracking readings, images, and hardware health." />
+      ) : null}
       {visibleDevices.map((device) => (
         <Pressable key={device.id} onPress={() => router.push(`/(app)/devices/${device.id}`)}>
-          <Card>
+          <Card variant="elevated">
             <View style={styles.cardHeader}>
               <View style={styles.cardTitleGroup}>
                 <Text style={styles.cardTitle}>{device.name}</Text>
@@ -63,7 +71,7 @@ export function DeviceListScreen() {
             </Text>
             <Text style={styles.summary}>
               {device.latestReading
-                ? `${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C • ${device.latestReading.humidityPercent?.toFixed(1) ?? "--"}% • ${device.latestReading.soilMoisturePercent?.toFixed(1) ?? "--"}%`
+                ? `Air ${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C | Water ${device.latestReading.waterTemperatureC?.toFixed(1) ?? "--"} C | Level ${device.latestReading.waterLevelState ?? "--"}`
                 : "Latest sensor summary unavailable."}
             </Text>
           </Card>
@@ -74,21 +82,20 @@ export function DeviceListScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 12 },
+  header: { gap: theme.spacing.md },
   headerText: { gap: 8 },
-  eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  title: { fontSize: 34, fontWeight: "800", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 16, color: theme.colors.textSecondary },
-  meta: { fontSize: 13, color: theme.colors.textMuted },
-  error: { color: "#b42318" },
-  info: { color: theme.colors.textSecondary },
+  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
+  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary, lineHeight: 22 },
+  meta: { fontSize: theme.typography.meta, color: theme.colors.textMuted },
+  addButton: { alignSelf: "flex-start", minWidth: 132 },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
+    gap: theme.spacing.md,
   },
   cardTitleGroup: { gap: 4, flex: 1 },
-  cardTitle: { fontSize: 20, fontWeight: "700", color: theme.colors.textPrimary },
-  cardSubtitle: { fontSize: 14, color: theme.colors.textSecondary },
-  summary: { fontSize: 15, color: theme.colors.textSecondary },
+  cardTitle: { fontSize: theme.typography.cardTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  cardSubtitle: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
+  summary: { fontSize: 15, color: theme.colors.textSecondary, lineHeight: 21 },
 });

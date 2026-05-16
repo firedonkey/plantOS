@@ -26,10 +26,10 @@ const latestReading: SensorReading = {
   timestamp: now.toISOString(),
   temperatureC: 23.1,
   humidityPercent: 53.2,
-  soilMoisturePercent: 29.1,
-  waterLevelPercent: 74,
+  waterTemperatureC: 20.4,
+  waterLevelRaw: 35200,
+  waterLevelState: "ok",
   lightOn: false,
-  pumpOn: false,
 };
 
 const recentCommands: DeviceCommand[] = [
@@ -42,12 +42,12 @@ const recentCommands: DeviceCommand[] = [
     detail: "Light turned off successfully.",
   },
   {
-    id: "cmd-pump",
+    id: "cmd-capture",
     deviceId: "1",
-    action: "pump_run",
+    action: "capture_image",
     createdAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
     status: "pending",
-    detail: "Pump run is queued for the device.",
+    detail: "Capture is queued for the camera node.",
   },
 ];
 
@@ -55,10 +55,10 @@ const history: SensorReading[] = Array.from({ length: 8 }, (_, index) => ({
   timestamp: new Date(now.getTime() - index * 60 * 60 * 1000).toISOString(),
   temperatureC: 22.4 + index * 0.1,
   humidityPercent: 52 + index * 0.2,
-  soilMoisturePercent: 31 - index * 0.3,
-  waterLevelPercent: 78 - index,
+  waterTemperatureC: 20.1 + index * 0.03,
+  waterLevelRaw: 35000 + index * 180,
+  waterLevelState: index > 6 ? "low" : "ok",
   lightOn: index % 2 === 0,
-  pumpOn: false,
 })).reverse();
 
 export const mockDevices: Device[] = [
@@ -83,6 +83,14 @@ const hardwareHealth: HardwareHealth = {
     nodeRole: "master",
     displayName: "Master",
     status: "online",
+    capabilities: {
+      pump: false,
+      moisture_sensor: false,
+      water_temperature_sensor: true,
+      water_level_sensor: true,
+      light_control: true,
+      led_driver: "AL8860QMP-13",
+    },
     lastSeenAt: new Date(now.getTime() - 15 * 1000).toISOString(),
   },
   cameras: [
@@ -99,10 +107,10 @@ const hardwareHealth: HardwareHealth = {
   lastReadingAt: latestReading.timestamp,
   lastImageAt: latestImage.capturedAt,
   lastCommand: {
-    id: "cmd-pump",
-    action: "pump_run",
+    id: "cmd-capture",
+    action: "capture_image",
     status: "pending",
-    message: "Pump run is queued for the device.",
+    message: "Capture is queued for the camera node.",
     timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
   },
 };

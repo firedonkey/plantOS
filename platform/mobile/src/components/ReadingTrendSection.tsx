@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { SectionHeader } from "@/components/SectionHeader";
 import { SensorLineChart } from "@/components/SensorLineChart";
 import { SensorReading } from "@/types";
 import { theme } from "@/styles/theme";
@@ -28,7 +30,7 @@ const SENSOR_SERIES = [
     key: "temperature",
     label: "Air temp",
     unit: "C",
-    color: "#c96f2d",
+    color: "#b76a35",
     getValue: (reading: SensorReading) => reading.temperatureC,
   },
   {
@@ -64,12 +66,9 @@ export function ReadingTrendSection({
 }: ReadingTrendSectionProps) {
 
   return (
-    <Card>
+    <Card variant="elevated">
       <View style={styles.header}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-        </View>
+        <SectionHeader title={title} subtitle={subtitle} />
         <View style={styles.tabs}>
           {RANGE_OPTIONS.map((option) => (
             <Pressable
@@ -85,7 +84,7 @@ export function ReadingTrendSection({
       </View>
 
       {!history.length ? (
-        <Text style={styles.subtitle}>No readings are available in this range yet.</Text>
+        <EmptyState title="No readings in range" message="Sensor trends will appear after the device reports data for this window." />
       ) : (
         <View style={styles.grid}>
           {SENSOR_SERIES.map((series) => (
@@ -130,45 +129,50 @@ function TrendCard({
 
   return (
     <View style={styles.trendCard}>
-      <Text style={styles.cardLabel}>{label}</Text>
+      <View style={styles.trendHeader}>
+        <View style={[styles.seriesDot, { backgroundColor: color }]} />
+        <Text style={styles.cardLabel}>{label}</Text>
+      </View>
       <Text style={styles.cardValue}>{latest !== undefined ? `Current ${latest.toFixed(1)} ${unit}` : "Current --"}</Text>
       <SensorLineChart points={chartPoints} color={color} />
-      <Text style={styles.meta}>
-        Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"} • Max {maximum !== undefined ? `${maximum.toFixed(1)} ${unit}` : "--"}
-      </Text>
+      <View style={styles.metaRow}>
+        <Text style={styles.meta}>Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"}</Text>
+        <Text style={styles.meta}>Max {maximum !== undefined ? `${maximum.toFixed(1)} ${unit}` : "--"}</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 10 },
-  title: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 14, color: theme.colors.textSecondary },
-  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  header: { gap: theme.spacing.md },
+  tabs: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
   tab: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: theme.radii.pill,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceMuted,
   },
   tabActive: {
     borderColor: theme.colors.accent,
-    backgroundColor: "#e7f3ec",
+    backgroundColor: theme.colors.accentSoft,
   },
   tabLabel: { color: theme.colors.textSecondary, fontWeight: "600" },
   tabLabelActive: { color: theme.colors.accent },
-  grid: { gap: 12 },
+  grid: { gap: theme.spacing.md },
   trendCard: {
     borderWidth: 1,
-    borderColor: "#dfe6ea",
-    borderRadius: 8,
-    backgroundColor: "#fbfcfd",
-    padding: 14,
-    gap: 10,
+    borderColor: theme.colors.borderSoft,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: theme.spacing.md,
+    gap: theme.spacing.md,
   },
-  cardLabel: { color: theme.colors.textSecondary, fontWeight: "600" },
+  trendHeader: { flexDirection: "row", alignItems: "center", gap: theme.spacing.sm },
+  seriesDot: { width: 8, height: 8, borderRadius: theme.radii.pill },
+  cardLabel: { color: theme.colors.textSecondary, fontSize: theme.typography.meta, fontWeight: "700" },
   cardValue: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
-  meta: { fontSize: 13, color: theme.colors.textSecondary },
+  metaRow: { flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md },
+  meta: { fontSize: theme.typography.meta, color: theme.colors.textSecondary },
 });

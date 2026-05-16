@@ -5,8 +5,10 @@ import { Link, router } from "expo-router";
 import { deleteDevice, getDeviceSettingsDetails, releaseDeviceForTransfer, updateDeviceSettings } from "@/api/devices";
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { Card } from "@/components/Card";
+import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { SkeletonCard } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { useSession } from "@/hooks/useSession";
 import { hideDeviceFromActiveList } from "@/storage/hiddenDevices";
@@ -182,7 +184,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
   if (!deviceId) {
     return (
       <Screen>
-        <Text style={styles.error}>Missing device id.</Text>
+        <FeedbackBanner tone="error" message="Missing device id." />
       </Screen>
     );
   }
@@ -198,10 +200,11 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
         {usedMock ? <StatusChip label="Mock mode" tone="mock" /> : null}
       </View>
 
-      {error ? <Text style={[styles.feedback, styles.feedbackError]}>{error}</Text> : null}
-      {message ? <Text style={[styles.feedback, styles.feedbackSuccess]}>{message}</Text> : null}
+      {error ? <FeedbackBanner tone="error" message={error} /> : null}
+      {message ? <FeedbackBanner tone="success" message={message} /> : null}
+      {isLoading && !details ? <SkeletonCard /> : null}
 
-      <Card>
+      <Card variant="elevated">
         <Text style={styles.sectionTitle}>Edit labels</Text>
         <Text style={styles.label}>Device name</Text>
         <TextInput value={name} onChangeText={setName} style={styles.input} />
@@ -234,7 +237,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
         ) : null}
       </Card>
 
-      <Card>
+      <Card variant="inset">
         <Text style={styles.sectionTitle}>Recovery</Text>
         <Text style={styles.meta}>{details?.onboardingGuidance ?? "Use this page to keep the operational labels in sync with the real device."}</Text>
         <View style={styles.stack}>
@@ -246,7 +249,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
         </View>
       </Card>
 
-      <Card>
+      <Card variant="inset">
         <Text style={styles.sectionTitle}>Remove device</Text>
         <Text style={styles.meta}>Remove this device from your account. Use this only when replacing hardware or preparing to add the device again.</Text>
         <PrimaryButton label={isRemoving ? "Removing..." : "Remove device"} tone="danger" disabled={isRemoving || isLoading} onPress={onRemovePress} />
@@ -269,35 +272,32 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  title: { fontSize: 30, fontWeight: "800", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 16, color: theme.colors.textSecondary },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  sectionSubtitle: { fontSize: 15, fontWeight: "700", color: theme.colors.textPrimary },
-  label: { fontSize: 14, color: theme.colors.textSecondary },
+  header: { flexDirection: "row", gap: theme.spacing.md, alignItems: "flex-start" },
+  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
+  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary, lineHeight: 22 },
+  sectionTitle: { fontSize: theme.typography.sectionTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  sectionSubtitle: { fontSize: 15, fontWeight: "800", color: theme.colors.textPrimary },
+  label: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
+    borderColor: theme.colors.borderSoft,
+    borderRadius: theme.radii.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: theme.colors.textPrimary,
+    backgroundColor: theme.colors.surface,
   },
-  feedback: { fontWeight: "600", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  feedbackSuccess: { color: theme.colors.accent, backgroundColor: "#dff7e8" },
-  feedbackError: { color: "#b42318", backgroundColor: "#fde4e4" },
-  error: { color: "#b42318" },
-  meta: { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20 },
-  stack: { gap: 10 },
+  meta: { fontSize: theme.typography.body, color: theme.colors.textSecondary, lineHeight: 20 },
+  stack: { gap: theme.spacing.md },
   detailRow: {
     borderTopWidth: 1,
-    borderTopColor: "#e7ecef",
-    paddingTop: 10,
+    borderTopColor: theme.colors.borderSoft,
+    paddingTop: theme.spacing.md,
     gap: 6,
   },
-  detailLabel: { fontSize: 14, fontWeight: "700", color: theme.colors.textPrimary },
-  detailValue: { fontSize: 14, color: theme.colors.textSecondary },
+  detailLabel: { fontSize: theme.typography.body, fontWeight: "800", color: theme.colors.textPrimary },
+  detailValue: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
   mono: { fontFamily: "Courier" },
   backLink: { color: theme.colors.accent, fontSize: 16, fontWeight: "700" },
 });

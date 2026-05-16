@@ -1,13 +1,16 @@
-import { Link } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { CommandActivityPanel } from "@/components/CommandActivityPanel";
+import { EmptyState } from "@/components/EmptyState";
+import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { MetricCard } from "@/components/MetricCard";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { Screen } from "@/components/Screen";
+import { SkeletonCard } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
@@ -18,6 +21,7 @@ type DeviceDashboardScreenProps = {
 };
 
 export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) {
+  const params = useLocalSearchParams<{ setup?: string }>();
   const {
     dashboard,
     usedMock,
@@ -35,6 +39,8 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const { token } = useSession();
+  const latestReading = dashboard?.device.latestReading;
+  const setupComplete = params.setup === "complete";
   const growLedOn = dashboard?.device.latestReading?.lightOn === true;
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
@@ -53,7 +59,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
   if (!deviceId) {
     return (
       <Screen>
-        <Text style={styles.error}>Missing device id.</Text>
+        <FeedbackBanner tone="error" message="Missing device id." />
       </Screen>
     );
   }
@@ -62,46 +68,59 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     <Screen onRefresh={refresh} refreshing={isLoading}>
       {dashboard ? (
         <>
-          <View style={styles.header}>
-            <View style={{ flex: 1, gap: 8 }}>
-              <Text style={styles.eyebrow}>DEVICE DASHBOARD</Text>
-              <Text style={styles.title}>{dashboard.device.name}</Text>
-              <Text style={styles.subtitle}>
-                {dashboard.device.plantType ?? "Plant type not set"} • {dashboard.device.location ?? "No location set"}
-              </Text>
-              <Text style={styles.meta}>
-                {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh for the latest device state."}
-              </Text>
+          <Card variant="hero">
+            <View style={styles.header}>
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={styles.eyebrow}>PLANTLAB DEVICE</Text>
+                <Text style={styles.title}>{dashboard.device.name}</Text>
+                <Text style={styles.subtitle}>
+                  {dashboard.device.plantType ?? "Plant type not set"} | {dashboard.device.location ?? "No location set"}
+                </Text>
+                <Text style={styles.meta}>
+                  {lastUpdatedAt ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh for the latest device state."}
+                </Text>
+              </View>
+              <StatusChip label={usedMock ? "Mock mode" : dashboard.device.status} tone={usedMock ? "mock" : dashboard.device.status} />
             </View>
-            <StatusChip label={usedMock ? "Mock mode" : dashboard.device.status} tone={usedMock ? "mock" : dashboard.device.status} />
-          </View>
+          </Card>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {setupComplete ? <FeedbackBanner tone="success" message="Setup complete. The dashboard is ready when the first live readings arrive." /> : null}
+          {error ? <FeedbackBanner tone="error" message={error} /> : null}
           {commandMessage ? (
-            <Text
-              style={[
-                styles.feedback,
-                commandTone === "error" ? styles.feedbackError : commandTone === "info" ? styles.feedbackInfo : styles.feedbackSuccess,
-              ]}
-            >
-              {commandMessage}
-            </Text>
+            <FeedbackBanner
+              message={commandMessage}
+              tone={commandTone === "error" ? "error" : commandTone === "info" ? "info" : "success"}
+            />
           ) : null}
 
           <Card>
+            <View style={{ flex: 1, gap: 8 }}>
+              <Text style={styles.sectionTitle}>Primary readings</Text>
+              <Text style={styles.meta}>Latest air and water sensor state.</Text>
+            </View>
             <View style={styles.metricsGrid}>
-              <MetricCard label="Air temp" value={`${dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C`} />
-              <MetricCard label="Humidity" value={`${dashboard.device.latestReading?.humidityPercent?.toFixed(1) ?? "--"}%`} />
-              <MetricCard label="Water temp" value={`${dashboard.device.latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C`} />
-              <MetricCard label="Water level" value={formatWaterLevel(dashboard.device.latestReading?.waterLevelState, dashboard.device.latestReading?.waterLevelRaw)} />
-              <MetricCard label="Grow LED" value={growLedOn ? "On" : "Off"}>
-                <ToggleButton
-                  disabled={lightToggleDisabled}
-                  label={lightToggleLabel}
-                  on={growLedOn}
-                  onPress={() => runCommand(nextLightAction)}
-                />
-              </MetricCard>
+              <MetricCard label="Air temp" value={`${latestReading?.temperatureC?.toFixed(1) ?? "--"} C`} meta={formatAge(latestReading?.timestamp)} />
+              <MetricCard label="Humidity" value={`${latestReading?.humidityPercent?.toFixed(1) ?? "--"}%`} meta={formatAge(latestReading?.timestamp)} />
+              <MetricCard label="Water temp" value={`${latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C`} meta={formatAge(latestReading?.timestamp)} />
+              <MetricCard label="Water level" value={formatWaterLevel(latestReading?.waterLevelState, latestReading?.waterLevelRaw)} meta={latestReading?.waterLevelRaw !== undefined ? `Raw ${latestReading.waterLevelRaw}` : "Waiting"} />
+            </View>
+            {!latestReading ? (
+              <EmptyState title="Waiting for first reading" message="Primary metrics will populate after the device posts its next sensor sample." />
+            ) : null}
+          </Card>
+
+          <Card variant="inset">
+            <View style={styles.growLedRow}>
+              <View style={styles.growLedCopy}>
+                <Text style={styles.sectionTitle}>Grow LED</Text>
+                <Text style={styles.meta}>{growLedOn ? "On" : "Off"}</Text>
+              </View>
+              <ToggleButton
+                disabled={lightToggleDisabled}
+                label={lightToggleLabel}
+                on={growLedOn}
+                onPress={() => runCommand(nextLightAction)}
+              />
             </View>
           </Card>
 
@@ -139,9 +158,12 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           </Link>
         </>
       ) : error ? (
-        <Text style={styles.error}>{error}</Text>
+        <FeedbackBanner tone="error" message={error} />
       ) : (
-        <Text style={styles.meta}>Loading dashboard…</Text>
+        <>
+          <SkeletonCard />
+          <SkeletonCard />
+        </>
       )}
     </Screen>
   );
@@ -168,30 +190,52 @@ function formatWaterLevel(state?: string, raw?: number) {
   return raw !== undefined ? `${label} (${raw})` : label;
 }
 
+function formatAge(timestamp?: string) {
+  if (!timestamp) {
+    return "Waiting";
+  }
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(timestamp).getTime()) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  title: { fontSize: 34, fontWeight: "800", color: theme.colors.textPrimary },
-  subtitle: { fontSize: 16, color: theme.colors.textSecondary },
-  meta: { fontSize: 14, color: theme.colors.textSecondary },
-  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary },
-  error: { color: "#b42318" },
-  feedback: { fontWeight: "600", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  feedbackSuccess: { color: theme.colors.accent, backgroundColor: "#dff7e8" },
-  feedbackError: { color: "#b42318", backgroundColor: "#fde4e4" },
-  feedbackInfo: { color: "#6941c6", backgroundColor: "#efe7ff" },
+  header: { flexDirection: "row", gap: theme.spacing.md, alignItems: "flex-start" },
+  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
+  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary },
+  meta: { fontSize: theme.typography.body, color: theme.colors.textSecondary, lineHeight: 20 },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md },
+  sectionTitle: { fontSize: theme.typography.sectionTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  growLedRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.md,
+    justifyContent: "space-between",
+  },
+  growLedCopy: { flex: 1, gap: 4 },
   toggleSwitch: {
     width: 108,
     height: 48,
-    borderRadius: 8,
+    borderRadius: theme.radii.md,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     position: "relative",
   },
   toggleSwitchOn: { backgroundColor: theme.colors.accent },
-  toggleSwitchOff: { backgroundColor: "#d7dee3" },
+  toggleSwitchOff: { backgroundColor: theme.colors.border },
   toggleSwitchDisabled: { opacity: 0.6 },
   toggleLabel: {
     fontSize: 14,
@@ -199,7 +243,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     zIndex: 1,
   },
-  toggleLabelOn: { color: "#ffffff" },
+  toggleLabelOn: { color: theme.colors.white },
   toggleLabelOff: { color: theme.colors.textSecondary, marginLeft: 44 },
   toggleKnob: {
     position: "absolute",
@@ -207,20 +251,20 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.white,
   },
   toggleKnobOn: { right: 7 },
   toggleKnobOff: { left: 7 },
   settingsButton: {
     width: "100%",
-    borderRadius: 8,
+    borderRadius: theme.radii.md,
     paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: "center",
     backgroundColor: theme.colors.accent,
   },
   settingsButtonLabel: {
-    color: "#ffffff",
+    color: theme.colors.white,
     fontSize: 15,
     fontWeight: "700",
   },

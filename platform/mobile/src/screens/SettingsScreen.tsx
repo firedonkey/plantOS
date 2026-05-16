@@ -19,7 +19,7 @@ export function SettingsScreen() {
         <Text style={styles.title}>App settings</Text>
       </View>
 
-      <Card>
+      <Card variant="elevated">
         <Text style={styles.label}>API URL</Text>
         <Text style={styles.value}>{getApiBaseUrl() || "Not configured"}</Text>
       </Card>
@@ -29,9 +29,9 @@ export function SettingsScreen() {
         <Text style={styles.value}>{session?.mode ?? "Signed out"} ({authMode})</Text>
       </Card>
 
-      <Card>
+      <Card variant="inset">
         <Text style={styles.label}>Auth note</Text>
-        <Text style={styles.todo}>Production mobile auth uses backend Google handoff, but refresh-token persistence is disabled until secure storage is added.</Text>
+        <Text style={styles.note}>Production mobile auth uses backend Google handoff. Refresh-token persistence will remain disabled until secure storage is enabled.</Text>
       </Card>
 
       <Card>
@@ -39,9 +39,9 @@ export function SettingsScreen() {
         <Text style={styles.value}>{Constants.expoConfig?.version ?? "0.1.0"}</Text>
       </Card>
 
-      <Card>
+      <Card variant="inset">
         <Text style={styles.label}>Device settings</Text>
-        <Text style={styles.todo}>Open a device, then tap Device settings to edit labels, reconnect Wi-Fi, repair setup, prepare transfer, or view factory reset guidance.</Text>
+        <Text style={styles.note}>Open a device to edit labels, recover Wi-Fi setup, prepare transfer, or view reset guidance.</Text>
       </Card>
 
       <PrimaryButton
@@ -52,18 +52,16 @@ export function SettingsScreen() {
         }}
       />
 
-      <Text style={styles.todo}>
-        TODO: push notifications require an Expo development build or native capability work, not just Expo Go.
-      </Text>
+      <Text style={styles.note}>Push notifications require an Expo development build or native capability work.</Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   header: { gap: 8 },
-  eyebrow: { fontSize: 13, fontWeight: "700", color: theme.colors.accent },
-  title: { fontSize: 30, fontWeight: "800", color: theme.colors.textPrimary },
-  label: { fontSize: 14, color: theme.colors.textSecondary },
-  value: { fontSize: 17, fontWeight: "700", color: theme.colors.textPrimary },
-  todo: { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20 },
+  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
+  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
+  label: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
+  value: { fontSize: 17, fontWeight: "800", color: theme.colors.textPrimary },
+  note: { fontSize: theme.typography.body, color: theme.colors.textSecondary, lineHeight: 20 },
 });
