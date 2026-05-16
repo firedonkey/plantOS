@@ -1,1 +1,1 @@
-020_ota_update_system
+021_device_observability_and_diagnostics

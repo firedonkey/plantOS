@@ -176,7 +176,7 @@ bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
 }
 
 bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, String* error) {
-  StaticJsonDocument<320> doc;
+  StaticJsonDocument<1024> doc;
   if (status.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = status.hardware_device_id;
   }
@@ -189,6 +189,62 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
   doc["message"] = status.message;
   if (status.software_version.length() > 0) {
     doc["software_version"] = status.software_version;
+  }
+  if (status.diagnostics.valid) {
+    JsonObject diagnostics = doc.createNestedObject("diagnostics");
+    diagnostics["schema_version"] = 1;
+    if (status.diagnostics.has_uptime_seconds) {
+      diagnostics["uptime_seconds"] = status.diagnostics.uptime_seconds;
+    }
+    if (status.diagnostics.has_wifi_rssi_dbm) {
+      diagnostics["wifi_rssi_dbm"] = status.diagnostics.wifi_rssi_dbm;
+    }
+    if (status.diagnostics.reboot_reason.length() > 0) {
+      diagnostics["reboot_reason"] = status.diagnostics.reboot_reason;
+    }
+    if (status.diagnostics.provisioning_state.length() > 0) {
+      diagnostics["provisioning_state"] = status.diagnostics.provisioning_state;
+    }
+    if (status.diagnostics.has_last_sensor_reading_age_seconds) {
+      diagnostics["last_sensor_reading_age_seconds"] = status.diagnostics.last_sensor_reading_age_seconds;
+    }
+    if (status.diagnostics.has_last_camera_image_upload_age_seconds) {
+      diagnostics["last_camera_image_upload_age_seconds"] = status.diagnostics.last_camera_image_upload_age_seconds;
+    }
+    if (status.diagnostics.has_last_command) {
+      JsonObject last_command = diagnostics.createNestedObject("last_command");
+      if (status.diagnostics.last_command_id > 0) {
+        last_command["id"] = status.diagnostics.last_command_id;
+      }
+      if (status.diagnostics.last_command_status.length() > 0) {
+        last_command["status"] = status.diagnostics.last_command_status;
+      }
+      if (status.diagnostics.last_command_code.length() > 0) {
+        last_command["code"] = status.diagnostics.last_command_code;
+      }
+      if (status.diagnostics.last_command_message.length() > 0) {
+        last_command["message"] = status.diagnostics.last_command_message;
+      }
+      if (status.diagnostics.has_last_command_age_seconds) {
+        last_command["age_seconds"] = status.diagnostics.last_command_age_seconds;
+      }
+    }
+    if (status.diagnostics.has_error_counters) {
+      JsonObject counters = diagnostics.createNestedObject("error_counters");
+      counters["wifi_reconnects"] = status.diagnostics.error_counters.wifi_reconnects;
+      counters["upload_failures"] = status.diagnostics.error_counters.upload_failures;
+      counters["ble_provisioning_failures"] = status.diagnostics.error_counters.ble_provisioning_failures;
+      counters["espnow_failures"] = status.diagnostics.error_counters.espnow_failures;
+    }
+    if (status.diagnostics.last_error_code.length() > 0 || status.diagnostics.last_error_message.length() > 0) {
+      JsonObject last_error = diagnostics.createNestedObject("last_error");
+      if (status.diagnostics.last_error_code.length() > 0) {
+        last_error["code"] = status.diagnostics.last_error_code;
+      }
+      if (status.diagnostics.last_error_message.length() > 0) {
+        last_error["message"] = status.diagnostics.last_error_message;
+      }
+    }
   }
 
   String body;

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <esp_camera.h>
 #include <esp_now.h>
+#include <esp_system.h>
 #include <esp_wifi.h>
 
 #include <memory>
@@ -60,6 +61,10 @@ bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
 uint32_t g_boot_counter = 0;
 uint32_t g_capture_sequence = 0;
+PlatformErrorCounters g_diagnostic_error_counters{};
+String g_last_diagnostic_error_code;
+String g_last_diagnostic_error_message;
+unsigned long g_last_image_upload_ms = 0;
 bool g_last_provision_sender_known = false;
 uint8_t g_last_provision_sender_mac[6] = {0};
 uint32_t g_last_provision_request_id = 0;
@@ -70,6 +75,42 @@ volatile uint32_t g_capture_request_id = 0;
 volatile uint32_t g_capture_command_id = 0;
 volatile uint32_t g_capture_request_received_at_ms = 0;
 uint8_t g_capture_request_mac[6] = {0};
+}
+
+const char* resetReasonLabel(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "power_on";
+    case ESP_RST_SW:
+      return "software_reset";
+    case ESP_RST_DEEPSLEEP:
+      return "deep_sleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_INT_WDT:
+      return "watchdog";
+    case ESP_RST_PANIC:
+      return "panic";
+    default:
+      return "unknown";
+  }
+}
+
+uint32_t ageSecondsSince(unsigned long now, unsigned long started_at_ms) {
+  if (started_at_ms == 0 || now < started_at_ms) {
+    return 0;
+  }
+  return static_cast<uint32_t>((now - started_at_ms) / 1000UL);
+}
+
+void recordDiagnosticError(const char* code, const String& message) {
+  g_last_diagnostic_error_code = code == nullptr ? "" : String(code);
+  g_last_diagnostic_error_message = message;
+  if (g_last_diagnostic_error_message.length() > 120) {
+    g_last_diagnostic_error_message = g_last_diagnostic_error_message.substring(0, 120);
+  }
 }
 
 String stableHardwareDeviceId() {
@@ -270,6 +311,8 @@ bool ensurePeer(const uint8_t* peer_mac) {
   peer.channel = 0;  // use current STA channel
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     Serial.printf("[camera-node] failed to add ESP-NOW peer %s\n", macToString(peer_mac).c_str());
     return false;
   }
@@ -284,6 +327,8 @@ void sendAck(
     uint32_t value_u32_1 = 0,
     uint32_t value_u32_2 = 0) {
   if (!ensurePeer(target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     return;
   }
 
@@ -310,12 +355,16 @@ void sendAck(
         static_cast<unsigned int>(status),
         macToString(target_mac).c_str());
   } else {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_ack_failed", "ESP-NOW ACK send failed");
     Serial.printf("[camera-node] ESP-NOW ack send failed err=%d\n", static_cast<int>(err));
   }
 }
 
 void sendHealthReport(const uint8_t* target_mac, uint32_t request_id = 0) {
   if (!ensurePeer(target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     return;
   }
 
@@ -353,6 +402,8 @@ void sendHealthReport(const uint8_t* target_mac, uint32_t request_id = 0) {
         static_cast<unsigned int>(packet.value_u32_2),
         macToString(target_mac).c_str());
   } else {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_health_failed", "ESP-NOW health report failed");
     Serial.printf("[camera-node] HEALTH send failed err=%d\n", static_cast<int>(err));
   }
 }
@@ -429,10 +480,14 @@ void maintainWiFiConnection() {
   const unsigned long now = millis();
   if (g_wifi_connecting && now - g_wifi_connect_started_at_ms >= PLANTLAB_WIFI_CONNECT_TIMEOUT_MS) {
     g_wifi_connecting = false;
+    recordDiagnosticError("wifi_connect_timeout", "Wi-Fi connect timed out");
     Serial.println("[camera-node] Wi-Fi connect timed out");
   }
 
   if (!g_wifi_connecting && now - g_last_wifi_attempt_ms >= kWifiReconnectRetryMs) {
+    if (g_last_wifi_attempt_ms != 0 || g_wifi_ready) {
+      ++g_diagnostic_error_counters.wifi_reconnects;
+    }
     const String wifi_ssid = runtimeWifiSsid();
     const String wifi_password = runtimeWifiPassword();
     Serial.printf("[camera-node] retrying Wi-Fi for %s\n", wifi_ssid.c_str());
@@ -455,6 +510,25 @@ bool sendHeartbeat() {
     heartbeat.status = "online";
     heartbeat.message = "camera online";
     heartbeat.software_version = kCameraSoftwareVersion;
+    const unsigned long now = millis();
+    heartbeat.diagnostics.valid = true;
+    heartbeat.diagnostics.has_uptime_seconds = true;
+    heartbeat.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
+    if (WiFi.status() == WL_CONNECTED) {
+      heartbeat.diagnostics.has_wifi_rssi_dbm = true;
+      heartbeat.diagnostics.wifi_rssi_dbm = WiFi.RSSI();
+    }
+    heartbeat.diagnostics.reboot_reason = resetReasonLabel(esp_reset_reason());
+    heartbeat.diagnostics.provisioning_state =
+        g_capture_in_progress ? "capture_busy" : (g_node_registered ? "online" : "node_registering");
+    if (g_last_image_upload_ms > 0) {
+      heartbeat.diagnostics.has_last_camera_image_upload_age_seconds = true;
+      heartbeat.diagnostics.last_camera_image_upload_age_seconds = ageSecondsSince(now, g_last_image_upload_ms);
+    }
+    heartbeat.diagnostics.has_error_counters = true;
+    heartbeat.diagnostics.error_counters = g_diagnostic_error_counters;
+    heartbeat.diagnostics.last_error_code = g_last_diagnostic_error_code;
+    heartbeat.diagnostics.last_error_message = g_last_diagnostic_error_message;
 
     String error;
     if (g_platform_client->send_hardware_heartbeat(heartbeat, &error)) {
@@ -467,6 +541,8 @@ bool sendHeartbeat() {
       return true;
     }
     Serial.printf("[camera-node] heartbeat failed: %s\n", error.c_str());
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
     return false;
   }
 
@@ -475,6 +551,8 @@ bool sendHeartbeat() {
   const String url = g_platform_client->base_url() + "/health";
   if (!http.begin(url)) {
     Serial.println("[camera-node] heartbeat failed: request setup failed");
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("heartbeat_upload_failed", "heartbeat request setup failed");
     return false;
   }
 
@@ -488,6 +566,8 @@ bool sendHeartbeat() {
   }
 
   Serial.printf("[camera-node] heartbeat failed HTTP %d: %s\n", code, body.c_str());
+  ++g_diagnostic_error_counters.upload_failures;
+  recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
   return false;
 }
 
@@ -510,6 +590,8 @@ bool registerDeviceNode() {
   const String url = g_platform_client->base_url() + "/api/device-nodes/register";
   if (!http.begin(url)) {
     Serial.println("[camera-node] node registration failed: request setup failed");
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("node_register_failed", "node registration request setup failed");
     return false;
   }
   http.addHeader("Content-Type", "application/json");
@@ -542,6 +624,8 @@ bool registerDeviceNode() {
   }
 
   Serial.printf("[camera-node] node registration failed HTTP %d: %s\n", code, response.c_str());
+  ++g_diagnostic_error_counters.upload_failures;
+  recordDiagnosticError("node_register_failed", "node registration failed");
   return false;
 }
 
@@ -552,6 +636,7 @@ bool initCamera() {
 
   if (!g_camera.begin()) {
     Serial.println("[camera-node] camera init failed");
+    recordDiagnosticError("camera_init_failed", "camera init failed");
     return false;
   }
 
@@ -591,6 +676,7 @@ bool captureAndUploadImage() {
   camera_fb_t* frame = esp_camera_fb_get();
   if (frame == nullptr) {
     Serial.println("[camera-node] image capture failed");
+    recordDiagnosticError("image_capture_failed", "image capture failed");
     deinitCamera();
     return false;
   }
@@ -648,6 +734,7 @@ bool captureAndUploadImage() {
   esp_camera_fb_return(frame);
 
   if (uploaded) {
+    g_last_image_upload_ms = millis();
     Serial.printf(
         "[camera-node] upload success command_id=%lu request=%u http=%d elapsed_ms=%lu\n",
         static_cast<unsigned long>(g_capture_command_id),
@@ -655,6 +742,8 @@ bool captureAndUploadImage() {
         upload_http_status,
         static_cast<unsigned long>(millis() - upload_started_at_ms));
   } else {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("image_upload_failed", "image upload failed");
     Serial.printf(
         "[camera-node] upload failed command_id=%lu request=%u http=%d elapsed_ms=%lu error=%s\n",
         static_cast<unsigned long>(g_capture_command_id),
@@ -671,6 +760,8 @@ bool captureAndUploadImage() {
 void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
   if (len != static_cast<int>(sizeof(EspNowPacket))) {
     Serial.printf("[camera-node] ESP-NOW ignored packet length=%d\n", len);
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_invalid_packet", "ESP-NOW packet length invalid");
     return;
   }
 
@@ -678,6 +769,8 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
   memcpy(&packet, data, sizeof(packet));
   if (packet.magic != ESPNOW_TEST_MAGIC || packet.version != ESPNOW_TEST_VERSION) {
     Serial.println("[camera-node] ESP-NOW ignored invalid packet");
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_invalid_packet", "ESP-NOW packet invalid");
     return;
   }
 
@@ -706,6 +799,8 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
     CameraNodeRuntimeConfig next_config{};
     if (!camera_node_apply_provisioning_payload(&next_config, payload)) {
       Serial.println("[camera-node] provisioning payload invalid");
+      ++g_diagnostic_error_counters.ble_provisioning_failures;
+      recordDiagnosticError("espnow_provisioning_invalid", "camera provisioning payload invalid");
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kInvalid);
       return;
     }
@@ -719,6 +814,8 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
     }
     if (!saveProvisionedConfig(next_config)) {
       Serial.println("[camera-node] provisioning save failed");
+      ++g_diagnostic_error_counters.ble_provisioning_failures;
+      recordDiagnosticError("espnow_provisioning_save_failed", "camera provisioning save failed");
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kFailed);
       return;
     }
@@ -774,6 +871,8 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
 bool setupEspNow() {
   if (esp_now_init() != ESP_OK) {
     Serial.println("[camera-node] ESP-NOW init failed");
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_init_failed", "ESP-NOW init failed");
     return false;
   }
   esp_now_register_recv_cb(onEspNowReceive);

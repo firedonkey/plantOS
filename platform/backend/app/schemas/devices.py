@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.diagnostics import DeviceDiagnosticEventRead, DeviceDiagnosticSnapshotRead
+
 
 class DeviceSummaryReadingRead(BaseModel):
     timestamp: datetime
@@ -39,6 +41,7 @@ class DeviceHealthNodeRead(BaseModel):
     ota_last_success_at: datetime | None = None
     last_seen_at: datetime | None = None
     health_status: str | None = None
+    diagnostics: DeviceDiagnosticSnapshotRead | None = None
 
 
 class DeviceHealthCommandRead(BaseModel):
@@ -70,6 +73,9 @@ class DeviceHardwareHealthRead(BaseModel):
     last_failed_command_reason: str | None = None
     last_failed_command_at: datetime | None = None
     last_successful_command_at: datetime | None = None
+    friendly_status: str | None = None
+    attention_reasons: list[str] = Field(default_factory=list)
+    recent_events: list[DeviceDiagnosticEventRead] = Field(default_factory=list)
 
 
 class DeviceCreate(BaseModel):

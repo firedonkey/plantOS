@@ -26,6 +26,38 @@ struct PlatformReading {
   String idempotency_key;
 };
 
+struct PlatformErrorCounters {
+  uint32_t wifi_reconnects = 0;
+  uint32_t upload_failures = 0;
+  uint32_t ble_provisioning_failures = 0;
+  uint32_t espnow_failures = 0;
+};
+
+struct PlatformDiagnostics {
+  bool valid = false;
+  bool has_uptime_seconds = false;
+  uint32_t uptime_seconds = 0;
+  bool has_wifi_rssi_dbm = false;
+  int wifi_rssi_dbm = 0;
+  String reboot_reason;
+  String provisioning_state;
+  bool has_last_sensor_reading_age_seconds = false;
+  uint32_t last_sensor_reading_age_seconds = 0;
+  bool has_last_camera_image_upload_age_seconds = false;
+  uint32_t last_camera_image_upload_age_seconds = 0;
+  bool has_last_command = false;
+  int last_command_id = 0;
+  String last_command_status;
+  String last_command_code;
+  String last_command_message;
+  bool has_last_command_age_seconds = false;
+  uint32_t last_command_age_seconds = 0;
+  bool has_error_counters = false;
+  PlatformErrorCounters error_counters;
+  String last_error_code;
+  String last_error_message;
+};
+
 struct PlatformStatus {
   String hardware_device_id;
   String node_role;
@@ -34,6 +66,7 @@ struct PlatformStatus {
   bool pump_on;
   String message;
   String software_version;
+  PlatformDiagnostics diagnostics;
 };
 
 class PlatformClient {

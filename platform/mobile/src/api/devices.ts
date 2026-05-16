@@ -1,6 +1,6 @@
 import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, HardwareHealth, HardwareNodeHealth } from "@/types";
+import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth } from "@/types";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 import type { BleDeviceIdentity } from "@/ble/bleProvisioning";
 
@@ -58,7 +58,31 @@ type ApiDeviceSummary = {
     image_status?: string | null;
     camera_status?: string | null;
     last_command?: ApiHealthCommand | null;
+    friendly_status?: string | null;
+    attention_reasons?: string[] | null;
   } | null;
+};
+
+type ApiHardwareDiagnostics = {
+  schema_version?: number | null;
+  reported_status?: string | null;
+  firmware_version?: string | null;
+  uptime_seconds?: number | null;
+  wifi_rssi_dbm?: number | null;
+  reboot_reason?: string | null;
+  provisioning_state?: string | null;
+  last_sensor_reading_at?: string | null;
+  last_camera_image_upload_at?: string | null;
+  last_command_id?: number | null;
+  last_command_status?: string | null;
+  last_command_code?: string | null;
+  last_command_message?: string | null;
+  last_command_at?: string | null;
+  error_counters?: Record<string, number> | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  reported_at?: string | null;
+  updated_at?: string | null;
 };
 
 type ApiHealthNode = {
@@ -81,6 +105,7 @@ type ApiHealthNode = {
   ota_last_success_at?: string | null;
   capabilities?: Record<string, unknown> | null;
   last_seen_at?: string | null;
+  diagnostics?: ApiHardwareDiagnostics | null;
 };
 
 type ApiHealthCommand = {
@@ -341,6 +366,34 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     otaLastSuccessAt: node.ota_last_success_at ?? undefined,
     capabilities: node.capabilities ?? undefined,
     lastSeenAt: node.last_seen_at ?? undefined,
+    diagnostics: mapHardwareDiagnostics(node.diagnostics),
+  };
+}
+
+function mapHardwareDiagnostics(diagnostics?: ApiHardwareDiagnostics | null): HardwareDiagnostics | undefined {
+  if (!diagnostics) {
+    return undefined;
+  }
+  return {
+    schemaVersion: diagnostics.schema_version ?? undefined,
+    reportedStatus: diagnostics.reported_status ?? undefined,
+    firmwareVersion: diagnostics.firmware_version ?? undefined,
+    uptimeSeconds: diagnostics.uptime_seconds ?? undefined,
+    wifiRssiDbm: diagnostics.wifi_rssi_dbm ?? undefined,
+    rebootReason: diagnostics.reboot_reason ?? undefined,
+    provisioningState: diagnostics.provisioning_state ?? undefined,
+    lastSensorReadingAt: diagnostics.last_sensor_reading_at ?? undefined,
+    lastCameraImageUploadAt: diagnostics.last_camera_image_upload_at ?? undefined,
+    lastCommandId: diagnostics.last_command_id ?? undefined,
+    lastCommandStatus: diagnostics.last_command_status ?? undefined,
+    lastCommandCode: diagnostics.last_command_code ?? undefined,
+    lastCommandMessage: diagnostics.last_command_message ?? undefined,
+    lastCommandAt: diagnostics.last_command_at ?? undefined,
+    errorCounters: diagnostics.error_counters ?? undefined,
+    lastErrorCode: diagnostics.last_error_code ?? undefined,
+    lastErrorMessage: diagnostics.last_error_message ?? undefined,
+    reportedAt: diagnostics.reported_at ?? undefined,
+    updatedAt: diagnostics.updated_at ?? undefined,
   };
 }
 
@@ -370,7 +423,17 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
           timestamp: health.last_command.timestamp,
         }
       : undefined,
+    friendlyStatus: normalizeFriendlyStatus(health.friendly_status),
+    attentionReasons: health.attention_reasons ?? [],
   };
+}
+
+function normalizeFriendlyStatus(status?: string | null): FriendlyHardwareStatus | undefined {
+  const normalized = status?.toLowerCase();
+  if (normalized === "online" || normalized === "recently_seen" || normalized === "offline" || normalized === "needs_attention") {
+    return normalized;
+  }
+  return undefined;
 }
 
 function normalizeHealthStatus(status?: string | null): HardwareNodeHealth["status"] {

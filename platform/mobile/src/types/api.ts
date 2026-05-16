@@ -1,5 +1,28 @@
 export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded" | "stale" | "warning" | "waiting";
 export type FirmwareOtaStatus = "idle" | "available" | "downloading" | "installing" | "success" | "failed";
+export type FriendlyHardwareStatus = "online" | "recently_seen" | "offline" | "needs_attention";
+
+export type HardwareDiagnostics = {
+  schemaVersion?: number;
+  reportedStatus?: string;
+  firmwareVersion?: string;
+  uptimeSeconds?: number;
+  wifiRssiDbm?: number;
+  rebootReason?: string;
+  provisioningState?: string;
+  lastSensorReadingAt?: string;
+  lastCameraImageUploadAt?: string;
+  lastCommandId?: number;
+  lastCommandStatus?: string;
+  lastCommandCode?: string;
+  lastCommandMessage?: string;
+  lastCommandAt?: string;
+  errorCounters?: Record<string, number>;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  reportedAt?: string;
+  updatedAt?: string;
+};
 
 export type Device = {
   id: string;
@@ -32,6 +55,7 @@ export type HardwareNodeHealth = {
   otaLastSuccessAt?: string;
   capabilities?: Record<string, unknown>;
   lastSeenAt?: string;
+  diagnostics?: HardwareDiagnostics;
 };
 
 export type SensorReading = {
@@ -81,6 +105,8 @@ export type HardwareHealth = {
   imageStatus?: DeviceConnectionState;
   cameraStatus?: DeviceConnectionState;
   lastCommand?: HardwareCommandHealth;
+  friendlyStatus?: FriendlyHardwareStatus;
+  attentionReasons?: string[];
 };
 
 export type LatestImage = {

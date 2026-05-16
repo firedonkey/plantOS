@@ -941,6 +941,60 @@
         }
       }
     },
+    "/api/devices/{device_id}/diagnostics": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get Device Diagnostics",
+        "operationId": "get_device_diagnostics_api_devices__device_id__diagnostics_get",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Device Id"
+            }
+          },
+          {
+            "name": "events_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Events Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDiagnosticsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{device_id}/readings": {
       "get": {
         "tags": [
@@ -3182,6 +3236,336 @@
         ],
         "title": "DeviceDeleteRead"
       },
+      "DeviceDiagnosticEventRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "hardware_device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Device Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "event_type",
+          "severity",
+          "occurred_at",
+          "created_at"
+        ],
+        "title": "DeviceDiagnosticEventRead"
+      },
+      "DeviceDiagnosticSnapshotRead": {
+        "properties": {
+          "hardware_device_id": {
+            "type": "string",
+            "title": "Hardware Device Id"
+          },
+          "device_id": {
+            "type": "integer",
+            "title": "Device Id"
+          },
+          "node_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Role"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
+          },
+          "reported_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Status"
+          },
+          "firmware_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware Version"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "wifi_rssi_dbm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wifi Rssi Dbm"
+          },
+          "reboot_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reboot Reason"
+          },
+          "provisioning_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provisioning State"
+          },
+          "last_sensor_reading_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sensor Reading At"
+          },
+          "last_camera_image_upload_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Camera Image Upload At"
+          },
+          "last_command_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Command Id"
+          },
+          "last_command_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Command Status"
+          },
+          "last_command_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Command Code"
+          },
+          "last_command_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Command Message"
+          },
+          "last_command_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Command At"
+          },
+          "error_counters": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Error Counters"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Message"
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Reported At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hardware_device_id",
+          "device_id",
+          "schema_version",
+          "reported_at",
+          "updated_at"
+        ],
+        "title": "DeviceDiagnosticSnapshotRead"
+      },
+      "DeviceDiagnosticsRead": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceDiagnosticSnapshotRead"
+            },
+            "type": "array",
+            "title": "Snapshots"
+          },
+          "recent_events": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceDiagnosticEventRead"
+            },
+            "type": "array",
+            "title": "Recent Events"
+          }
+        },
+        "type": "object",
+        "title": "DeviceDiagnosticsRead"
+      },
       "DeviceHardwareHealthRead": {
         "properties": {
           "overall_status": {
@@ -3345,6 +3729,31 @@
               }
             ],
             "title": "Last Successful Command At"
+          },
+          "friendly_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Friendly Status"
+          },
+          "attention_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attention Reasons"
+          },
+          "recent_events": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceDiagnosticEventRead"
+            },
+            "type": "array",
+            "title": "Recent Events"
           }
         },
         "type": "object",
@@ -3616,6 +4025,16 @@
               }
             ],
             "title": "Health Status"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceDiagnosticSnapshotRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4586,6 +5005,103 @@
         "type": "object",
         "title": "DeviceUpdate"
       },
+      "DiagnosticLastCommandCreate": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2592000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Seconds"
+          }
+        },
+        "type": "object",
+        "title": "DiagnosticLastCommandCreate"
+      },
+      "DiagnosticLastErrorCreate": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "DiagnosticLastErrorCreate"
+      },
       "FirmwareManifestRead": {
         "properties": {
           "update_available": {
@@ -4967,6 +5483,122 @@
         ],
         "title": "HardwareCommandResultCreate"
       },
+      "HardwareDiagnosticsCreate": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "wifi_rssi_dbm": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 0.0,
+                "minimum": -127.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wifi Rssi Dbm"
+          },
+          "reboot_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reboot Reason"
+          },
+          "provisioning_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provisioning State"
+          },
+          "last_sensor_reading_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2592000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sensor Reading Age Seconds"
+          },
+          "last_camera_image_upload_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2592000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Camera Image Upload Age Seconds"
+          },
+          "last_command": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticLastCommandCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_counters": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "maxProperties": 8,
+            "title": "Error Counters"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticLastErrorCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "HardwareDiagnosticsCreate"
+      },
       "HardwareHeartbeatCreate": {
         "properties": {
           "hardware_device_id": {
@@ -5046,6 +5678,16 @@
               }
             ],
             "title": "Message"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HardwareDiagnosticsCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5150,6 +5792,16 @@
               }
             ],
             "title": "Last Seen At"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceDiagnosticSnapshotRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

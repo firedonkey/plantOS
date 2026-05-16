@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.deps import get_current_user, get_optional_current_user
 from app.db.session import get_session
 from app.main import app
-from app.models import Command, CommandStatus, Device, DeviceNode, SensorReading, User
+from app.models import Command, CommandStatus, Device, DeviceDiagnosticEvent, DeviceDiagnosticSnapshot, DeviceNode, SensorReading, User
 from app.models.base import Base
 
 
@@ -224,6 +224,7 @@ def test_hardware_heartbeat_updates_device_and_node_status():
         assert payload["status"] == "online"
         assert payload["hardware_device_id"] == "master-01"
         assert payload["last_seen_at"] is not None
+        assert payload["diagnostics"] is None
 
         with client.testing_session_local() as session:
             device = session.get(Device, device_id)
@@ -232,5 +233,178 @@ def test_hardware_heartbeat_updates_device_and_node_status():
             assert device.status_message == "hardware loop healthy"
             assert node.status == "online"
             assert node.last_seen_at is not None
+            assert session.get(DeviceDiagnosticSnapshot, "master-01") is None
+    finally:
+        teardown_overrides()
+
+
+def test_hardware_heartbeat_accepts_diagnostics_and_stores_bounded_events():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        with client.testing_session_local() as session:
+            session.add(
+                DeviceNode(
+                    device_id=device_id,
+                    hardware_device_id="master-01",
+                    node_role="master",
+                    display_name="Master",
+                    status="offline",
+                )
+            )
+            session.commit()
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        payload = {
+            "hardware_device_id": "master-01",
+            "node_role": "master",
+            "status": "online",
+            "software_version": "0.2.3",
+            "message": "hardware loop healthy",
+            "diagnostics": {
+                "schema_version": 1,
+                "uptime_seconds": 1234,
+                "wifi_rssi_dbm": -76,
+                "reboot_reason": "power_on",
+                "provisioning_state": "normal",
+                "last_sensor_reading_age_seconds": 7,
+                "last_command": {
+                    "id": 17,
+                    "status": "completed",
+                    "code": "ok",
+                    "message": "light command completed",
+                    "age_seconds": 4,
+                },
+                "error_counters": {
+                    "wifi_reconnects": 1,
+                    "upload_failures": 1,
+                    "ble_provisioning_failures": 0,
+                    "espnow_failures": 0,
+                },
+                "last_error": {
+                    "code": "upload_failed",
+                    "message": "sensor upload failed",
+                },
+            },
+        }
+        response = client.post("/api/hardware/heartbeat", json=payload, headers={"X-Device-Token": "token-owner"})
+
+        assert response.status_code == 200
+        diagnostics = response.json()["diagnostics"]
+        assert diagnostics["hardware_device_id"] == "master-01"
+        assert diagnostics["firmware_version"] == "0.2.3"
+        assert diagnostics["uptime_seconds"] == 1234
+        assert diagnostics["wifi_rssi_dbm"] == -76
+        assert diagnostics["last_command_status"] == "completed"
+        assert diagnostics["error_counters"]["wifi_reconnects"] == 1
+
+        repeat_response = client.post("/api/hardware/heartbeat", json=payload, headers={"X-Device-Token": "token-owner"})
+        assert repeat_response.status_code == 200
+
+        payload["diagnostics"]["error_counters"]["upload_failures"] = 2
+        increment_response = client.post("/api/hardware/heartbeat", json=payload, headers={"X-Device-Token": "token-owner"})
+        assert increment_response.status_code == 200
+
+        payload["diagnostics"]["last_error"] = {
+            "code": "wifi_connect_timeout",
+            "message": "wifi reconnect timed out",
+        }
+        changed_error_response = client.post(
+            "/api/hardware/heartbeat", json=payload, headers={"X-Device-Token": "token-owner"}
+        )
+        assert changed_error_response.status_code == 200
+
+        payload["diagnostics"]["uptime_seconds"] = 12
+        payload["diagnostics"]["reboot_reason"] = "software_reset"
+        reboot_response = client.post("/api/hardware/heartbeat", json=payload, headers={"X-Device-Token": "token-owner"})
+        assert reboot_response.status_code == 200
+
+        with client.testing_session_local() as session:
+            snapshot = session.get(DeviceDiagnosticSnapshot, "master-01")
+            assert snapshot is not None
+            assert snapshot.device_id == device_id
+            assert snapshot.provisioning_state == "normal"
+            assert snapshot.error_counters["upload_failures"] == 2
+            assert snapshot.last_error_code == "wifi_connect_timeout"
+            assert snapshot.uptime_seconds == 12
+
+            events = session.query(DeviceDiagnosticEvent).order_by(DeviceDiagnosticEvent.id).all()
+            assert [event.event_type for event in events].count("upload_failure") == 2
+            assert [event.event_type for event in events].count("wifi_reconnect") == 1
+            assert [event.event_type for event in events].count("last_error") == 2
+            assert [event.event_type for event in events].count("reboot") == 1
+    finally:
+        teardown_overrides()
+
+
+def test_hardware_heartbeat_rejects_unsupported_diagnostic_counter():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        with client.testing_session_local() as session:
+            session.add(
+                DeviceNode(
+                    device_id=device_id,
+                    hardware_device_id="master-01",
+                    node_role="master",
+                    display_name="Master",
+                    status="offline",
+                )
+            )
+            session.commit()
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        response = client.post(
+            "/api/hardware/heartbeat",
+            json={
+                "hardware_device_id": "master-01",
+                "node_role": "master",
+                "status": "online",
+                "diagnostics": {
+                    "error_counters": {
+                        "wifi_reconnects": 1,
+                        "device_token_failures": 1,
+                    },
+                },
+            },
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 422
+    finally:
+        teardown_overrides()
+
+
+def test_hardware_heartbeat_rejects_diagnostics_for_foreign_node():
+    client, _, other_device_id = build_client_with_devices()
+    try:
+        with client.testing_session_local() as session:
+            session.add(
+                DeviceNode(
+                    device_id=other_device_id,
+                    hardware_device_id="other-master",
+                    node_role="master",
+                    display_name="Other Master",
+                    status="online",
+                )
+            )
+            session.commit()
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        response = client.post(
+            "/api/hardware/heartbeat",
+            json={
+                "hardware_device_id": "other-master",
+                "node_role": "master",
+                "status": "online",
+                "diagnostics": {"uptime_seconds": 12},
+            },
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 404
+        with client.testing_session_local() as session:
+            assert session.get(DeviceDiagnosticSnapshot, "other-master") is None
     finally:
         teardown_overrides()

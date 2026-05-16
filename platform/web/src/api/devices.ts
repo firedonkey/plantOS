@@ -1,6 +1,6 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, HardwareHealth, HardwareNodeHealth } from "@/types";
+import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth } from "@/types";
 import { ApiError } from "./client";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 
@@ -48,10 +48,31 @@ type ApiDeviceSummary = {
     primary?: ApiHealthNode | null;
     cameras?: ApiHealthNode[] | null;
     last_heartbeat_at?: string | null;
+    heartbeat_status?: string | null;
     last_reading_at?: string | null;
+    reading_status?: string | null;
     last_image_at?: string | null;
+    image_status?: string | null;
+    camera_status?: string | null;
     last_command?: ApiHealthCommand | null;
+    friendly_status?: string | null;
+    attention_reasons?: string[] | null;
   } | null;
+};
+
+type ApiHardwareDiagnostics = {
+  firmware_version?: string | null;
+  uptime_seconds?: number | null;
+  wifi_rssi_dbm?: number | null;
+  reboot_reason?: string | null;
+  provisioning_state?: string | null;
+  last_sensor_reading_at?: string | null;
+  last_camera_image_upload_at?: string | null;
+  last_command_status?: string | null;
+  last_command_code?: string | null;
+  error_counters?: Record<string, number> | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
 };
 
 type ApiHealthNode = {
@@ -60,6 +81,7 @@ type ApiHealthNode = {
   node_index?: number | null;
   display_name?: string | null;
   status: string;
+  diagnostics?: ApiHardwareDiagnostics | null;
   last_seen_at?: string | null;
 };
 
@@ -256,7 +278,28 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     nodeIndex: node.node_index ?? undefined,
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
+    diagnostics: mapHardwareDiagnostics(node.diagnostics),
     lastSeenAt: node.last_seen_at ?? undefined,
+  };
+}
+
+function mapHardwareDiagnostics(diagnostics?: ApiHardwareDiagnostics | null): HardwareDiagnostics | undefined {
+  if (!diagnostics) {
+    return undefined;
+  }
+  return {
+    firmwareVersion: diagnostics.firmware_version ?? undefined,
+    uptimeSeconds: diagnostics.uptime_seconds ?? undefined,
+    wifiRssiDbm: diagnostics.wifi_rssi_dbm ?? undefined,
+    rebootReason: diagnostics.reboot_reason ?? undefined,
+    provisioningState: diagnostics.provisioning_state ?? undefined,
+    lastSensorReadingAt: diagnostics.last_sensor_reading_at ?? undefined,
+    lastCameraImageUploadAt: diagnostics.last_camera_image_upload_at ?? undefined,
+    lastCommandStatus: diagnostics.last_command_status ?? undefined,
+    lastCommandCode: diagnostics.last_command_code ?? undefined,
+    errorCounters: diagnostics.error_counters ?? undefined,
+    lastErrorCode: diagnostics.last_error_code ?? undefined,
+    lastErrorMessage: diagnostics.last_error_message ?? undefined,
   };
 }
 
@@ -271,8 +314,12 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
     primary: mapHardwareNode(health.primary),
     cameras: (health.cameras ?? []).map((camera) => mapHardwareNode(camera)!).filter(Boolean),
     lastHeartbeatAt: health.last_heartbeat_at ?? undefined,
+    heartbeatStatus: normalizeFreshnessStatus(health.heartbeat_status),
     lastReadingAt: health.last_reading_at ?? undefined,
+    readingStatus: normalizeFreshnessStatus(health.reading_status),
     lastImageAt: health.last_image_at ?? undefined,
+    imageStatus: normalizeFreshnessStatus(health.image_status),
+    cameraStatus: normalizeFreshnessStatus(health.camera_status),
     lastCommand: health.last_command
       ? {
           id: String(health.last_command.id),
@@ -282,6 +329,8 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
           timestamp: health.last_command.timestamp,
         }
       : undefined,
+    friendlyStatus: normalizeFriendlyStatus(health.friendly_status),
+    attentionReasons: health.attention_reasons ?? [],
   };
 }
 
@@ -292,12 +341,39 @@ function normalizeHealthStatus(status?: string | null): HardwareNodeHealth["stat
     normalized === "offline" ||
     normalized === "unknown" ||
     normalized === "degraded" ||
+    normalized === "stale" ||
+    normalized === "warning" ||
+    normalized === "waiting" ||
     normalized === "provisioning" ||
     normalized === "error"
   ) {
     return normalized;
   }
   return "unknown";
+}
+
+function normalizeFreshnessStatus(status?: string | null): Device["status"] | undefined {
+  const normalized = status?.toLowerCase();
+  if (
+    normalized === "online" ||
+    normalized === "offline" ||
+    normalized === "unknown" ||
+    normalized === "degraded" ||
+    normalized === "stale" ||
+    normalized === "warning" ||
+    normalized === "waiting"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizeFriendlyStatus(status?: string | null): FriendlyHardwareStatus | undefined {
+  const normalized = status?.toLowerCase();
+  if (normalized === "online" || normalized === "recently_seen" || normalized === "offline" || normalized === "needs_attention") {
+    return normalized;
+  }
+  return undefined;
 }
 
 export async function listDevices(token?: string): Promise<{ devices: Device[]; usedMock: boolean }> {

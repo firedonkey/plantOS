@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.models import CommandStatus
+from app.schemas.diagnostics import DeviceDiagnosticSnapshotRead, HardwareDiagnosticsCreate
 
 
 class HardwareReadingCreate(BaseModel):
@@ -43,6 +44,7 @@ class HardwareHeartbeatCreate(BaseModel):
     light_on: bool | None = None
     pump_on: bool | None = None
     message: str | None = Field(default=None, max_length=160)
+    diagnostics: HardwareDiagnosticsCreate | None = None
 
 
 class HardwareHeartbeatRead(BaseModel):
@@ -56,6 +58,7 @@ class HardwareHeartbeatRead(BaseModel):
     message: str | None
     updated_at: datetime | None
     last_seen_at: datetime | None
+    diagnostics: DeviceDiagnosticSnapshotRead | None = None
 
 
 class HardwarePollEnvelopeRead(BaseModel):

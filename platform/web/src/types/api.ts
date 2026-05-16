@@ -1,4 +1,20 @@
-export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded";
+export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded" | "stale" | "warning" | "waiting";
+export type FriendlyHardwareStatus = "online" | "recently_seen" | "offline" | "needs_attention";
+
+export type HardwareDiagnostics = {
+  firmwareVersion?: string;
+  uptimeSeconds?: number;
+  wifiRssiDbm?: number;
+  rebootReason?: string;
+  provisioningState?: string;
+  lastSensorReadingAt?: string;
+  lastCameraImageUploadAt?: string;
+  lastCommandStatus?: string;
+  lastCommandCode?: string;
+  errorCounters?: Record<string, number>;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+};
 
 export type SensorReading = {
   timestamp: string;
@@ -6,6 +22,9 @@ export type SensorReading = {
   humidityPercent?: number;
   soilMoisturePercent?: number;
   waterLevelPercent?: number;
+  waterTemperatureC?: number;
+  waterLevelRaw?: number;
+  waterLevelState?: string;
   lightOn?: boolean;
   pumpOn?: boolean;
 };
@@ -34,6 +53,7 @@ export type HardwareNodeHealth = {
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
   lastSeenAt?: string;
+  diagnostics?: HardwareDiagnostics;
 };
 
 export type DeviceCommandStatus = "pending" | "sent" | "in_progress" | "completed" | "failed";
@@ -63,9 +83,15 @@ export type HardwareHealth = {
   primary?: HardwareNodeHealth;
   cameras: HardwareNodeHealth[];
   lastHeartbeatAt?: string;
+  heartbeatStatus?: DeviceConnectionState;
   lastReadingAt?: string;
+  readingStatus?: DeviceConnectionState;
   lastImageAt?: string;
+  imageStatus?: DeviceConnectionState;
+  cameraStatus?: DeviceConnectionState;
   lastCommand?: HardwareCommandHealth;
+  friendlyStatus?: FriendlyHardwareStatus;
+  attentionReasons?: string[];
 };
 
 export type DeviceDashboard = {

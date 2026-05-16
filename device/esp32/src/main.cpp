@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_system.h>
 
 #include <algorithm>
 #include <memory>
@@ -206,6 +207,15 @@ QueuedPlatformReading g_reading_retry_queue[kReadingRetryQueueSize]{};
 uint32_t g_boot_counter = 0;
 uint32_t g_reading_sequence = 0;
 uint32_t g_consecutive_heartbeat_failures = 0;
+PlatformErrorCounters g_diagnostic_error_counters{};
+String g_last_diagnostic_error_code;
+String g_last_diagnostic_error_message;
+unsigned long g_last_sensor_reading_ms = 0;
+int g_last_command_id = 0;
+String g_last_command_status;
+String g_last_command_code;
+String g_last_command_message;
+unsigned long g_last_command_result_ms = 0;
 bool g_master_node_registered = false;
 unsigned long g_last_master_node_register_attempt_ms = 0;
 bool g_scheduled_capture_retry_pending = false;
@@ -220,6 +230,8 @@ void setCameraSchedulePausedForManual(bool paused);
 void queuePendingCaptureCommandResult(const char* status, const String& message);
 void flushPendingCaptureCommandResult();
 void markPendingCaptureCommandInProgress(int command_id);
+void recordDiagnosticError(const char* code, const String& message);
+void recordLastCommandResult(int command_id, const char* status, const String& message, const char* code);
 bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now);
 bool dispatchPendingCaptureCommand(unsigned long now);
 void serviceCameraCaptureFlight(unsigned long now);
@@ -532,6 +544,8 @@ bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
 
 void onEspNowDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
   if (status != ESP_NOW_SEND_SUCCESS) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_send_failed", "ESP-NOW delivery failed");
     if (g_camera_capture_in_flight.active) {
       g_camera_capture_in_flight.delivery_failed = true;
       g_camera_capture_in_flight.last_delivery_failure_ms = millis();
@@ -720,6 +734,8 @@ bool setupEspNow() {
   }
 
   if (esp_now_init() != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_init_failed", "ESP-NOW init failed");
     Serial.println("[camera-schedule] ESP-NOW init failed");
     return false;
   }
@@ -733,6 +749,8 @@ bool setupEspNow() {
   peer.encrypt = false;
   if (!esp_now_is_peer_exist(kEspNowBroadcastMac)) {
     if (esp_now_add_peer(&peer) != ESP_OK) {
+      ++g_diagnostic_error_counters.espnow_failures;
+      recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
       Serial.println("[camera-schedule] failed to add broadcast ESP-NOW peer");
       esp_now_deinit();
       return false;
@@ -769,6 +787,8 @@ bool ensureEspNowPeer(const uint8_t* peer_mac) {
   peer.channel = 0;
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     Serial.printf("[camera-schedule] failed to add ESP-NOW peer %s\n", macToString(peer_mac).c_str());
     return false;
   }
@@ -787,6 +807,8 @@ bool sendCameraProvisioningPacket(unsigned long now) {
       reinterpret_cast<const uint8_t*>(&packet),
       sizeof(packet));
   if (err != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_provision_send_failed", "camera provisioning delivery failed");
     Serial.printf("[camera-provisioning] provisioning send failed err=%d\n", static_cast<int>(err));
     return false;
   }
@@ -859,6 +881,8 @@ bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true) {
 
   const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     return false;
   }
   const esp_err_t err = esp_now_send(
@@ -866,6 +890,8 @@ bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true) {
       reinterpret_cast<const uint8_t*>(&packet),
       sizeof(packet));
   if (err != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_send_failed", "camera request delivery failed");
     Serial.printf("[camera-schedule] capture send failed err=%d\n", static_cast<int>(err));
     return false;
   }
@@ -899,6 +925,8 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
 
   const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     return false;
   }
   const esp_err_t err = esp_now_send(
@@ -906,6 +934,8 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
       reinterpret_cast<const uint8_t*>(&packet),
       sizeof(packet));
   if (err != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_send_failed", "camera request delivery failed");
     Serial.printf("[camera-schedule] capture send failed err=%d\n", static_cast<int>(err));
     return false;
   }
@@ -943,6 +973,8 @@ bool sendEspNowPauseCaptureCommand(bool paused) {
 
   const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
     return false;
   }
 
@@ -951,6 +983,8 @@ bool sendEspNowPauseCaptureCommand(bool paused) {
       reinterpret_cast<const uint8_t*>(&packet),
       sizeof(packet));
   if (err != ESP_OK) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_send_failed", "camera pause delivery failed");
     Serial.printf("[camera-schedule] pause command send failed err=%d paused=%u\n", static_cast<int>(err), paused ? 1u : 0u);
     return false;
   }
@@ -1033,6 +1067,14 @@ void queuePendingCaptureCommandResult(const char* status, const String& message)
   }
 
   const String next_status = status == nullptr ? "failed" : String(status);
+  recordLastCommandResult(
+      g_pending_capture_command.command_id,
+      next_status.c_str(),
+      message,
+      next_status == "completed" ? "ok" : "camera_capture_failed");
+  if (next_status != "completed") {
+    recordDiagnosticError("camera_capture_failed", message);
+  }
   if (g_pending_capture_command.result_ready &&
       g_pending_capture_command.result_status == next_status &&
       g_pending_capture_command.result_message == message) {
@@ -1064,6 +1106,8 @@ void flushPendingCaptureCommandResult() {
           g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("command_result_upload_failed", "command result update failed");
     g_pending_capture_command.last_result_attempt_ms = millis();
     Serial.printf(
         "[platform] capture command result update failed: %s (will retry %s: %s)\n",
@@ -1086,6 +1130,7 @@ void markPendingCaptureCommandInProgress(int command_id) {
   }
 
   Serial.printf("[platform] capture command %d marked in_progress\n", command_id);
+  recordLastCommandResult(command_id, "in_progress", "waiting for camera upload", "camera_capture_started");
 
   String ack_error;
   if (!g_platform_client->report_hardware_command_result(
@@ -1095,6 +1140,8 @@ void markPendingCaptureCommandInProgress(int command_id) {
           g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("command_result_upload_failed", "command progress update failed");
     Serial.printf("[platform] capture command progress update failed: %s\n", ack_error.c_str());
   }
 }
@@ -1113,6 +1160,8 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
             g_growing_light.is_on(),
             g_pump.is_on(),
             &ack_error)) {
+      ++g_diagnostic_error_counters.upload_failures;
+      recordDiagnosticError("command_result_upload_failed", "command result update failed");
       Serial.printf("[platform] overlapping capture command update failed: %s\n", ack_error.c_str());
     }
     return false;
@@ -1161,6 +1210,8 @@ bool dispatchPendingCaptureCommand(unsigned long now) {
             g_growing_light.is_on(),
             g_pump.is_on(),
             &ack_error)) {
+      ++g_diagnostic_error_counters.upload_failures;
+      recordDiagnosticError("command_result_upload_failed", "command result update failed");
       Serial.printf("[platform] capture command failure update failed: %s\n", ack_error.c_str());
     }
     Serial.printf(
@@ -1451,6 +1502,53 @@ const char* wifiStatusLabel(wl_status_t status) {
   }
 }
 
+const char* resetReasonLabel(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "power_on";
+    case ESP_RST_SW:
+      return "software_reset";
+    case ESP_RST_DEEPSLEEP:
+      return "deep_sleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_INT_WDT:
+      return "watchdog";
+    case ESP_RST_PANIC:
+      return "panic";
+    default:
+      return "unknown";
+  }
+}
+
+uint32_t ageSecondsSince(unsigned long now, unsigned long started_at_ms) {
+  if (started_at_ms == 0 || now < started_at_ms) {
+    return 0;
+  }
+  return static_cast<uint32_t>((now - started_at_ms) / 1000UL);
+}
+
+void recordDiagnosticError(const char* code, const String& message) {
+  g_last_diagnostic_error_code = code == nullptr ? "" : String(code);
+  g_last_diagnostic_error_message = message;
+  if (g_last_diagnostic_error_message.length() > 120) {
+    g_last_diagnostic_error_message = g_last_diagnostic_error_message.substring(0, 120);
+  }
+}
+
+void recordLastCommandResult(int command_id, const char* status, const String& message, const char* code) {
+  g_last_command_id = command_id;
+  g_last_command_status = status == nullptr ? "" : String(status);
+  g_last_command_code = code == nullptr ? "" : String(code);
+  g_last_command_message = message;
+  if (g_last_command_message.length() > 120) {
+    g_last_command_message = g_last_command_message.substring(0, 120);
+  }
+  g_last_command_result_ms = millis();
+}
+
 plantlab::ProvisioningParseError bleWifiValidationErrorForStatus(wl_status_t status) {
   if (status == WL_NO_SSID_AVAIL) {
     return plantlab::ProvisioningParseError::kWifiNetworkNotFound;
@@ -1504,6 +1602,8 @@ bool validateBleWifiCredentials(const plantlab::BleProvisioningPayload& payload,
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
   const plantlab::ProvisioningParseError validation_error = bleWifiValidationErrorForStatus(final_status);
+  ++g_diagnostic_error_counters.ble_provisioning_failures;
+  recordDiagnosticError("ble_wifi_validation_failed", plantlab::provisioningParseErrorCode(validation_error));
   if (error != nullptr) {
     *error = validation_error;
   }
@@ -2341,6 +2441,8 @@ bool startBleProvisioningMode() {
       fallback_platform_url.c_str(),
       device_identity_json.c_str())) {
     Serial.println("[provisioning] BLE setup failed");
+    ++g_diagnostic_error_counters.ble_provisioning_failures;
+    recordDiagnosticError("ble_init_failed", "BLE provisioning setup failed");
     Serial.println("[provisioning] provisioning_failed reason=ble_init_failed");
     g_ble_provisioning.stop();
     g_provisioning_mode = false;
@@ -2394,6 +2496,8 @@ void serviceBleProvisioning(unsigned long now) {
   if (g_ble_provisioning.hasPendingResult()) {
     const plantlab::ProvisioningParseResult result = g_ble_provisioning.takePendingResult();
     if (!result.ok) {
+      ++g_diagnostic_error_counters.ble_provisioning_failures;
+      recordDiagnosticError("ble_payload_rejected", plantlab::provisioningParseErrorCode(result.error));
       Serial.printf(
           "[provisioning] BLE payload rejected: %s\n",
           plantlab::provisioningParseErrorCode(result.error));
@@ -2431,6 +2535,8 @@ void serviceBleProvisioning(unsigned long now) {
     updateStatusLed();
 
     if (!commitBleProvisioningPayload(result.payload)) {
+      ++g_diagnostic_error_counters.ble_provisioning_failures;
+      recordDiagnosticError("ble_save_failed", "BLE config save failed");
       rejectBleProvisioningForRetry(plantlab::ProvisioningParseError::kSaveFailed);
       Serial.println("[provisioning] BLE config save failed");
       Serial.println("[provisioning] provisioning_failed reason=save_failed");
@@ -2447,6 +2553,8 @@ void serviceBleProvisioning(unsigned long now) {
   }
 
   if (!g_restart_scheduled && now - g_ble_provisioning_started_at_ms >= kBleProvisioningTimeoutMs) {
+    ++g_diagnostic_error_counters.ble_provisioning_failures;
+    recordDiagnosticError("ble_provisioning_timeout", "BLE provisioning timed out");
     g_provisioning_state = plantlab::provisioningStateAfterTimeout(g_ble_had_previous_config);
     g_ble_provisioning.setStatus(g_provisioning_state, plantlab::ProvisioningParseError::kTimeout);
     Serial.println("[provisioning] provisioning_timeout");
@@ -2560,6 +2668,9 @@ bool connectToWiFi() {
     return false;
   }
 
+  if (g_last_wifi_attempt_ms != 0 || g_wifi_ready) {
+    ++g_diagnostic_error_counters.wifi_reconnects;
+  }
   g_last_wifi_attempt_ms = now;
   g_wifi_ready = false;
   g_device_mode = DeviceMode::kConnecting;
@@ -2603,6 +2714,7 @@ bool connectToWiFi() {
 
   const wl_status_t final_status = WiFi.status();
   WiFi.disconnect();
+  recordDiagnosticError("wifi_connect_timeout", wifiStatusLabel(final_status));
   if (restorePreviousActiveConfigAfterPendingFailure("wifi_connect_timeout")) {
     return false;
   }
@@ -2770,6 +2882,7 @@ void checkProvisioningButton() {
 }  // namespace
 
 PlatformReading read_platform_reading() {
+  g_last_sensor_reading_ms = millis();
   const Dht22Reading reading = g_dht22.read();
   const MoistureReading moisture = g_moisture.read();
 
@@ -2818,6 +2931,7 @@ PlatformReading read_platform_reading() {
 
 PlatformStatus platform_status(const String& message) {
   PlatformStatus status{};
+  const unsigned long now = millis();
   status.hardware_device_id = stableHardwareDeviceId();
   status.node_role = "master";
   status.status = "online";
@@ -2825,6 +2939,32 @@ PlatformStatus platform_status(const String& message) {
   status.pump_on = g_pump.is_on();
   status.message = message;
   status.software_version = kSoftwareVersion;
+  status.diagnostics.valid = true;
+  status.diagnostics.has_uptime_seconds = true;
+  status.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
+  if (WiFi.status() == WL_CONNECTED) {
+    status.diagnostics.has_wifi_rssi_dbm = true;
+    status.diagnostics.wifi_rssi_dbm = WiFi.RSSI();
+  }
+  status.diagnostics.reboot_reason = resetReasonLabel(esp_reset_reason());
+  status.diagnostics.provisioning_state = plantlab::provisioningStateName(g_provisioning_state);
+  if (g_last_sensor_reading_ms > 0) {
+    status.diagnostics.has_last_sensor_reading_age_seconds = true;
+    status.diagnostics.last_sensor_reading_age_seconds = ageSecondsSince(now, g_last_sensor_reading_ms);
+  }
+  if (g_last_command_result_ms > 0) {
+    status.diagnostics.has_last_command = true;
+    status.diagnostics.last_command_id = g_last_command_id;
+    status.diagnostics.last_command_status = g_last_command_status;
+    status.diagnostics.last_command_code = g_last_command_code;
+    status.diagnostics.last_command_message = g_last_command_message;
+    status.diagnostics.has_last_command_age_seconds = true;
+    status.diagnostics.last_command_age_seconds = ageSecondsSince(now, g_last_command_result_ms);
+  }
+  status.diagnostics.has_error_counters = true;
+  status.diagnostics.error_counters = g_diagnostic_error_counters;
+  status.diagnostics.last_error_code = g_last_diagnostic_error_code;
+  status.diagnostics.last_error_message = g_last_diagnostic_error_message;
   return status;
 }
 
@@ -2910,6 +3050,8 @@ void servicePlatformReadingQueue(unsigned long now) {
 
     queued.attempts = static_cast<uint8_t>(queued.attempts + 1);
     queued.next_retry_ms = now + readingRetryDelayMs(queued.attempts);
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("reading_upload_failed", "sensor reading upload failed");
     Serial.printf(
         "[platform] reading upload failed idempotency_key=%s attempt=%u next_retry_ms=%lu error=%s\n",
         queued.reading.idempotency_key.c_str(),
@@ -2951,6 +3093,8 @@ void send_platform_status(unsigned long now, const String& message = "online") {
     g_consecutive_heartbeat_failures = 0;
   } else {
     ++g_consecutive_heartbeat_failures;
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
     Serial.printf(
         "[platform] heartbeat upload failed consecutive=%lu error=%s\n",
         static_cast<unsigned long>(g_consecutive_heartbeat_failures),
@@ -2996,8 +3140,15 @@ void execute_platform_command(const PlatformCommand& command) {
   }
 
   String status_error;
-  g_platform_client->send_hardware_heartbeat(platform_status(message), &status_error);
+  if (!g_platform_client->send_hardware_heartbeat(platform_status(message), &status_error)) {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
+  }
   String ack_error;
+  recordLastCommandResult(command.id, success ? "completed" : "failed", message, success ? "ok" : "command_failed");
+  if (!success) {
+    recordDiagnosticError("command_failed", message);
+  }
   if (!g_platform_client->report_hardware_command_result(
           command.id,
           success ? "completed" : "failed",
@@ -3005,6 +3156,8 @@ void execute_platform_command(const PlatformCommand& command) {
           g_growing_light.is_on(),
           g_pump.is_on(),
           &ack_error)) {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("command_result_upload_failed", "command result update failed");
     Serial.printf("[platform] command ack failed: %s\n", ack_error.c_str());
   } else {
     Serial.printf("[platform] command %d handled: %s\n", command.id, message.c_str());

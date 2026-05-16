@@ -32,9 +32,11 @@ from app.schemas.devices import (
     DeviceSummaryReadingRead,
     DeviceUpdate,
 )
+from app.schemas.diagnostics import DeviceDiagnosticsRead
 from app.schemas.setup import DeviceClaimTokenRequest, DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
 from app.services.commands import create_command, list_commands_for_device
+from app.services.device_diagnostics import event_read, list_diagnostic_events, list_diagnostic_snapshots, snapshot_read
 from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
 from app.services.devices import (
     create_device_for_user,
@@ -322,6 +324,8 @@ def get_device_summary(
     latest_image = latest_images[0] if latest_images else None
     nodes = list_nodes_for_device(session, device.id)
     command_health = _command_health(session, device.id)
+    diagnostic_snapshots = list_diagnostic_snapshots(session, device.id)
+    diagnostic_events = list_diagnostic_events(session, device.id, limit=20)
 
     return DeviceSummaryRead(
         id=device.id,
@@ -349,7 +353,25 @@ def get_device_summary(
             latest_reading=latest_reading,
             latest_image=latest_image,
             command_health=command_health,
+            diagnostic_snapshots=diagnostic_snapshots,
+            diagnostic_events=diagnostic_events,
         ),
+    )
+
+
+@router.get("/{device_id}/diagnostics", response_model=DeviceDiagnosticsRead)
+def get_device_diagnostics(
+    device_id: int,
+    events_limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return DeviceDiagnosticsRead(
+        snapshots=[snapshot_read(snapshot) for snapshot in list_diagnostic_snapshots(session, device.id)],
+        recent_events=[event_read(event) for event in list_diagnostic_events(session, device.id, limit=events_limit)],
     )
 
 
@@ -588,6 +610,8 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
     nodes = list_nodes_for_device(session, device.id)
     node_summary = build_node_summary(nodes)
     command_health = _command_health(session, device.id)
+    diagnostic_snapshots = list_diagnostic_snapshots(session, device.id)
+    diagnostic_events = list_diagnostic_events(session, device.id, limit=20)
     return DeviceRead(
         id=device.id,
         name=device.name,
@@ -620,6 +644,8 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
             latest_reading=latest_reading,
             latest_image=latest_image,
             command_health=command_health,
+            diagnostic_snapshots=diagnostic_snapshots,
+            diagnostic_events=diagnostic_events,
         ),
     )
 
@@ -677,41 +703,83 @@ def _command_health(session: Session, device_id: int) -> CommandHealthSnapshot:
     )
 
 
-def _build_hardware_health(*, nodes: list, latest_reading, latest_image, command_health: CommandHealthSnapshot) -> DeviceHardwareHealthRead:
+def _build_hardware_health(
+    *,
+    nodes: list,
+    latest_reading,
+    latest_image,
+    command_health: CommandHealthSnapshot,
+    diagnostic_snapshots: list | None = None,
+    diagnostic_events: list | None = None,
+) -> DeviceHardwareHealthRead:
     node_summary = build_node_summary(nodes)
     primary = node_summary.get("primary")
     primary_status = (primary or {}).get("status")
     camera_summaries = node_summary.get("cameras") or []
     last_heartbeat_at = latest_node_heartbeat_at(nodes)
+    snapshot_by_hardware_id = {
+        snapshot.hardware_device_id: snapshot
+        for snapshot in (diagnostic_snapshots or [])
+    }
+    primary_snapshot = snapshot_by_hardware_id.get((primary or {}).get("hardware_device_id"))
+    camera_snapshots = [
+        snapshot_by_hardware_id.get(item.get("hardware_device_id"))
+        for item in camera_summaries
+        if item.get("hardware_device_id") in snapshot_by_hardware_id
+    ]
+    last_reading_at = getattr(latest_reading, "timestamp", None) or getattr(primary_snapshot, "last_sensor_reading_at", None)
+    last_image_at = getattr(latest_image, "timestamp", None) or _latest_snapshot_timestamp(
+        [snapshot.last_camera_image_upload_at for snapshot in camera_snapshots if snapshot is not None]
+    )
+    heartbeat_status = _freshness_status(last_heartbeat_at, stale_after=HEARTBEAT_STALE_AFTER, offline_after=HEARTBEAT_OFFLINE_AFTER)
+    reading_status = _reading_status(
+        timestamp=last_reading_at,
+        primary_status=primary_status,
+        last_heartbeat_at=last_heartbeat_at,
+    )
+    image_status = _image_status(camera_summaries, last_image_at)
+    camera_status = _camera_status(camera_summaries)
+    recent_event_reads = [event_read(event) for event in (diagnostic_events or [])]
+    attention_reasons = _attention_reasons(
+        primary=primary,
+        camera_summaries=camera_summaries,
+        snapshots=diagnostic_snapshots or [],
+        heartbeat_status=heartbeat_status,
+        reading_status=reading_status,
+        image_status=image_status,
+        camera_status=camera_status,
+        command_health=command_health,
+    )
     return DeviceHardwareHealthRead(
         overall_status=node_summary.get("overall_status") or "offline",
         master_status=primary_status,
         master_online=primary_status == "online",
-        primary=_build_health_node(primary),
-        cameras=[health_node for health_node in (_build_health_node(item) for item in camera_summaries) if health_node is not None],
+        primary=_build_health_node(primary, snapshot_by_hardware_id),
+        cameras=[health_node for health_node in (_build_health_node(item, snapshot_by_hardware_id) for item in camera_summaries) if health_node is not None],
         last_heartbeat_at=last_heartbeat_at,
-        heartbeat_status=_freshness_status(last_heartbeat_at, stale_after=HEARTBEAT_STALE_AFTER, offline_after=HEARTBEAT_OFFLINE_AFTER),
-        last_reading_at=getattr(latest_reading, "timestamp", None),
-        reading_status=_reading_status(
-            timestamp=getattr(latest_reading, "timestamp", None),
-            primary_status=primary_status,
-            last_heartbeat_at=last_heartbeat_at,
-        ),
-        last_image_at=getattr(latest_image, "timestamp", None),
-        image_status=_image_status(camera_summaries, getattr(latest_image, "timestamp", None)),
-        camera_status=_camera_status(camera_summaries),
+        heartbeat_status=heartbeat_status,
+        last_reading_at=last_reading_at,
+        reading_status=reading_status,
+        last_image_at=last_image_at,
+        image_status=image_status,
+        camera_status=camera_status,
         last_command=_build_health_command(command_health.latest),
         last_failed_command_reason=getattr(command_health.last_failed, "message", None),
         last_failed_command_at=getattr(command_health.last_failed, "completed_at", None),
         last_successful_command_at=getattr(command_health.last_successful, "completed_at", None),
+        friendly_status=_friendly_status(heartbeat_status, attention_reasons),
+        attention_reasons=attention_reasons,
+        recent_events=recent_event_reads,
     )
 
 
-def _build_health_node(node_summary_item: dict | None) -> DeviceHealthNodeRead | None:
+def _build_health_node(node_summary_item: dict | None, snapshots: dict | None = None) -> DeviceHealthNodeRead | None:
     if not node_summary_item:
         return None
     payload = dict(node_summary_item)
     payload["health_status"] = _node_health_status(node_summary_item)
+    if snapshots:
+        payload["diagnostics"] = snapshot_read(snapshots.get(node_summary_item.get("hardware_device_id")))
     return DeviceHealthNodeRead.model_validate(payload)
 
 
@@ -730,6 +798,60 @@ def _build_health_command(command) -> DeviceHealthCommandRead | None:
         sent_at=command.sent_at,
         timestamp=timestamp,
     )
+
+
+def _latest_snapshot_timestamp(timestamps: list[datetime | None]) -> datetime | None:
+    present = [_as_utc(timestamp) for timestamp in timestamps if timestamp is not None]
+    return max(present) if present else None
+
+
+def _friendly_status(heartbeat_status: str | None, attention_reasons: list[str]) -> str:
+    if heartbeat_status == "offline":
+        return "offline"
+    if attention_reasons:
+        return "needs_attention"
+    if heartbeat_status == "stale":
+        return "recently_seen"
+    if heartbeat_status == "online":
+        return "online"
+    return "offline"
+
+
+def _attention_reasons(
+    *,
+    primary: dict | None,
+    camera_summaries: list[dict],
+    snapshots: list,
+    heartbeat_status: str | None,
+    reading_status: str | None,
+    image_status: str | None,
+    camera_status: str | None,
+    command_health: CommandHealthSnapshot,
+) -> list[str]:
+    if heartbeat_status == "offline":
+        return []
+    reasons: list[str] = []
+    if primary and _node_health_status(primary) == "warning":
+        reasons.append("primary_node_warning")
+    if any(_node_health_status(item) == "warning" for item in camera_summaries):
+        reasons.append("camera_node_warning")
+    if reading_status == "warning":
+        reasons.append("sensor_reading_missing_or_stale")
+    if image_status == "warning" or camera_status == "warning":
+        reasons.append("camera_image_missing_or_stale")
+    if getattr(command_health.last_failed, "completed_at", None) is not None:
+        reasons.append("recent_command_failed")
+    for snapshot in snapshots:
+        if snapshot.wifi_rssi_dbm is not None and snapshot.wifi_rssi_dbm <= -75:
+            reasons.append("weak_wifi_signal")
+        if snapshot.last_error_code:
+            reasons.append("diagnostic_error")
+        for key, count in (snapshot.error_counters or {}).items():
+            if count:
+                reasons.append(f"{key}_reported")
+        if getattr(snapshot, "reported_status", None) in {"error", "degraded"}:
+            reasons.append("diagnostic_status_warning")
+    return list(dict.fromkeys(reasons))
 
 
 def _camera_status(camera_summaries: list[dict]) -> str | None:

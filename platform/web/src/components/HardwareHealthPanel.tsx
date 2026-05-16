@@ -28,8 +28,8 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
           <h3>Hardware health</h3>
           <p className="subtitle">Live heartbeat, node, image, and command status from the shared backend contract.</p>
         </div>
-        <span className={`chip chip-${health.overallStatus === "degraded" ? "degraded" : health.overallStatus === "online" ? "online" : health.overallStatus === "offline" ? "offline" : "unknown"}`}>
-          {formatStatusLabel(health.overallStatus)}
+        <span className={`chip chip-${chipTone(health.friendlyStatus, health.overallStatus)}`}>
+          {formatFriendlyStatus(health.friendlyStatus, health.overallStatus)}
         </span>
         <span className="collapsible-indicator" aria-hidden="true" />
       </summary>
@@ -47,7 +47,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
         </div>
         <div className="health-item">
           <strong>Reading</strong>
-          <span>{formatAge(health.lastReadingAt, "Last reading")}</span>
+          <span>{formatAge(health.lastReadingAt ?? health.primary?.diagnostics?.lastSensorReadingAt, "Last reading")}</span>
           <small>{formatAge(health.lastHeartbeatAt, "Last heartbeat")}</small>
         </div>
         <div className="health-item">
@@ -57,9 +57,60 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
         </div>
       </div>
 
+      <div className="health-grid">
+        <div className="health-item">
+          <strong>Firmware</strong>
+          <span>{health.primary?.diagnostics?.firmwareVersion ?? "Not reported"}</span>
+          <small>Uptime: {formatUptime(health.primary?.diagnostics?.uptimeSeconds)}</small>
+        </div>
+        <div className="health-item">
+          <strong>Wi-Fi</strong>
+          <span>{formatRssi(health.primary?.diagnostics?.wifiRssiDbm)}</span>
+          <small>Reboot: {formatCode(health.primary?.diagnostics?.rebootReason)}</small>
+        </div>
+        <div className="health-item">
+          <strong>Provisioning</strong>
+          <span>{formatCode(health.primary?.diagnostics?.provisioningState)}</span>
+          <small>Last error: {formatCode(health.primary?.diagnostics?.lastErrorCode)}</small>
+        </div>
+        <div className="health-item">
+          <strong>Counters</strong>
+          <span>{formatCounters(health.primary?.diagnostics?.errorCounters)}</span>
+          <small>{health.attentionReasons?.length ? health.attentionReasons.map(formatCode).join(", ") : "No attention reasons"}</small>
+        </div>
+      </div>
+
       {health.lastCommand?.message ? <p className="meta-text">{health.lastCommand.message}</p> : null}
     </details>
   );
+}
+
+function chipTone(status: HardwareHealth["friendlyStatus"], fallback: string): string {
+  if (status === "needs_attention") {
+    return "degraded";
+  }
+  if (status === "recently_seen") {
+    return "degraded";
+  }
+  if (status === "online" || status === "offline") {
+    return status;
+  }
+  return fallback === "online" || fallback === "offline" || fallback === "degraded" ? fallback : "unknown";
+}
+
+function formatFriendlyStatus(status: HardwareHealth["friendlyStatus"], fallback: string): string {
+  switch (status) {
+    case "online":
+      return "Online";
+    case "recently_seen":
+      return "Recently seen";
+    case "offline":
+      return "Offline";
+    case "needs_attention":
+      return "Needs attention";
+    default:
+      return formatStatusLabel(fallback);
+  }
 }
 
 function formatNodeStatus(name: string, status: string): string {
@@ -74,6 +125,12 @@ function formatStatusLabel(status: string): string {
       return "Offline";
     case "degraded":
       return "Degraded";
+    case "stale":
+      return "Stale";
+    case "warning":
+      return "Warning";
+    case "waiting":
+      return "Waiting";
     case "provisioning":
       return "Provisioning";
     case "error":
@@ -81,6 +138,32 @@ function formatStatusLabel(status: string): string {
     default:
       return "Unknown";
   }
+}
+
+function formatUptime(seconds: number | undefined): string {
+  if (typeof seconds !== "number") {
+    return "Not reported";
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function formatRssi(value: number | undefined): string {
+  return typeof value === "number" ? `${value} dBm` : "Not reported";
+}
+
+function formatCode(value: string | undefined): string {
+  return value ? value.replace(/_/g, " ") : "Not reported";
+}
+
+function formatCounters(counters: Record<string, number> | undefined): string {
+  if (!counters || Object.keys(counters).length === 0) {
+    return "Not reported";
+  }
+  return Object.entries(counters)
+    .map(([key, value]) => `${formatCode(key)}: ${value}`)
+    .join(", ");
 }
 
 function formatCommandStatus(status: string): string {

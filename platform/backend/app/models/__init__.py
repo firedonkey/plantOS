@@ -1,6 +1,7 @@
 from app.models.auth import AuthHandoffCode, AuthRefreshSession
 from app.models.command import Command, CommandAction, CommandStatus, CommandTarget
 from app.models.device import Device
+from app.models.device_diagnostic import DeviceDiagnosticEvent, DeviceDiagnosticSnapshot
 from app.models.device_node import DeviceNode
 from app.models.event import Event, EventType
 from app.models.firmware import FirmwareRelease
@@ -14,6 +15,8 @@ __all__ = [
     "AuthHandoffCode",
     "AuthRefreshSession",
     "DeviceNode",
+    "DeviceDiagnosticEvent",
+    "DeviceDiagnosticSnapshot",
     "Command",
     "CommandAction",
     "CommandStatus",

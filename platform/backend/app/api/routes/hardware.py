@@ -12,6 +12,7 @@ from app.schemas.hardware import (
 )
 from app.schemas.readings import SensorReadingCreate, SensorReadingRead
 from app.services.commands import claim_pending_commands, get_command_for_device, report_command_result
+from app.services.device_diagnostics import snapshot_read, upsert_diagnostic_snapshot
 from app.services.device_nodes import get_node_by_hardware_id, update_node_heartbeat
 from app.services.readings import create_sensor_reading
 from app.services.status import update_device_status
@@ -93,6 +94,8 @@ def hardware_heartbeat(
     device = _require_device(request, session)
     last_seen_at = None
     node_role = payload.node_role
+    diagnostics_snapshot = None
+    updated_node = None
 
     if payload.hardware_device_id:
         node = get_node_by_hardware_id(session, payload.hardware_device_id)
@@ -110,6 +113,15 @@ def hardware_heartbeat(
             raise HTTPException(status_code=404, detail="Device node not found.")
         last_seen_at = updated_node.last_seen_at
         node_role = updated_node.node_role
+        if payload.diagnostics is not None:
+            diagnostics_snapshot = upsert_diagnostic_snapshot(
+                session,
+                device_id=device.id,
+                node=updated_node,
+                status=payload.status,
+                diagnostics=payload.diagnostics,
+                reported_at=last_seen_at,
+            )
 
     status_read = update_device_status(
         session,
@@ -131,4 +143,5 @@ def hardware_heartbeat(
         message=status_read.message,
         updated_at=status_read.updated_at,
         last_seen_at=last_seen_at,
+        diagnostics=snapshot_read(diagnostics_snapshot),
     )

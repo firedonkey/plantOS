@@ -21,6 +21,8 @@ from app.models import (
     CommandStatus,
     CommandTarget,
     Device,
+    DeviceDiagnosticEvent,
+    DeviceDiagnosticSnapshot,
     DeviceNode,
     Event,
     EventType,
@@ -625,6 +627,117 @@ def test_device_summary_exposes_hardware_health_and_last_command():
         assert payload["hardware_health"]["last_command"]["message"] == "light turned on"
         assert payload["hardware_health"]["last_failed_command_reason"] is None
         assert payload["hardware_health"]["last_successful_command_at"] is not None
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_exposes_diagnostic_snapshot_and_needs_attention_status():
+    client, _ = build_client_with_user()
+    now = datetime.now(timezone.utc)
+    try:
+        create_response = client.post("/api/devices", json={"name": "Diagnostics Plant"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                software_version="0.2.3",
+                last_seen_at=now,
+            )
+            session.add(
+                DeviceDiagnosticSnapshot(
+                    hardware_device_id="pl-esp32-master",
+                    device_id=device_id,
+                    node_role="master",
+                    schema_version=1,
+                    reported_status="online",
+                    firmware_version="0.2.3",
+                    uptime_seconds=420,
+                    wifi_rssi_dbm=-81,
+                    reboot_reason="power_on",
+                    provisioning_state="normal",
+                    last_sensor_reading_at=now - timedelta(seconds=9),
+                    last_command_id=41,
+                    last_command_status="failed",
+                    last_command_code="relay_timeout",
+                    last_command_message="relay did not settle",
+                    last_command_at=now - timedelta(seconds=4),
+                    error_counters={"upload_failures": 2, "wifi_reconnects": 0},
+                    last_error_code="upload_failed",
+                    last_error_message="sensor upload failed",
+                    reported_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                DeviceDiagnosticEvent(
+                    device_id=device_id,
+                    hardware_device_id="pl-esp32-master",
+                    event_type="upload_failure",
+                    severity="warning",
+                    code="upload_failures",
+                    message="upload_failures increased",
+                    count=2,
+                    occurred_at=now,
+                    created_at=now,
+                )
+            )
+            session.commit()
+
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+        diagnostics_response = client.get(f"/api/devices/{device_id}/diagnostics")
+
+        assert summary_response.status_code == 200
+        payload = summary_response.json()
+        health = payload["hardware_health"]
+        assert health["friendly_status"] == "needs_attention"
+        assert "weak_wifi_signal" in health["attention_reasons"]
+        assert "upload_failures_reported" in health["attention_reasons"]
+        assert "diagnostic_error" in health["attention_reasons"]
+        assert health["last_reading_at"] is not None
+        assert health["primary"]["diagnostics"]["uptime_seconds"] == 420
+        assert health["primary"]["diagnostics"]["wifi_rssi_dbm"] == -81
+        assert health["primary"]["diagnostics"]["last_command_code"] == "relay_timeout"
+        assert health["recent_events"][0]["event_type"] == "upload_failure"
+
+        assert diagnostics_response.status_code == 200
+        diagnostics = diagnostics_response.json()
+        assert diagnostics["snapshots"][0]["hardware_device_id"] == "pl-esp32-master"
+        assert diagnostics["recent_events"][0]["code"] == "upload_failures"
+    finally:
+        teardown_overrides()
+
+
+def test_device_summary_marks_old_heartbeat_offline_without_diagnostics():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Offline Plant"})
+        device_id = create_response.json()["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=datetime.now(timezone.utc) - timedelta(minutes=7),
+            )
+
+        summary_response = client.get(f"/api/devices/{device_id}/summary")
+
+        assert summary_response.status_code == 200
+        health = summary_response.json()["hardware_health"]
+        assert health["heartbeat_status"] == "offline"
+        assert health["friendly_status"] == "offline"
+        assert health["primary"]["diagnostics"] is None
+        assert health["attention_reasons"] == []
     finally:
         teardown_overrides()
 

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusChip } from "@/components/StatusChip";
-import { DeviceConnectionState, HardwareHealth } from "@/types";
+import { DeviceConnectionState, HardwareDiagnostics, HardwareHealth } from "@/types";
 import { theme } from "@/styles/theme";
 
 type HardwareHealthPanelProps = {
@@ -33,8 +33,8 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
     <Card>
       <PanelHeader
         expanded={expanded}
-        statusLabel={formatStatusLabel(health.overallStatus)}
-        statusTone={health.overallStatus === "provisioning" || health.overallStatus === "error" ? "unknown" : health.overallStatus}
+        statusLabel={formatFriendlyStatus(health.friendlyStatus, health.overallStatus)}
+        statusTone={friendlyTone(health.friendlyStatus, health.overallStatus)}
         subtitle={formatAge(health.lastHeartbeatAt ?? health.primary?.lastSeenAt, "Heartbeat")}
         title="Hardware health"
         onPress={() => setExpanded((value) => !value)}
@@ -71,10 +71,35 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
             />
           </View>
 
+          <View style={styles.supportSection}>
+            <Text style={styles.supportTitle}>Support diagnostics</Text>
+            <DiagnosticRow label="Firmware" value={health.primary?.diagnostics?.firmwareVersion ?? health.primary?.softwareVersion ?? "Not reported"} />
+            <DiagnosticRow label="Uptime" value={formatUptime(health.primary?.diagnostics?.uptimeSeconds)} />
+            <DiagnosticRow label="Wi-Fi RSSI" value={formatRssi(health.primary?.diagnostics?.wifiRssiDbm)} />
+            <DiagnosticRow label="Reboot reason" value={formatCode(health.primary?.diagnostics?.rebootReason)} />
+            <DiagnosticRow label="Provisioning" value={formatCode(health.primary?.diagnostics?.provisioningState)} />
+            <DiagnosticRow label="Last heartbeat" value={formatAge(health.lastHeartbeatAt ?? health.primary?.lastSeenAt, "Heartbeat")} />
+            <DiagnosticRow label="Last reading" value={formatAge(health.lastReadingAt ?? health.primary?.diagnostics?.lastSensorReadingAt, "Reading")} />
+            <DiagnosticRow label="Last camera upload" value={formatAge(health.lastImageAt ?? latestCameraDiagnostic(health)?.lastCameraImageUploadAt, "Image")} />
+            <DiagnosticRow label="Last command" value={formatDiagnosticCommand(health.primary?.diagnostics, health)} />
+            <DiagnosticRow label="OTA" value={formatFirmwareDetail(health)} />
+            <DiagnosticRow label="Counters" value={formatCounters(health.primary?.diagnostics?.errorCounters)} />
+            {health.attentionReasons?.length ? <DiagnosticRow label="Attention" value={health.attentionReasons.map(formatCode).join(", ")} /> : null}
+          </View>
+
           {health.lastCommand?.message ? <Text style={styles.meta}>{health.lastCommand.message}</Text> : null}
         </>
       )}
     </Card>
+  );
+}
+
+function DiagnosticRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.diagnosticRow}>
+      <Text style={styles.diagnosticLabel}>{label}</Text>
+      <Text style={styles.diagnosticValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -157,10 +182,82 @@ function otaTone(status: string | undefined): DeviceConnectionState {
   return "unknown";
 }
 
+function friendlyTone(status: HardwareHealth["friendlyStatus"], fallback: HardwareHealth["overallStatus"]): DeviceConnectionState {
+  if (status === "online") {
+    return "online";
+  }
+  if (status === "offline") {
+    return "offline";
+  }
+  if (status === "recently_seen") {
+    return "stale";
+  }
+  if (status === "needs_attention") {
+    return "warning";
+  }
+  return fallback === "provisioning" || fallback === "error" ? "unknown" : fallback;
+}
+
+function formatFriendlyStatus(status: HardwareHealth["friendlyStatus"], fallback: string) {
+  switch (status) {
+    case "online":
+      return "Online";
+    case "recently_seen":
+      return "Recently seen";
+    case "offline":
+      return "Offline";
+    case "needs_attention":
+      return "Needs attention";
+    default:
+      return formatStatusLabel(fallback);
+  }
+}
+
 function formatFirmwareValue(health: HardwareHealth) {
   const version = health.primary?.softwareVersion ?? "Unknown version";
   const status = formatOtaStatus(health.primary?.otaStatus);
   return `${version} · ${status}`;
+}
+
+function latestCameraDiagnostic(health: HardwareHealth): HardwareDiagnostics | undefined {
+  return health.cameras.find((camera) => camera.diagnostics?.lastCameraImageUploadAt)?.diagnostics ?? health.cameras[0]?.diagnostics;
+}
+
+function formatUptime(seconds: number | undefined) {
+  if (typeof seconds !== "number") {
+    return "Not reported";
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatRssi(value: number | undefined) {
+  return typeof value === "number" ? `${value} dBm` : "Not reported";
+}
+
+function formatCode(value: string | undefined) {
+  return value ? value.replace(/_/g, " ") : "Not reported";
+}
+
+function formatCounters(counters: Record<string, number> | undefined) {
+  if (!counters || Object.keys(counters).length === 0) {
+    return "Not reported";
+  }
+  return Object.entries(counters)
+    .map(([key, value]) => `${formatCode(key)}: ${value}`)
+    .join(", ");
+}
+
+function formatDiagnosticCommand(diagnostics: HardwareDiagnostics | undefined, health: HardwareHealth) {
+  if (diagnostics?.lastCommandStatus) {
+    const code = diagnostics.lastCommandCode ? ` · ${formatCode(diagnostics.lastCommandCode)}` : "";
+    return `${formatCode(diagnostics.lastCommandStatus)}${code}`;
+  }
+  return health.lastCommand ? `${formatAction(health.lastCommand.action)} · ${formatCommandStatus(health.lastCommand.status)}` : "Not reported";
 }
 
 function formatFirmwareDetail(health: HardwareHealth) {
@@ -282,6 +379,18 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
   expandText: { fontSize: theme.typography.meta, fontWeight: "700", color: theme.colors.accent },
   grid: { gap: theme.spacing.md },
+  supportSection: { gap: theme.spacing.sm, marginTop: theme.spacing.md },
+  supportTitle: { fontSize: 15, fontWeight: "800", color: theme.colors.textPrimary },
+  diagnosticRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderSoft,
+    paddingBottom: theme.spacing.xs,
+  },
+  diagnosticLabel: { flex: 1, fontSize: 13, color: theme.colors.textSecondary },
+  diagnosticValue: { flex: 1.5, fontSize: 13, color: theme.colors.textPrimary, textAlign: "right" },
   item: {
     borderWidth: 1,
     borderColor: theme.colors.borderSoft,
