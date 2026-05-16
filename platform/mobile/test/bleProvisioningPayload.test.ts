@@ -35,6 +35,25 @@ test("buildBleProvisioningPayload emits compact firmware JSON only", () => {
   assert.equal("device_access_token" in parsed, false);
 });
 
+test("buildBleProvisioningPayload includes recovery attach target only when provided", () => {
+  const normalPayload = JSON.parse(buildBleProvisioningPayload({
+    ssid: "PlantLab",
+    password: "wifi password",
+    setupToken: "setup-token",
+    platformUrl: "http://192.168.1.10:8000",
+  }));
+  const recoveryPayload = JSON.parse(buildBleProvisioningPayload({
+    ssid: "PlantLab",
+    password: "wifi password",
+    setupToken: "setup-token",
+    platformUrl: "http://192.168.1.10:8000",
+    attachToPlatformDeviceId: 42,
+  }));
+
+  assert.equal("attach_to_platform_device_id" in normalPayload, false);
+  assert.equal(recoveryPayload.attach_to_platform_device_id, 42);
+});
+
 test("buildBleProvisioningPayload validates required fields and firmware limits", () => {
   assertBleError("missing_ssid", () =>
     buildBleProvisioningPayload({ ssid: " ", password: "password", setupToken: "token", platformUrl: "http://host" }),
@@ -62,6 +81,12 @@ test("buildBleProvisioningPayload validates required fields and firmware limits"
   );
   assertBleError("backend_url_too_long", () =>
     buildBleProvisioningPayload({ ssid: "PlantLab", password: "password", setupToken: "token", platformUrl: "http://host", backendUrl: `http://${"x".repeat(BLE_PROVISIONING_LIMITS.urlBytes)}` }),
+  );
+  assertBleError("invalid_payload", () =>
+    buildBleProvisioningPayload({ ssid: "PlantLab", password: "password", setupToken: "token", platformUrl: "http://host", attachToPlatformDeviceId: 0 }),
+  );
+  assertBleError("invalid_payload", () =>
+    buildBleProvisioningPayload({ ssid: "PlantLab", password: "password", setupToken: "token", platformUrl: "http://host", attachToPlatformDeviceId: 1.5 }),
   );
   assertBleError("payload_too_large", () =>
     buildBleProvisioningPayload({
@@ -99,8 +124,10 @@ test("status parser identifies ready, committing, success, and firmware errors",
     message: undefined,
   });
   assert.equal(parseBleProvisioningStatus('{"state":"PROVISIONING_COMMITTING"}').state, "PROVISIONING_COMMITTING");
+  assert.equal(parseBleProvisioningStatus('{"state":"WIFI_CONNECTING"}').state, "WIFI_CONNECTING");
   assert.equal(isBleProvisioningSuccess(parseBleProvisioningStatus('{"state":"PROVISIONING_SUCCESS","rebooting":true}')), true);
   assert.equal(isBleProvisioningFailure(parseBleProvisioningStatus('{"state":"PROVISIONING_FAILED","error":"save_failed"}')), true);
+  assert.equal(isBleProvisioningFailure(parseBleProvisioningStatus('{"state":"PROVISIONING_BLE","ready":true,"error":"wifi_connect_failed"}')), true);
   assertBleError("status_parse_failed", () => parseBleProvisioningStatus("not-json"));
 });
 

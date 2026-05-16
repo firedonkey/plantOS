@@ -28,6 +28,9 @@ class Device(Base):
     current_pump_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
     status_message: Mapped[Optional[str]] = mapped_column(String(160), default=None)
     status_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
+    released_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None, index=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None, index=True)
+    release_reason: Mapped[Optional[str]] = mapped_column(String(80), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

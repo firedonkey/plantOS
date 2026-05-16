@@ -15,7 +15,19 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import Command, CommandAction, CommandStatus, CommandTarget, Image, SensorReading, User
+from app.models import (
+    Command,
+    CommandAction,
+    CommandStatus,
+    CommandTarget,
+    Device,
+    DeviceNode,
+    Event,
+    EventType,
+    Image,
+    SensorReading,
+    User,
+)
 from app.models.base import Base
 from app.services import storage as storage_service
 from app.services.device_nodes import upsert_device_node
@@ -115,6 +127,38 @@ def test_create_list_and_get_device_api():
         payload = get_response.json()
         assert payload["location"] == "Kitchen window"
         assert payload["status"] == "unknown"
+    finally:
+        teardown_overrides()
+
+
+def test_device_read_status_uses_stale_heartbeat_over_stored_online_node():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+        stale_seen_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                last_seen_at=stale_seen_at,
+            )
+
+        list_response = client.get("/api/devices")
+        get_response = client.get(f"/api/devices/{device_id}")
+
+        assert list_response.status_code == 200
+        assert get_response.status_code == 200
+        assert list_response.json()[0]["node_summary"]["primary"]["status"] == "online"
+        assert list_response.json()[0]["status"] == "stale"
+        assert list_response.json()[0]["hardware_health"]["heartbeat_status"] == "stale"
+        assert get_response.json()["status"] == "stale"
+        assert get_response.json()["hardware_health"]["primary"]["health_status"] == "stale"
     finally:
         teardown_overrides()
 
@@ -886,24 +930,182 @@ def test_device_setup_code_api_surfaces_upstream_error(monkeypatch):
         teardown_overrides()
 
 
-def test_delete_device_api_removes_device():
+def test_delete_device_api_releases_and_archives_device():
     client, _ = build_client_with_user()
     try:
         create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
-        device_id = create_response.json()["id"]
+        device = create_response.json()
+        device_id = device["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            reading = SensorReading(device_id=device_id, moisture=42.0, temperature=21.0, humidity=50.0)
+            image = Image(
+                device_id=device_id,
+                path="device-release/test.jpg",
+                source_hardware_device_id="pl-esp32-release",
+            )
+            event = Event(device_id=device_id, type=EventType.PUMP, value="on")
+            session.add_all([reading, image, event])
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-release",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            session.commit()
+            reading_id = reading.id
+            image_id = image.id
+            event_id = event.id
 
         delete_response = client.delete(f"/api/devices/{device_id}")
 
         assert delete_response.status_code == 200
         assert delete_response.json() == {
-            "status": "deleted",
+            "status": "released",
             "device_id": device_id,
-            "message": "Device removed.",
+            "message": "Device released and archived.",
         }
 
         list_response = client.get("/api/devices")
         assert list_response.status_code == 200
         assert list_response.json() == []
+
+        get_response = client.get(f"/api/devices/{device_id}")
+        assert get_response.status_code == 404
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            archived = session.get(Device, device_id)
+            retained_image = session.get(Image, image_id)
+
+            assert archived is not None
+            assert archived.api_token is None
+            assert archived.released_at is not None
+            assert archived.archived_at is not None
+            assert archived.release_reason == "user_removed"
+            assert session.get(SensorReading, reading_id) is not None
+            assert retained_image is not None
+            assert retained_image.source_hardware_device_id is None
+            assert session.get(Event, event_id) is not None
+            assert session.get(DeviceNode, "pl-esp32-release") is None
+    finally:
+        teardown_overrides()
+
+
+def test_release_device_api_revokes_token_detaches_hardware_and_preserves_history():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device = create_response.json()
+        device_id = device["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            reading = SensorReading(device_id=device_id, moisture=35.0, temperature=22.0, humidity=45.0)
+            image = Image(
+                device_id=device_id,
+                path="device-transfer/test.jpg",
+                source_hardware_device_id="pl-esp32-transfer",
+            )
+            event = Event(device_id=device_id, type=EventType.LIGHT, value="off")
+            session.add_all([reading, image, event])
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-transfer",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            session.commit()
+            reading_id = reading.id
+            image_id = image.id
+            event_id = event.id
+
+        release_response = client.post(f"/api/devices/{device_id}/release")
+
+        assert release_response.status_code == 200
+        payload = release_response.json()
+        assert payload["status"] == "released"
+        assert payload["device_id"] == device_id
+        assert payload["released_at"] is not None
+        assert "15 seconds" in payload["message"]
+
+        assert client.get("/api/devices").json() == []
+        assert client.get(f"/api/devices/{device_id}").status_code == 404
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            released = session.get(Device, device_id)
+            retained_image = session.get(Image, image_id)
+
+            assert released is not None
+            assert released.api_token is None
+            assert released.release_reason == "owner_transfer"
+            assert released.released_at is not None
+            assert released.archived_at is not None
+            assert session.get(DeviceNode, "pl-esp32-transfer") is None
+            assert session.get(SensorReading, reading_id) is not None
+            assert retained_image is not None
+            assert retained_image.source_hardware_device_id is None
+            assert session.get(Event, event_id) is not None
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        stale_token_response = client.post(
+            f"/api/devices/{device_id}/status",
+            json={"message": "should not be accepted"},
+            headers={"X-Device-Token": device["api_token"]},
+        )
+        assert stale_token_response.status_code == 401
+    finally:
+        teardown_overrides()
+
+
+def test_device_token_factory_reset_releases_instead_of_deleting_history():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device = create_response.json()
+        device_id = device["id"]
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            reading = SensorReading(device_id=device_id, moisture=39.0, temperature=23.0, humidity=47.0)
+            session.add(reading)
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-local-reset",
+                node_role="master",
+                display_name="Master",
+                status="online",
+            )
+            session.commit()
+            reading_id = reading.id
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        reset_response = client.post(
+            f"/api/devices/{device_id}/factory-reset",
+            headers={"X-Device-Token": device["api_token"]},
+        )
+        second_reset_response = client.post(
+            f"/api/devices/{device_id}/factory-reset",
+            headers={"X-Device-Token": device["api_token"]},
+        )
+
+        assert reset_response.status_code == 200
+        assert reset_response.json() == {"ok": True, "device_id": device_id, "status": "released"}
+        assert second_reset_response.status_code == 401
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            released = session.get(Device, device_id)
+            assert released is not None
+            assert released.api_token is None
+            assert released.release_reason == "device_factory_reset"
+            assert released.released_at is not None
+            assert released.archived_at is not None
+            assert session.get(SensorReading, reading_id) is not None
+            assert session.get(DeviceNode, "pl-esp32-local-reset") is None
     finally:
         teardown_overrides()
 

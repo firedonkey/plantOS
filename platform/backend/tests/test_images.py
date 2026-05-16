@@ -333,6 +333,20 @@ def test_image_client_url_signs_existing_public_gcs_urls(monkeypatch):
     assert calls == [("legacy-bucket", "device-1/old rose.jpg")]
 
 
+def test_image_client_url_falls_back_to_proxy_when_signing_fails(monkeypatch):
+    def fake_signed_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+        raise RuntimeError("signing unavailable")
+
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fake_signed_url)
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(storage_backend="gcs", gcs_bucket_name="plantlab-images")
+    image = SimpleNamespace(id=45, path="gs://plantlab-images/device-1/rose.jpg")
+
+    url = image_client_url(image, request, settings)
+
+    assert url == "https://api.example/api/images/45/content"
+
+
 def test_image_client_url_uses_backend_proxy_for_local_storage():
     request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
     settings = Settings(storage_backend="local")

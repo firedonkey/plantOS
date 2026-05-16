@@ -41,7 +41,7 @@ export function SettingsScreen() {
 
       <Card>
         <Text style={styles.label}>Device settings</Text>
-        <Text style={styles.todo}>Operational device labels, masked token summaries, hardware identifiers, and provisioning state now live on each device dashboard.</Text>
+        <Text style={styles.todo}>Open a device, then tap Device settings to edit labels, reconnect Wi-Fi, repair setup, prepare transfer, or view factory reset guidance.</Text>
       </Card>
 
       <PrimaryButton

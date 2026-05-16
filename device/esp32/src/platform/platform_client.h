@@ -21,6 +21,7 @@ struct PlatformReading {
   bool light_on;
   bool pump_on;
   String pump_status;
+  String idempotency_key;
 };
 
 struct PlatformStatus {
@@ -65,7 +66,17 @@ class PlatformClient {
       size_t length,
       const char* filename,
       const char* source_hardware_device_id = nullptr,
+      const char* idempotency_key = nullptr,
       int* http_status_code = nullptr,
+      String* error = nullptr);
+  bool register_device_node(
+      const char* hardware_device_id,
+      const char* node_role,
+      const char* display_name,
+      const char* hardware_model,
+      const char* hardware_version,
+      const char* software_version,
+      const char* capabilities_json,
       String* error = nullptr);
 
  private:

@@ -75,7 +75,7 @@ int PlatformClient::device_id() const {
 }
 
 bool PlatformClient::send_reading(const PlatformReading& reading, String* error) {
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<512> doc;
   doc["device_id"] = device_id_;
   if (reading.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = reading.hardware_device_id;
@@ -92,6 +92,9 @@ bool PlatformClient::send_reading(const PlatformReading& reading, String* error)
   doc["light_on"] = reading.light_on;
   doc["pump_on"] = reading.pump_on;
   doc["pump_status"] = reading.pump_status;
+  if (reading.idempotency_key.length() > 0) {
+    doc["idempotency_key"] = reading.idempotency_key;
+  }
 
   String body;
   serializeJson(doc, body);
@@ -110,7 +113,7 @@ bool PlatformClient::send_reading(const PlatformReading& reading, String* error)
 }
 
 bool PlatformClient::send_hardware_reading(const PlatformReading& reading, String* error) {
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<512> doc;
   if (reading.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = reading.hardware_device_id;
   }
@@ -126,6 +129,9 @@ bool PlatformClient::send_hardware_reading(const PlatformReading& reading, Strin
   doc["light_on"] = reading.light_on;
   doc["pump_on"] = reading.pump_on;
   doc["pump_status"] = reading.pump_status;
+  if (reading.idempotency_key.length() > 0) {
+    doc["idempotency_key"] = reading.idempotency_key;
+  }
 
   String body;
   serializeJson(doc, body);
@@ -343,6 +349,7 @@ bool PlatformClient::upload_jpeg(
     size_t length,
     const char* filename,
     const char* source_hardware_device_id,
+    const char* idempotency_key,
     int* http_status_code,
     String* error) {
   if (bytes == nullptr || length == 0) {
@@ -372,6 +379,12 @@ bool PlatformClient::upload_jpeg(
         "--" + boundary + "\r\n"
         "Content-Disposition: form-data; name=\"source_hardware_device_id\"\r\n\r\n" +
         String(source_hardware_device_id) + "\r\n";
+  }
+  if (idempotency_key != nullptr && String(idempotency_key).length() > 0) {
+    prefix +=
+        "--" + boundary + "\r\n"
+        "Content-Disposition: form-data; name=\"idempotency_key\"\r\n\r\n" +
+        String(idempotency_key) + "\r\n";
   }
   prefix +=
       "--" + boundary + "\r\n"
@@ -452,6 +465,67 @@ bool PlatformClient::upload_jpeg(
 
   set_error(error, "image upload failed with HTTP " + String(status_code) + ": " + response_body);
   return false;
+}
+
+bool PlatformClient::register_device_node(
+    const char* hardware_device_id,
+    const char* node_role,
+    const char* display_name,
+    const char* hardware_model,
+    const char* hardware_version,
+    const char* software_version,
+    const char* capabilities_json,
+    String* error) {
+  if (hardware_device_id == nullptr || String(hardware_device_id).length() == 0) {
+    set_error(error, "device node registration skipped: missing hardware id");
+    return false;
+  }
+  if (node_role == nullptr || String(node_role).length() == 0) {
+    set_error(error, "device node registration skipped: missing node role");
+    return false;
+  }
+
+  StaticJsonDocument<768> doc;
+  doc["device_id"] = device_id_;
+  doc["hardware_device_id"] = hardware_device_id;
+  doc["node_role"] = node_role;
+  if (display_name != nullptr && String(display_name).length() > 0) {
+    doc["display_name"] = display_name;
+  }
+  if (hardware_model != nullptr && String(hardware_model).length() > 0) {
+    doc["hardware_model"] = hardware_model;
+  }
+  if (hardware_version != nullptr && String(hardware_version).length() > 0) {
+    doc["hardware_version"] = hardware_version;
+  }
+  if (software_version != nullptr && String(software_version).length() > 0) {
+    doc["software_version"] = software_version;
+  }
+  if (capabilities_json != nullptr && String(capabilities_json).length() > 0) {
+    StaticJsonDocument<256> capabilities_doc;
+    DeserializationError capabilities_error = deserializeJson(capabilities_doc, capabilities_json);
+    if (capabilities_error) {
+      set_error(error, "device node registration capabilities JSON parse failed");
+      return false;
+    }
+    doc["capabilities"] = capabilities_doc.as<JsonObject>();
+  }
+  doc["status"] = "online";
+
+  String body;
+  serializeJson(doc, body);
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post("/api/device-nodes/register", body, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "device node registration failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
 }
 
 bool PlatformClient::json_post(

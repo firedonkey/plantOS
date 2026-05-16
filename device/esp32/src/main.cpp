@@ -33,6 +33,13 @@ constexpr char kConfigKeyDeviceToken[] = "device_token";
 constexpr char kConfigKeyPlatformDeviceId[] = "platform_id";
 constexpr char kConfigKeyBackendUrl[] = "backend_url";
 constexpr char kConfigKeyPlatformUrl[] = "platform_url";
+constexpr char kConfigKeyPendingSsid[] = "pend_ssid";
+constexpr char kConfigKeyPendingPassword[] = "pend_pass";
+constexpr char kConfigKeyPendingClaimToken[] = "pend_claim";
+constexpr char kConfigKeyPendingBackendUrl[] = "pend_backend";
+constexpr char kConfigKeyPendingPlatformUrl[] = "pend_plat";
+constexpr char kConfigKeyPendingAttachDeviceId[] = "pend_attach";
+constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kProvisioningApName[] = "PlantLab-Setup";
 constexpr char kSoftwareVersion[] = "0.1.0";
 constexpr uint16_t kProvisioningPort = 8080;
@@ -42,7 +49,7 @@ constexpr uint32_t kBleProvisioningTimeoutMs = 4UL * 60UL * 1000UL;
 constexpr uint32_t kBleWifiScanTimeoutMs = 15000UL;
 constexpr uint32_t kBleWifiScanRetryDelayMs = 750UL;
 constexpr uint8_t kBleWifiScanMaxRetries = 3;
-constexpr uint32_t kFactoryResetHoldMs = 10000UL;
+constexpr uint32_t kFactoryResetHoldMs = 15000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
@@ -53,6 +60,11 @@ constexpr uint32_t kManualCaptureAttemptTimeoutMs = 20000UL;
 constexpr uint32_t kManualCaptureAckTimeoutMs = 120000UL;
 constexpr uint8_t kManualCaptureMaxDispatchAttempts = 3;
 constexpr uint32_t kCaptureResultRetryMs = 3000UL;
+constexpr uint8_t kReadingRetryQueueSize = 12;
+constexpr uint32_t kReadingRetryBaseDelayMs = 1000UL;
+constexpr uint32_t kReadingRetryMaxDelayMs = 30000UL;
+constexpr uint32_t kMasterNodeRegisterRetryMs = 5000UL;
+constexpr uint32_t kScheduledCaptureRetryDelayMs = 3000UL;
 constexpr bool kCameraScheduledCaptureEnabled = true;
 constexpr bool kVerboseSensorPollingLogs = false;
 
@@ -64,6 +76,7 @@ struct DeviceConfig {
   String backend_url;
   String platform_url;
   int platform_device_id = 0;
+  int attach_to_platform_device_id = 0;
 };
 
 struct PendingCaptureCommand {
@@ -82,10 +95,19 @@ struct PendingCaptureCommand {
 struct CameraCaptureFlight {
   bool active = false;
   bool delivery_failed = false;
+  bool retry_available = false;
   int command_id = 0;
   uint32_t request_id = 0;
   unsigned long started_at_ms = 0;
   unsigned long last_delivery_failure_ms = 0;
+};
+
+struct QueuedPlatformReading {
+  bool active = false;
+  PlatformReading reading;
+  uint8_t attempts = 0;
+  unsigned long next_retry_ms = 0;
+  unsigned long queued_at_ms = 0;
 };
 
 struct EspNowSendContext {
@@ -129,6 +151,7 @@ std::unique_ptr<PlatformClient> g_platform_client;
 MasterCaptureScheduleState g_camera_capture_schedule{};
 
 DeviceConfig g_config;
+DeviceConfig g_previous_active_config;
 DeviceMode g_device_mode = DeviceMode::kBooting;
 unsigned long g_last_dht22_read_ms = 0;
 unsigned long g_last_platform_send_ms = 0;
@@ -140,6 +163,7 @@ bool g_provisioning_requested = false;
 bool g_normal_tasks_paused_for_provisioning = false;
 bool g_softap_provisioning_active = false;
 bool g_wifi_ready = false;
+bool g_pending_provisioning_config_active = false;
 bool g_web_routes_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
@@ -175,11 +199,19 @@ PendingCaptureCommand g_pending_capture_command{};
 CameraCaptureFlight g_camera_capture_in_flight{};
 EspNowSendContext g_last_espnow_send{};
 bool g_camera_schedule_paused_for_manual = false;
+QueuedPlatformReading g_reading_retry_queue[kReadingRetryQueueSize]{};
+uint32_t g_boot_counter = 0;
+uint32_t g_reading_sequence = 0;
+uint32_t g_consecutive_heartbeat_failures = 0;
+bool g_master_node_registered = false;
+unsigned long g_last_master_node_register_attempt_ms = 0;
+bool g_scheduled_capture_retry_pending = false;
+unsigned long g_scheduled_capture_retry_at_ms = 0;
 
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
 void clearPendingCaptureCommand();
 void clearCameraCaptureFlight();
-void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now);
+void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now, bool retry_available = false);
 bool sendEspNowPauseCaptureCommand(bool paused);
 void setCameraSchedulePausedForManual(bool paused);
 void queuePendingCaptureCommandResult(const char* status, const String& message);
@@ -201,6 +233,17 @@ void pauseNormalTasksForProvisioning();
 void resumeNormalTasksAfterProvisioning();
 bool requestBleProvisioningMode(unsigned long now);
 void checkProvisioningButton();
+void resetBleWifiScanRuntime();
+void stopBleWifiScanRadio();
+void initReliabilityBootCounter();
+bool ensureMasterDeviceNodeRegistered(unsigned long now);
+bool platform_enabled();
+DeviceConfig normalizedConfig(DeviceConfig config);
+bool saveConfigCandidate(const DeviceConfig& candidate);
+bool savePendingConfigCandidate(const DeviceConfig& candidate);
+bool loadPendingConfig(DeviceConfig* pending);
+void clearPendingConfig();
+bool restorePreviousActiveConfigAfterPendingFailure(const char* reason);
 
 String html_escape(const String& value) {
   String escaped = value;
@@ -358,6 +401,8 @@ const char* espnowAckToString(EspNowAckStatus status) {
 
 void rebuildPlatformClient() {
   g_platform_client.reset();
+  g_master_node_registered = false;
+  g_last_master_node_register_attempt_ms = 0;
   if (!hasRuntimeRegistration()) {
     Serial.println("[platform] disabled: runtime registration is incomplete");
     return;
@@ -373,6 +418,54 @@ void rebuildPlatformClient() {
       new PlatformClient(platform_url.c_str(), g_config.platform_device_id, g_config.device_token.c_str()));
   Serial.printf("[platform] base_url: %s\n", g_platform_client->base_url().c_str());
   Serial.printf("[platform] device_id: %d\n", g_platform_client->device_id());
+}
+
+void initReliabilityBootCounter() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[platform] boot counter unavailable");
+    return;
+  }
+  const uint32_t previous = g_preferences.getUInt(kConfigKeyBootCounter, 0);
+  g_boot_counter = previous + 1;
+  g_preferences.putUInt(kConfigKeyBootCounter, g_boot_counter);
+  g_preferences.end();
+  Serial.printf("[platform] reliability boot_counter=%lu\n", static_cast<unsigned long>(g_boot_counter));
+}
+
+String nextReadingIdempotencyKey() {
+  ++g_reading_sequence;
+  return stableHardwareDeviceId() + ":" + String(g_boot_counter) + ":" + String(g_reading_sequence);
+}
+
+bool ensureMasterDeviceNodeRegistered(unsigned long now) {
+  if (!platform_enabled() || !g_wifi_ready) {
+    return false;
+  }
+  if (g_master_node_registered) {
+    return true;
+  }
+  if (now - g_last_master_node_register_attempt_ms < kMasterNodeRegisterRetryMs) {
+    return false;
+  }
+  g_last_master_node_register_attempt_ms = now;
+
+  String error;
+  const bool registered = g_platform_client->register_device_node(
+      stableHardwareDeviceId().c_str(),
+      "master",
+      "Master",
+      "esp32_master",
+      BOARD_NAME,
+      kSoftwareVersion,
+      "{\"sensors\":true,\"actuators\":true,\"esp_now\":true}",
+      &error);
+  if (registered) {
+    g_master_node_registered = true;
+    Serial.println("[platform] master node registration succeeded");
+    return true;
+  }
+  Serial.printf("[platform] master node registration failed: %s\n", error.c_str());
+  return false;
 }
 
 bool platform_enabled() {
@@ -640,6 +733,18 @@ bool setupEspNow() {
   return true;
 }
 
+void teardownEspNow(const char* reason) {
+  if (!g_espnow_ready) {
+    return;
+  }
+  g_espnow_ready = false;
+  g_last_espnow_send = EspNowSendContext{};
+  esp_now_deinit();
+  Serial.printf(
+      "[camera-schedule] ESP-NOW stopped reason=%s\n",
+      reason != nullptr && strlen(reason) > 0 ? reason : "unspecified");
+}
+
 bool ensureEspNowPeer(const uint8_t* peer_mac) {
   if (peer_mac == nullptr) {
     return false;
@@ -725,7 +830,7 @@ void serviceCameraProvisioning(unsigned long now) {
   sendCameraProvisioningPacket(now);
 }
 
-bool sendEspNowCaptureCommand(uint32_t now) {
+bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true) {
   if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
@@ -756,7 +861,7 @@ bool sendEspNowCaptureCommand(uint32_t now) {
 
   noteEspNowSend(EspNowCommandType::kCaptureImage, packet.request_id, 0, target_mac, now);
   capture_schedule_mark_requested(&g_camera_capture_schedule, now);
-  markCameraCaptureInFlight(packet.request_id, 0, now);
+  markCameraCaptureInFlight(packet.request_id, 0, now, retry_available && !g_scheduled_capture_retry_pending);
   Serial.printf(
       "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
       static_cast<unsigned int>(packet.request_id),
@@ -798,7 +903,7 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
   if (request_id_out != nullptr) {
     *request_id_out = packet.request_id;
   }
-  markCameraCaptureInFlight(packet.request_id, command_id, now);
+  markCameraCaptureInFlight(packet.request_id, command_id, now, false);
 
   Serial.printf(
       "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu target=%s\n",
@@ -889,13 +994,26 @@ void clearCameraCaptureFlight() {
   g_camera_capture_in_flight = CameraCaptureFlight{};
 }
 
-void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now) {
+void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now, bool retry_available) {
   g_camera_capture_in_flight.active = true;
   g_camera_capture_in_flight.delivery_failed = false;
+  g_camera_capture_in_flight.retry_available = retry_available;
   g_camera_capture_in_flight.request_id = request_id;
   g_camera_capture_in_flight.command_id = command_id;
   g_camera_capture_in_flight.started_at_ms = now;
   g_camera_capture_in_flight.last_delivery_failure_ms = 0;
+}
+
+void scheduleScheduledCaptureRetry(unsigned long now, const char* reason) {
+  if (g_scheduled_capture_retry_pending) {
+    return;
+  }
+  g_scheduled_capture_retry_pending = true;
+  g_scheduled_capture_retry_at_ms = now + kScheduledCaptureRetryDelayMs;
+  Serial.printf(
+      "[camera-schedule] scheduled capture retry queued reason=%s delay_ms=%lu\n",
+      reason == nullptr ? "unknown" : reason,
+      static_cast<unsigned long>(kScheduledCaptureRetryDelayMs));
 }
 
 void queuePendingCaptureCommandResult(const char* status, const String& message) {
@@ -1068,6 +1186,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
                                                 g_camera_capture_in_flight.request_id;
     const int failed_command_id = g_camera_capture_in_flight.command_id;
     const uint32_t failed_request_id = g_camera_capture_in_flight.request_id;
+    const bool retry_available = g_camera_capture_in_flight.retry_available;
     clearCameraCaptureFlight();
     if (is_pending_backend_capture && g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
       Serial.printf(
@@ -1087,6 +1206,9 @@ void serviceCameraCaptureFlight(unsigned long now) {
         "[camera-schedule] capture request=%u command_id=%d delivery failed, clearing in-flight state\n",
         static_cast<unsigned int>(failed_request_id),
         failed_command_id);
+    if (failed_command_id == 0 && retry_available) {
+      scheduleScheduledCaptureRetry(now, "delivery_failed");
+    }
     return;
   }
   const uint32_t capture_timeout_ms =
@@ -1106,6 +1228,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
                                               g_camera_capture_in_flight.request_id;
   const int timed_out_command_id = g_camera_capture_in_flight.command_id;
   const uint32_t timed_out_request_id = g_camera_capture_in_flight.request_id;
+  const bool retry_available = g_camera_capture_in_flight.retry_available;
   clearCameraCaptureFlight();
   if (is_pending_backend_capture) {
     if (g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
@@ -1125,6 +1248,9 @@ void serviceCameraCaptureFlight(unsigned long now) {
     Serial.printf(
         "[camera-schedule] manual capture request=%u exhausted retry window without backend command match\n",
         static_cast<unsigned int>(timed_out_request_id));
+  }
+  if (timed_out_command_id == 0 && retry_available) {
+    scheduleScheduledCaptureRetry(now, "timeout");
   }
 }
 
@@ -1187,7 +1313,7 @@ void maybeSendBootstrapCapture(unsigned long now) {
   if (now < g_next_camera_bootstrap_capture_ms) {
     return;
   }
-  if (sendEspNowCaptureCommand(now)) {
+  if (sendEspNowCaptureCommand(now, false)) {
     g_camera_bootstrap_capture_attempts =
         static_cast<uint8_t>(g_camera_bootstrap_capture_attempts + 1);
     g_next_camera_bootstrap_capture_ms = now + kCameraBootstrapCaptureRetryMs;
@@ -1207,13 +1333,28 @@ void pollCameraCaptureSchedule(unsigned long now) {
     return;
   }
   maybeSendBootstrapCapture(now);
+  if (g_scheduled_capture_retry_pending) {
+    if (now < g_scheduled_capture_retry_at_ms) {
+      return;
+    }
+    if (sendEspNowCaptureCommand(now)) {
+      g_scheduled_capture_retry_pending = false;
+      Serial.println("[camera-schedule] scheduled capture retry sent");
+    } else {
+      g_scheduled_capture_retry_pending = false;
+      Serial.println("[camera-schedule] scheduled capture retry send failed, waiting for next interval");
+    }
+    return;
+  }
   const bool runtime_ready =
       g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
       g_camera_runtime_ready;
   if (!capture_schedule_should_request(g_camera_capture_schedule, now, runtime_ready)) {
     return;
   }
-  sendEspNowCaptureCommand(now);
+  if (!sendEspNowCaptureCommand(now)) {
+    scheduleScheduledCaptureRetry(now, "send_failed");
+  }
 }
 
 void updateStatusLed() {
@@ -1247,6 +1388,14 @@ void updateStatusLed() {
   }
   if (g_provisioning_state == plantlab::ProvisioningState::FACTORY_RESET_PENDING) {
     g_status_led.set_mode(StatusLedMode::kFactoryReset);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::PROVISIONING_FAILED) {
+    g_status_led.set_mode(StatusLedMode::kError);
+    return;
+  }
+  if (g_provisioning_state == plantlab::ProvisioningState::FALLBACK_SOFTAP) {
+    g_status_led.set_mode(StatusLedMode::kFallback);
     return;
   }
 
@@ -1291,6 +1440,82 @@ const char* wifiStatusLabel(wl_status_t status) {
   }
 }
 
+plantlab::ProvisioningParseError bleWifiValidationErrorForStatus(wl_status_t status) {
+  if (status == WL_NO_SSID_AVAIL) {
+    return plantlab::ProvisioningParseError::kWifiNetworkNotFound;
+  }
+  if (status == WL_CONNECT_FAILED) {
+    return plantlab::ProvisioningParseError::kWifiConnectFailed;
+  }
+  return plantlab::ProvisioningParseError::kWifiConnectTimeout;
+}
+
+bool validateBleWifiCredentials(const plantlab::BleProvisioningPayload& payload, plantlab::ProvisioningParseError* error) {
+  if (error != nullptr) {
+    *error = plantlab::ProvisioningParseError::kNone;
+  }
+  if (g_ble_wifi_scan_active) {
+    resetBleWifiScanRuntime();
+    stopBleWifiScanRadio();
+  }
+
+  const String ssid(payload.ssid.c_str());
+  const String password(payload.password.c_str());
+  Serial.printf(
+      "[provisioning] validating Wi-Fi credentials over BLE ssid=%s password_len=%u\n",
+      ssid.c_str(),
+      static_cast<unsigned>(password.length()));
+  Serial.printf("[provisioning] wifi_connecting ssid=%s\n", ssid.c_str());
+
+  WiFi.disconnect(false, false);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  const unsigned long started_at = millis();
+  wl_status_t final_status = WiFi.status();
+  while (millis() - started_at < PLANTLAB_WIFI_CONNECT_TIMEOUT_MS) {
+    final_status = WiFi.status();
+    if (final_status == WL_CONNECTED) {
+      Serial.printf(
+          "[provisioning] BLE Wi-Fi validation succeeded ip=%s elapsed_ms=%lu\n",
+          WiFi.localIP().toString().c_str(),
+          static_cast<unsigned long>(millis() - started_at));
+      Serial.println("[provisioning] wifi_connected");
+      return true;
+    }
+    checkProvisioningButton();
+    g_status_led.update(millis());
+    delay(250);
+  }
+
+  final_status = WiFi.status();
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_OFF);
+  const plantlab::ProvisioningParseError validation_error = bleWifiValidationErrorForStatus(final_status);
+  if (error != nullptr) {
+    *error = validation_error;
+  }
+  Serial.printf(
+      "[provisioning] BLE Wi-Fi validation failed status=%s error=%s elapsed_ms=%lu\n",
+      wifiStatusLabel(final_status),
+      plantlab::provisioningParseErrorCode(validation_error),
+      static_cast<unsigned long>(millis() - started_at));
+  Serial.printf(
+      "[provisioning] provisioning_failed reason=%s\n",
+      plantlab::provisioningParseErrorCode(validation_error));
+  return false;
+}
+
+void rejectBleProvisioningForRetry(plantlab::ProvisioningParseError error) {
+  g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_BLE;
+  g_device_mode = DeviceMode::kProvisioning;
+  g_wifi_ready = false;
+  g_ble_provisioning.setAcceptingWrites(true);
+  g_ble_provisioning.setStatus(g_provisioning_state, error);
+  updateStatusLed();
+}
+
 bool loadConfig() {
   Serial.println("[provisioning] loading config from Preferences");
   g_preferences.begin(kPreferencesNamespace, true);
@@ -1309,15 +1534,25 @@ bool loadConfig() {
   g_config.backend_url.trim();
   g_config.platform_url.trim();
 
+  DeviceConfig pending_config;
+  g_previous_active_config = g_config;
+  g_pending_provisioning_config_active = loadPendingConfig(&pending_config);
+  if (g_pending_provisioning_config_active) {
+    g_config = pending_config;
+    Serial.println("[provisioning] pending provisioning config loaded for retry");
+  }
+
   Serial.printf(
-      "[provisioning] config loaded: ssid=%s password_len=%u claim_present=%u device_token_present=%u platform_id=%d backend=%s platform=%s\n",
+      "[provisioning] config loaded: ssid=%s password_len=%u claim_present=%u device_token_present=%u platform_id=%d backend=%s platform=%s pending=%u attach_target=%d\n",
       g_config.wifi_ssid.length() > 0 ? g_config.wifi_ssid.c_str() : "<empty>",
       static_cast<unsigned>(g_config.wifi_password.length()),
       g_config.claim_token.length() > 0 ? 1U : 0U,
       g_config.device_token.length() > 0 ? 1U : 0U,
       g_config.platform_device_id,
       g_config.backend_url.length() > 0 ? g_config.backend_url.c_str() : "<empty>",
-      g_config.platform_url.length() > 0 ? g_config.platform_url.c_str() : "<empty>");
+      g_config.platform_url.length() > 0 ? g_config.platform_url.c_str() : "<empty>",
+      g_pending_provisioning_config_active ? 1U : 0U,
+      g_config.attach_to_platform_device_id);
 
   rebuildPlatformClient();
   return hasWifiCredentials();
@@ -1333,6 +1568,8 @@ void resetCameraProvisioningRuntime() {
   g_camera_bootstrap_capture_active = false;
   g_camera_bootstrap_capture_attempts = 0;
   g_next_camera_bootstrap_capture_ms = 0;
+  g_scheduled_capture_retry_pending = false;
+  g_scheduled_capture_retry_at_ms = 0;
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
@@ -1346,6 +1583,29 @@ DeviceConfig normalizedConfig(DeviceConfig config) {
   config.backend_url.trim();
   config.platform_url.trim();
   return config;
+}
+
+bool loadPendingConfig(DeviceConfig* pending) {
+  if (pending == nullptr) {
+    return false;
+  }
+  if (!g_preferences.begin(kPreferencesNamespace, true)) {
+    return false;
+  }
+  DeviceConfig candidate;
+  candidate.wifi_ssid = g_preferences.getString(kConfigKeyPendingSsid, "");
+  candidate.wifi_password = g_preferences.getString(kConfigKeyPendingPassword, "");
+  candidate.claim_token = g_preferences.getString(kConfigKeyPendingClaimToken, "");
+  candidate.backend_url = g_preferences.getString(kConfigKeyPendingBackendUrl, "");
+  candidate.platform_url = g_preferences.getString(kConfigKeyPendingPlatformUrl, "");
+  candidate.attach_to_platform_device_id = g_preferences.getInt(kConfigKeyPendingAttachDeviceId, 0);
+  g_preferences.end();
+  candidate = normalizedConfig(candidate);
+  if (candidate.wifi_ssid.length() == 0 || candidate.claim_token.length() == 0) {
+    return false;
+  }
+  *pending = candidate;
+  return true;
 }
 
 bool stringPreferenceWriteOk(const String& value, size_t written) {
@@ -1389,6 +1649,75 @@ bool saveConfigCandidate(const DeviceConfig& candidate) {
   }
   Serial.println("[provisioning] failed to save config");
   return false;
+}
+
+bool savePendingConfigCandidate(const DeviceConfig& candidate) {
+  const DeviceConfig normalized = normalizedConfig(candidate);
+
+  Serial.println("[provisioning] saving pending config to Preferences");
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[provisioning] failed to open Preferences for pending write");
+    return false;
+  }
+  const size_t ssid_written = g_preferences.putString(kConfigKeyPendingSsid, normalized.wifi_ssid);
+  const size_t password_written = g_preferences.putString(kConfigKeyPendingPassword, normalized.wifi_password);
+  const size_t claim_token_written = g_preferences.putString(kConfigKeyPendingClaimToken, normalized.claim_token);
+  const size_t backend_url_written = g_preferences.putString(kConfigKeyPendingBackendUrl, normalized.backend_url);
+  const size_t platform_url_written = g_preferences.putString(kConfigKeyPendingPlatformUrl, normalized.platform_url);
+  const size_t attach_written = g_preferences.putInt(kConfigKeyPendingAttachDeviceId, normalized.attach_to_platform_device_id);
+  g_preferences.end();
+
+  const bool saved =
+      stringPreferenceWriteOk(normalized.wifi_ssid, ssid_written) &&
+      stringPreferenceWriteOk(normalized.wifi_password, password_written) &&
+      stringPreferenceWriteOk(normalized.claim_token, claim_token_written) &&
+      stringPreferenceWriteOk(normalized.backend_url, backend_url_written) &&
+      stringPreferenceWriteOk(normalized.platform_url, platform_url_written) &&
+      attach_written == sizeof(normalized.attach_to_platform_device_id);
+  if (saved) {
+    Serial.println("[provisioning] pending config saved");
+    return true;
+  }
+  Serial.println("[provisioning] failed to save pending config");
+  return false;
+}
+
+void clearPendingConfig() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    return;
+  }
+  g_preferences.remove(kConfigKeyPendingSsid);
+  g_preferences.remove(kConfigKeyPendingPassword);
+  g_preferences.remove(kConfigKeyPendingClaimToken);
+  g_preferences.remove(kConfigKeyPendingBackendUrl);
+  g_preferences.remove(kConfigKeyPendingPlatformUrl);
+  g_preferences.remove(kConfigKeyPendingAttachDeviceId);
+  g_preferences.end();
+  g_pending_provisioning_config_active = false;
+  g_previous_active_config = DeviceConfig{};
+}
+
+bool restorePreviousActiveConfigAfterPendingFailure(const char* reason) {
+  if (!g_pending_provisioning_config_active) {
+    return false;
+  }
+  if (g_previous_active_config.wifi_ssid.length() == 0) {
+    Serial.printf("[provisioning] pending provisioning failed reason=%s; returning to BLE recovery\n", reason);
+    g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
+    updateStatusLed();
+    requestBleProvisioningMode(millis());
+    return true;
+  }
+  Serial.printf("[provisioning] pending provisioning failed reason=%s; restoring previous active config\n", reason);
+  const DeviceConfig previous = g_previous_active_config;
+  clearPendingConfig();
+  g_config = previous;
+  rebuildPlatformClient();
+  g_device_mode = DeviceMode::kConnecting;
+  g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
+  g_last_wifi_attempt_ms = 0;
+  updateStatusLed();
+  return true;
 }
 
 bool saveConfig() {
@@ -1913,18 +2242,20 @@ void handleProvisioningSubmit() {
     return;
   }
 
-  g_config.wifi_ssid = ssid;
-  g_config.wifi_password = password;
-  g_config.claim_token = claim_token;
-  g_config.backend_url = backend_url;
-  g_config.platform_url = platform_url;
-  g_config.device_token = "";
-  g_config.platform_device_id = 0;
+  DeviceConfig pending;
+  pending.wifi_ssid = ssid;
+  pending.wifi_password = password;
+  pending.claim_token = claim_token;
+  pending.backend_url = backend_url;
+  pending.platform_url = platform_url;
+  pending.device_token = "";
+  pending.platform_device_id = 0;
 
-  if (!saveConfig()) {
+  if (!savePendingConfigCandidate(pending)) {
     g_web_server.send(500, "text/plain", "Failed to save configuration.");
     return;
   }
+  g_pending_provisioning_config_active = true;
   g_web_server.send(200, "text/html", connectingPageHtml(return_url));
   scheduleRestart(5000UL, "softap_credentials_saved");
   Serial.println("[provisioning] saved Wi-Fi and setup code, reboot scheduled");
@@ -1939,21 +2270,17 @@ DeviceConfig makeConfigFromBlePayload(const plantlab::BleProvisioningPayload& pa
   candidate.platform_url = String(payload.platform_url.c_str());
   candidate.device_token = "";
   candidate.platform_device_id = 0;
+  candidate.attach_to_platform_device_id = payload.attach_to_platform_device_id;
   return normalizedConfig(candidate);
 }
 
 bool commitBleProvisioningPayload(const plantlab::BleProvisioningPayload& payload) {
-  const DeviceConfig old_config = g_config;
   const DeviceConfig candidate = makeConfigFromBlePayload(payload);
-  if (!saveConfigCandidate(candidate)) {
-    g_config = old_config;
-    rebuildPlatformClient();
+  if (!savePendingConfigCandidate(candidate)) {
     return false;
   }
 
-  g_config = candidate;
-  rebuildPlatformClient();
-  resetCameraProvisioningRuntime();
+  g_pending_provisioning_config_active = true;
   return true;
 }
 
@@ -1990,6 +2317,7 @@ bool startBleProvisioningMode() {
 
   g_cached_wifi_networks.clear();
   resetBleWifiScanRuntime();
+  teardownEspNow("ble_provisioning");
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
   delay(50);
@@ -2077,14 +2405,24 @@ void serviceBleProvisioning(unsigned long now) {
     g_ble_provisioning.setStatus(g_provisioning_state);
     updateStatusLed();
 
+    g_provisioning_state = plantlab::ProvisioningState::WIFI_CONNECTING;
+    g_ble_provisioning.setStatus(g_provisioning_state);
+    updateStatusLed();
+
+    plantlab::ProvisioningParseError wifi_error = plantlab::ProvisioningParseError::kNone;
+    if (!validateBleWifiCredentials(result.payload, &wifi_error)) {
+      rejectBleProvisioningForRetry(wifi_error);
+      return;
+    }
+
+    g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_COMMITTING;
+    g_ble_provisioning.setStatus(g_provisioning_state);
+    updateStatusLed();
+
     if (!commitBleProvisioningPayload(result.payload)) {
-      g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
-      g_ble_provisioning.setStatus(
-          g_provisioning_state,
-          plantlab::ProvisioningParseError::kSaveFailed);
+      rejectBleProvisioningForRetry(plantlab::ProvisioningParseError::kSaveFailed);
       Serial.println("[provisioning] BLE config save failed");
       Serial.println("[provisioning] provisioning_failed reason=save_failed");
-      updateStatusLed();
       return;
     }
 
@@ -2254,6 +2592,9 @@ bool connectToWiFi() {
 
   const wl_status_t final_status = WiFi.status();
   WiFi.disconnect();
+  if (restorePreviousActiveConfigAfterPendingFailure("wifi_connect_timeout")) {
+    return false;
+  }
   g_device_mode = DeviceMode::kWifiFailed;
   g_provisioning_state = plantlab::ProvisioningState::PROVISIONING_FAILED;
   updateStatusLed();
@@ -2273,6 +2614,7 @@ bool registerProvisionedDevice() {
   if (platform_url.length() == 0) {
     Serial.println("[provisioning] cannot register: platform URL is not configured");
     Serial.println("[provisioning] provisioning_failed reason=missing_platform_url");
+    restorePreviousActiveConfigAfterPendingFailure("missing_platform_url");
     return false;
   }
 
@@ -2280,7 +2622,7 @@ bool registerProvisionedDevice() {
   updateStatusLed();
   Serial.println("[provisioning] backend_confirming");
   Serial.println("[provisioning] registering device with setup code");
-  StaticJsonDocument<384> payload;
+  StaticJsonDocument<512> payload;
   payload["device_id"] = stableHardwareDeviceId();
   payload["claim_token"] = g_config.claim_token;
   payload["node_role"] = "master";
@@ -2288,6 +2630,9 @@ bool registerProvisionedDevice() {
   payload["hardware_model"] = "esp32_master";
   payload["hardware_version"] = BOARD_NAME;
   payload["software_version"] = kSoftwareVersion;
+  if (g_config.attach_to_platform_device_id > 0) {
+    payload["attach_to_platform_device_id"] = g_config.attach_to_platform_device_id;
+  }
   JsonObject capabilities = payload.createNestedObject("capabilities");
   capabilities["camera"] = false;
   capabilities["pump"] = true;
@@ -2305,6 +2650,7 @@ bool registerProvisionedDevice() {
   if (!http.begin(url)) {
     Serial.println("[provisioning] register request setup failed");
     Serial.println("[provisioning] provisioning_failed reason=register_request_setup_failed");
+    restorePreviousActiveConfigAfterPendingFailure("register_request_setup_failed");
     return false;
   }
   http.addHeader("Content-Type", "application/json");
@@ -2315,6 +2661,7 @@ bool registerProvisionedDevice() {
   if (status_code < 200 || status_code >= 300) {
     Serial.printf("[provisioning] registration failed HTTP %d\n", status_code);
     Serial.println("[provisioning] provisioning_failed reason=backend_register_failed");
+    restorePreviousActiveConfigAfterPendingFailure("backend_register_failed");
     return false;
   }
 
@@ -2323,6 +2670,7 @@ bool registerProvisionedDevice() {
   if (json_error) {
     Serial.println("[provisioning] registration response JSON parse failed");
     Serial.println("[provisioning] provisioning_failed reason=backend_response_invalid_json");
+    restorePreviousActiveConfigAfterPendingFailure("backend_response_invalid_json");
     return false;
   }
 
@@ -2331,13 +2679,19 @@ bool registerProvisionedDevice() {
   if (platform_device_id <= 0 || String(device_access_token).length() == 0) {
     Serial.println("[provisioning] registration response missing platform device id or device token");
     Serial.println("[provisioning] provisioning_failed reason=backend_response_missing_fields");
+    restorePreviousActiveConfigAfterPendingFailure("backend_response_missing_fields");
     return false;
   }
 
   g_config.platform_device_id = platform_device_id;
   g_config.device_token = String(device_access_token);
   g_config.claim_token = "";
-  saveConfig();
+  g_config.attach_to_platform_device_id = 0;
+  if (!saveConfig()) {
+    Serial.println("[provisioning] provisioning_failed reason=save_registered_config_failed");
+    return false;
+  }
+  clearPendingConfig();
   resetCameraProvisioningRuntime();
   g_provisioning_state = plantlab::ProvisioningState::NORMAL;
   updateStatusLed();
@@ -2365,6 +2719,7 @@ void startFactoryReset() {
   g_provisioning_state = plantlab::ProvisioningState::FACTORY_RESET_PENDING;
   updateStatusLed();
   g_web_server.stop();
+  teardownEspNow("factory_reset");
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_OFF);
   clearConfig();
@@ -2461,35 +2816,133 @@ PlatformStatus platform_status(const String& message) {
   return status;
 }
 
-void send_platform_reading(unsigned long now) {
-  if (!platform_enabled() || !g_wifi_ready || now - g_last_platform_send_ms < PLANTLAB_SENSOR_SEND_INTERVAL_MS) {
-    return;
-  }
-  g_last_platform_send_ms = now;
-
-  const PlatformReading reading = read_platform_reading();
-  String error;
-  if (g_platform_client->send_hardware_reading(reading, &error)) {
-    if (kVerboseSensorPollingLogs) {
-      Serial.printf(
-          "[platform] reading sent to %s/api/hardware/readings (device_id=%d)\n",
-          g_platform_client->base_url().c_str(),
-          g_platform_client->device_id());
+void dropOldestQueuedReading() {
+  int oldest_index = -1;
+  unsigned long oldest_at = 0;
+  for (uint8_t i = 0; i < kReadingRetryQueueSize; ++i) {
+    if (!g_reading_retry_queue[i].active) {
+      continue;
     }
-  } else {
-    Serial.printf("[platform] reading upload failed: %s\n", error.c_str());
+    if (oldest_index < 0 || g_reading_retry_queue[i].queued_at_ms < oldest_at) {
+      oldest_index = i;
+      oldest_at = g_reading_retry_queue[i].queued_at_ms;
+    }
+  }
+  if (oldest_index >= 0) {
+    Serial.printf(
+        "[platform] reading retry queue full, dropping oldest idempotency_key=%s\n",
+        g_reading_retry_queue[oldest_index].reading.idempotency_key.c_str());
+    g_reading_retry_queue[oldest_index] = QueuedPlatformReading{};
   }
 }
 
+void enqueuePlatformReading(const PlatformReading& reading, unsigned long now) {
+  int free_index = -1;
+  for (uint8_t i = 0; i < kReadingRetryQueueSize; ++i) {
+    if (!g_reading_retry_queue[i].active) {
+      free_index = i;
+      break;
+    }
+  }
+  if (free_index < 0) {
+    dropOldestQueuedReading();
+    for (uint8_t i = 0; i < kReadingRetryQueueSize; ++i) {
+      if (!g_reading_retry_queue[i].active) {
+        free_index = i;
+        break;
+      }
+    }
+  }
+  if (free_index < 0) {
+    return;
+  }
+
+  g_reading_retry_queue[free_index].active = true;
+  g_reading_retry_queue[free_index].reading = reading;
+  g_reading_retry_queue[free_index].attempts = 0;
+  g_reading_retry_queue[free_index].next_retry_ms = now;
+  g_reading_retry_queue[free_index].queued_at_ms = now;
+}
+
+uint32_t readingRetryDelayMs(uint8_t attempts) {
+  uint32_t delay_ms = kReadingRetryBaseDelayMs;
+  for (uint8_t i = 1; i < attempts && delay_ms < kReadingRetryMaxDelayMs; ++i) {
+    delay_ms = std::min<uint32_t>(delay_ms * 2UL, kReadingRetryMaxDelayMs);
+  }
+  return std::min<uint32_t>(delay_ms + static_cast<uint32_t>(random(0, 750)), kReadingRetryMaxDelayMs);
+}
+
+void servicePlatformReadingQueue(unsigned long now) {
+  if (!platform_enabled() || !g_wifi_ready || !g_master_node_registered) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < kReadingRetryQueueSize; ++i) {
+    QueuedPlatformReading& queued = g_reading_retry_queue[i];
+    if (!queued.active || now < queued.next_retry_ms) {
+      continue;
+    }
+
+    String error;
+    if (g_platform_client->send_hardware_reading(queued.reading, &error)) {
+      if (kVerboseSensorPollingLogs) {
+        Serial.printf(
+            "[platform] reading sent idempotency_key=%s to %s/api/hardware/readings (device_id=%d)\n",
+            queued.reading.idempotency_key.c_str(),
+            g_platform_client->base_url().c_str(),
+            g_platform_client->device_id());
+      }
+      queued = QueuedPlatformReading{};
+      return;
+    }
+
+    queued.attempts = static_cast<uint8_t>(queued.attempts + 1);
+    queued.next_retry_ms = now + readingRetryDelayMs(queued.attempts);
+    Serial.printf(
+        "[platform] reading upload failed idempotency_key=%s attempt=%u next_retry_ms=%lu error=%s\n",
+        queued.reading.idempotency_key.c_str(),
+        static_cast<unsigned int>(queued.attempts),
+        static_cast<unsigned long>(queued.next_retry_ms - now),
+        error.c_str());
+    return;
+  }
+}
+
+void send_platform_reading(unsigned long now) {
+  if (!platform_enabled()) {
+    return;
+  }
+  if (now - g_last_platform_send_ms >= PLANTLAB_SENSOR_SEND_INTERVAL_MS) {
+    g_last_platform_send_ms = now;
+    PlatformReading reading = read_platform_reading();
+    reading.idempotency_key = nextReadingIdempotencyKey();
+    enqueuePlatformReading(reading, now);
+  }
+
+  servicePlatformReadingQueue(now);
+}
+
 void send_platform_status(unsigned long now, const String& message = "online") {
-  if (!platform_enabled() || !g_wifi_ready || now - g_last_platform_status_ms < PLANTLAB_STATUS_INTERVAL_MS) {
+  if (!platform_enabled() || !g_wifi_ready || !g_master_node_registered ||
+      now - g_last_platform_status_ms < PLANTLAB_STATUS_INTERVAL_MS) {
     return;
   }
   g_last_platform_status_ms = now;
 
   String error;
-  if (!g_platform_client->send_hardware_heartbeat(platform_status(message), &error)) {
-    Serial.printf("[platform] heartbeat upload failed: %s\n", error.c_str());
+  if (g_platform_client->send_hardware_heartbeat(platform_status(message), &error)) {
+    if (g_consecutive_heartbeat_failures > 0) {
+      Serial.printf(
+          "[platform] heartbeat recovered after %lu failures\n",
+          static_cast<unsigned long>(g_consecutive_heartbeat_failures));
+    }
+    g_consecutive_heartbeat_failures = 0;
+  } else {
+    ++g_consecutive_heartbeat_failures;
+    Serial.printf(
+        "[platform] heartbeat upload failed consecutive=%lu error=%s\n",
+        static_cast<unsigned long>(g_consecutive_heartbeat_failures),
+        error.c_str());
   }
 }
 
@@ -2592,6 +3045,7 @@ void setup() {
       "Camera capture schedule: %s (%lu ms)\n",
       PLANTLAB_CAMERA_CAPTURE_ENABLED ? "enabled" : "disabled",
       static_cast<unsigned long>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS));
+  initReliabilityBootCounter();
 
   pinMode(PIN_STATUS_LED, OUTPUT);
   pinMode(PIN_POWER_BUTTON, INPUT_PULLUP);
@@ -2663,6 +3117,7 @@ void loop() {
   }
 
   if (platform_enabled()) {
+    ensureMasterDeviceNodeRegistered(now);
     serviceCameraProvisioning(now);
     serviceCameraCaptureFlight(now);
     servicePendingCaptureCommand(now);

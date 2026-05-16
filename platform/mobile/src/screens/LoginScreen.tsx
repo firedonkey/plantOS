@@ -12,13 +12,15 @@ import { theme } from "@/styles/theme";
 
 export function LoginScreen() {
   const { authMode, signIn } = useSession();
-  const [email, setEmail] = useState("dev@plantlab.local");
+  const [loginName, setLoginName] = useState("dev");
   const [password, setPassword] = useState("password");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const showLocalLogin = authMode === "dev" && isDevAuthEnabled();
 
   const onSubmit = async () => {
     try {
       setIsSubmitting(true);
+      const email = normalizeLocalLoginEmail(loginName);
       const session = await loginWithBackendFallback({ email, password });
       await signIn(session);
       if (session.mode === "mock") {
@@ -41,26 +43,29 @@ export function LoginScreen() {
     }
   };
 
-  const showDevLogin = authMode === "dev" && isDevAuthEnabled();
-
   return (
     <Screen>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>
-          {showDevLogin
-            ? "Use Google sign-in for backend-owned auth, or use dev-only login for local testing."
-            : "Use backend-owned Google sign-in. Dev login is hidden unless EXPO_PUBLIC_ENABLE_DEV_AUTH=true."}
+          {showLocalLogin
+            ? "Use a local test account for this development build. Google sign-in stays off while AUTH_MODE is dev."
+            : "Use backend-owned Google sign-in for the production backend."}
         </Text>
       </View>
 
       <View style={styles.form}>
-        <PrimaryButton label="Continue with Google" onPress={onProductionAuth} />
-        {showDevLogin ? (
+        {showLocalLogin ? (
           <>
-            <View style={styles.divider} />
-            <TextInput value={email} onChangeText={setEmail} style={styles.input} placeholder="Email" autoCapitalize="none" />
+            <TextInput
+              value={loginName}
+              onChangeText={setLoginName}
+              style={styles.input}
+              placeholder="Username or email"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -68,12 +73,25 @@ export function LoginScreen() {
               placeholder="Password"
               secureTextEntry
             />
-            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} />
+            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} disabled={isSubmitting} />
           </>
-        ) : null}
+        ) : (
+          <PrimaryButton label="Continue with Google" onPress={onProductionAuth} />
+        )}
       </View>
     </Screen>
   );
+}
+
+function normalizeLocalLoginEmail(loginName: string): string {
+  const normalized = loginName.trim().toLowerCase();
+  if (!normalized) {
+    return "dev@plantlab.local";
+  }
+  if (normalized.includes("@")) {
+    return normalized;
+  }
+  return `${normalized}@plantlab.local`;
 }
 
 const styles = StyleSheet.create({
@@ -98,11 +116,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginVertical: 4,
   },
   input: {
     backgroundColor: theme.colors.surface,

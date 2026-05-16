@@ -49,6 +49,16 @@ export const setupCodePayloadSchema = z
   })
   .strict();
 
+export const claimTokenStatusPayloadSchema = z
+  .object({
+    claim_token: z
+      .string()
+      .trim()
+      .min(6, "claim_token is required.")
+      .max(120, "claim_token is too long.")
+  })
+  .strict();
+
 export const registerDeviceSchema = z.object({
   device_id: z
     .string()

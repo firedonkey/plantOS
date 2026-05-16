@@ -243,7 +243,7 @@ def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
         "const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle && !isWaitingForOnline)"
         in screen
     )
-    assert 'label={isProvisioningOverBle ? "Confirming..." : "Confirm"}' in screen
+    assert 'label={isProvisioningOverBle ? "Connecting..." : "Confirm"}' in screen
     assert "Send provisioning over BLE" not in screen
     assert "provisionDeviceOverBle" in screen
     assert "setupToken: handoff.setupToken" in screen

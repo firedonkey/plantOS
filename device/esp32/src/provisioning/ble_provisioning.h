@@ -2,6 +2,7 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/portmacro.h>
+#include <freertos/semphr.h>
 
 #include <memory>
 #include <stddef.h>
@@ -73,6 +74,7 @@ class BleProvisioningService {
   void handleConnect();
   void handleDisconnect();
   void publishStatus(bool notify);
+  bool ensureSynchronization();
 
   bool active_ = false;
   bool connected_ = false;
@@ -84,8 +86,9 @@ class BleProvisioningService {
   ProvisioningParseError last_error_ = ProvisioningParseError::kNone;
   ProvisioningParseResult pending_result_;
   BleWifiScanRequest pending_wifi_scan_request_;
-  mutable portMUX_TYPE pending_lock_ = portMUX_INITIALIZER_UNLOCKED;
-  mutable portMUX_TYPE wifi_scan_lock_ = portMUX_INITIALIZER_UNLOCKED;
+  SemaphoreHandle_t pending_mutex_ = nullptr;
+  SemaphoreHandle_t wifi_scan_mutex_ = nullptr;
+  SemaphoreHandle_t characteristic_mutex_ = nullptr;
   NimBLEServer* server_ = nullptr;
   NimBLEService* service_ = nullptr;
   NimBLECharacteristic* write_characteristic_ = nullptr;

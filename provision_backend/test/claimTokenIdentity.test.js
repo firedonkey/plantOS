@@ -27,10 +27,13 @@ test("register schema still requires claim token and device id", () => {
   const source = readSource("src/models/provisioningSchemas.js");
 
   assert.match(source, /export const registerDeviceSchema = z\.object/);
+  assert.match(source, /export const claimTokenStatusPayloadSchema = z/);
+  assert.match(source, /claim_token:[\s\S]*?min\(6, "claim_token is required\."\)/);
   assert.match(source, /device_id:[\s\S]*?min\(3, "device_id must be at least 3 characters\."\)/);
   assert.match(source, /claim_token:[\s\S]*?min\(6, "claim_token is required\."\)/);
   assert.match(source, /hardware_version:[\s\S]*?min\(1, "hardware_version is required\."\)/);
   assert.match(source, /software_version:[\s\S]*?min\(1, "software_version is required\."\)/);
+  assert.match(source, /attach_to_platform_device_id: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
 });
 
 test("provision service persists expected identity and rejects mismatched registration", () => {
@@ -44,6 +47,18 @@ test("provision service persists expected identity and rejects mismatched regist
   assert.match(source, /expected_device_id_mismatch/);
 });
 
+test("provision service attaches recovery registration only to the owner's active device", () => {
+  const source = readSource("src/services/deviceProvisioningService.js");
+
+  assert.match(source, /const attachDeviceId = payload\.attach_to_platform_device_id \|\| null/);
+  assert.match(source, /WHERE id = \$1\s+AND released_at IS NULL\s+AND archived_at IS NULL/);
+  assert.match(source, /attachedDevice\.user_id !== claim\.user_id/);
+  assert.match(source, /attach_target_not_found/);
+  assert.match(source, /existingDevice && existingDevice\.id !== attachedDevice\.id/);
+  assert.match(source, /hardware_already_attached_elsewhere/);
+  assert.match(source, /api_token = \$2/);
+});
+
 test("provision routes expose serialless claim-token response and keep setup-code fallback", () => {
   const source = readSource("src/routes/devices.js");
 
@@ -51,6 +66,8 @@ test("provision routes expose serialless claim-token response and keep setup-cod
   assert.match(source, /createClaimTokenForUser\(req\.user\.id/);
   assert.match(source, /deviceIdentity: payload\.device_identity/);
   assert.match(source, /expected_device_id: claimToken\.expected_device_id \|\| undefined/);
+  assert.match(source, /devicesRouter\.post\(\s*\n\s*"\/claim-token\/status"/);
+  assert.match(source, /getClaimTokenStatusForUser\(req\.user\.id, payload\.claim_token\)/);
   assert.match(source, /devicesRouter\.post\(\s*\n\s*"\/setup-code"/);
   assert.match(source, /createClaimTokenForUserAndSerial/);
 });

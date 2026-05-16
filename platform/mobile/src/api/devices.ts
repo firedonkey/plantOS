@@ -48,8 +48,12 @@ type ApiDeviceSummary = {
     primary?: ApiHealthNode | null;
     cameras?: ApiHealthNode[] | null;
     last_heartbeat_at?: string | null;
+    heartbeat_status?: string | null;
     last_reading_at?: string | null;
+    reading_status?: string | null;
     last_image_at?: string | null;
+    image_status?: string | null;
+    camera_status?: string | null;
     last_command?: ApiHealthCommand | null;
   } | null;
 };
@@ -60,6 +64,7 @@ type ApiHealthNode = {
   node_index?: number | null;
   display_name?: string | null;
   status: string;
+  health_status?: string | null;
   last_seen_at?: string | null;
 };
 
@@ -135,9 +140,24 @@ type ApiSetupStatusResponse = {
   redirect_path?: string | null;
 };
 
+type ApiClaimTokenStatusResponse = {
+  used: boolean;
+  used_by_device_id?: number | null;
+  expected_device_id?: string | null;
+  expires_at?: string | null;
+  expired?: boolean;
+};
+
 type ApiDeleteResponse = {
   device_id: number;
   message: string;
+};
+
+type ApiReleaseResponse = {
+  device_id: number;
+  message: string;
+  released_at?: string | null;
+  status?: string | null;
 };
 
 export type DeviceSetupHandoff = {
@@ -159,6 +179,14 @@ export type SetupStatusResult = {
   lastHeartbeatAt?: string;
   status?: string;
   redirectPath?: string;
+};
+
+export type ClaimTokenStatusResult = {
+  used: boolean;
+  usedByDeviceId?: string;
+  expectedDeviceId?: string;
+  expiresAt?: string;
+  expired: boolean;
 };
 
 export type DeviceSettingsDetails = {
@@ -187,11 +215,30 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
 }
 
 function mapStatus(
-  summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading" | "latest_image">,
+  summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading" | "latest_image" | "hardware_health">,
   explicitStatus?: string | null,
 ): Device["status"] {
+  const heartbeatStatus = normalizeFreshnessStatus(summary?.hardware_health?.heartbeat_status);
+  if (heartbeatStatus === "offline" || heartbeatStatus === "stale") {
+    return heartbeatStatus;
+  }
+  const healthOverall = normalizeHealthStatus(summary?.hardware_health?.overall_status);
+  if (healthOverall === "provisioning" || healthOverall === "error") {
+    return "warning";
+  }
+  if (healthOverall !== "unknown" && healthOverall !== "warning" && healthOverall !== "waiting") {
+    return healthOverall;
+  }
   const normalizedExplicit = explicitStatus?.toLowerCase();
-  if (normalizedExplicit === "online" || normalizedExplicit === "offline" || normalizedExplicit === "unknown" || normalizedExplicit === "degraded") {
+  if (
+    normalizedExplicit === "online" ||
+    normalizedExplicit === "offline" ||
+    normalizedExplicit === "unknown" ||
+    normalizedExplicit === "degraded" ||
+    normalizedExplicit === "stale" ||
+    normalizedExplicit === "warning" ||
+    normalizedExplicit === "waiting"
+  ) {
     return normalizedExplicit;
   }
   const overallStatus = summary?.node_summary?.overall_status?.toLowerCase();
@@ -260,6 +307,7 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     nodeIndex: node.node_index ?? undefined,
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
+    healthStatus: normalizeFreshnessStatus(node.health_status),
     lastSeenAt: node.last_seen_at ?? undefined,
   };
 }
@@ -275,8 +323,12 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
     primary: mapHardwareNode(health.primary),
     cameras: (health.cameras ?? []).map((camera) => mapHardwareNode(camera)!).filter(Boolean),
     lastHeartbeatAt: health.last_heartbeat_at ?? undefined,
+    heartbeatStatus: normalizeFreshnessStatus(health.heartbeat_status),
     lastReadingAt: health.last_reading_at ?? undefined,
+    readingStatus: normalizeFreshnessStatus(health.reading_status),
     lastImageAt: health.last_image_at ?? undefined,
+    imageStatus: normalizeFreshnessStatus(health.image_status),
+    cameraStatus: normalizeFreshnessStatus(health.camera_status),
     lastCommand: health.last_command
       ? {
           id: String(health.last_command.id),
@@ -296,12 +348,31 @@ function normalizeHealthStatus(status?: string | null): HardwareNodeHealth["stat
     normalized === "offline" ||
     normalized === "unknown" ||
     normalized === "degraded" ||
+    normalized === "stale" ||
+    normalized === "warning" ||
+    normalized === "waiting" ||
     normalized === "provisioning" ||
     normalized === "error"
   ) {
     return normalized;
   }
   return "unknown";
+}
+
+function normalizeFreshnessStatus(status?: string | null): Device["status"] | undefined {
+  const normalized = status?.toLowerCase();
+  if (
+    normalized === "online" ||
+    normalized === "offline" ||
+    normalized === "unknown" ||
+    normalized === "degraded" ||
+    normalized === "stale" ||
+    normalized === "warning" ||
+    normalized === "waiting"
+  ) {
+    return normalized;
+  }
+  return undefined;
 }
 
 export async function listDevices(token?: string): Promise<{ devices: Device[]; usedMock: boolean }> {
@@ -314,6 +385,7 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
           latest_reading: device.latest_reading ?? undefined,
           latest_image: device.latest_image ?? undefined,
           node_summary: device.node_summary ?? undefined,
+          hardware_health: device.hardware_health ?? undefined,
         };
         return {
           id: String(device.id),
@@ -670,6 +742,44 @@ export async function getSetupStatus(
   }
 }
 
+export async function getClaimTokenStatus(
+  input: { setupToken: string },
+  token?: string,
+): Promise<{ status: ClaimTokenStatusResult; usedMock: boolean }> {
+  try {
+    const response = await apiRequest<ApiClaimTokenStatusResponse>(
+      "/api/setup/claim-token/status",
+      {
+        method: "POST",
+        body: JSON.stringify({ setup_token: input.setupToken }),
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      status: {
+        used: response.used,
+        usedByDeviceId: response.used_by_device_id != null ? String(response.used_by_device_id) : undefined,
+        expectedDeviceId: response.expected_device_id ?? undefined,
+        expiresAt: response.expires_at ?? undefined,
+        expired: response.expired ?? false,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      status: {
+        used: true,
+        usedByDeviceId: "1",
+        expired: false,
+      },
+    };
+  }
+}
+
 export async function deleteDevice(
   deviceId: string,
   token?: string,
@@ -699,6 +809,36 @@ export async function deleteDevice(
   }
 }
 
+export async function releaseDeviceForTransfer(
+  deviceId: string,
+  token?: string,
+): Promise<{ deviceId: string; usedMock: boolean; message: string; releasedAt?: string }> {
+  try {
+    const response = await apiRequest<ApiReleaseResponse>(
+      `/api/devices/${deviceId}/release`,
+      {
+        method: "POST",
+      },
+      token,
+    );
+    return {
+      usedMock: false,
+      deviceId: String(response.device_id),
+      message: response.message,
+      releasedAt: response.released_at ?? undefined,
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      deviceId,
+      message: "Mock mode previews release for transfer, but it does not change ownership.",
+    };
+  }
+}
+
 export async function getDeviceSettingsDetails(
   deviceId: string,
   token?: string,
@@ -715,6 +855,7 @@ export async function getDeviceSettingsDetails(
           latest_reading: device.latest_reading ?? undefined,
           latest_image: device.latest_image ?? undefined,
           node_summary: device.node_summary ?? undefined,
+          hardware_health: device.hardware_health ?? undefined,
         },
         device.status,
       ),

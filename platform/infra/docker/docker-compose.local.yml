@@ -34,9 +34,14 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      PLANTLAB_SKIP_DOTENV: "1"
       APP_ENV: development
       DATABASE_URL: postgresql://plantlab_user:plantlab_dev_password@postgres:5432/plantlab
       APP_SECRET_KEY: ${APP_SECRET_KEY:-local-dev-secret}
+      PLANTLAB_DEV_TOKEN_AUTH_ENABLED: "true"
+      PLANTLAB_STORAGE_BACKEND: local
+      PLANTLAB_IMAGE_URL_STRATEGY: proxy
+      PLANTLAB_UPLOAD_DIR: data/uploads
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -44,11 +49,18 @@ services:
       PLANTLAB_PROVISIONING_API_URL: http://provision-backend:3000
       PLANTLAB_PROVISIONING_SHARED_SECRET: ${PLANTLAB_PROVISIONING_SHARED_SECRET:-local-dev-provisioning-secret}
       PLANTLAB_LOCAL_SETUP_URL: ${PLANTLAB_LOCAL_SETUP_URL:-http://10.42.0.1:8080}
+      PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX: ${PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX:-^https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]+\.[0-9]+)(:[0-9]+)?$}
       PORT: 8080
     ports:
       - "8000:8080"
     volumes:
       - plantlab_platform_uploads:/app/platform/backend/data/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   provision-backend:
     build:
@@ -73,6 +85,12 @@ services:
       PLANTLAB_LOCAL_SETUP_URL: ${PLANTLAB_LOCAL_SETUP_URL:-http://10.42.0.1:8080}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
 volumes:
   plantlab_postgres_data:

@@ -44,6 +44,9 @@ enum class ProvisioningParseError {
   kTimeout,
   kBleInitFailed,
   kAlreadyCommitted,
+  kWifiNetworkNotFound,
+  kWifiConnectFailed,
+  kWifiConnectTimeout,
 };
 
 struct BleProvisioningPayload {
@@ -52,6 +55,7 @@ struct BleProvisioningPayload {
   std::string plantlab_token;
   std::string backend_url;
   std::string platform_url;
+  int attach_to_platform_device_id = 0;
 };
 
 struct ProvisioningParseResult {

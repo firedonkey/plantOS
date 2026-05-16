@@ -2,6 +2,7 @@ import express from "express";
 
 import { getConfig } from "../config.js";
 import {
+  claimTokenStatusPayloadSchema,
   claimTokenPayloadSchema,
   registerDeviceResponseSchema,
   registerDeviceSchema,
@@ -12,6 +13,7 @@ import { requireAuthenticatedUser } from "../middleware/requireAuthenticatedUser
 import {
   createClaimTokenForUser,
   createClaimTokenForUserAndSerial,
+  getClaimTokenStatusForUser,
   registerDeviceFromClaim
 } from "../services/deviceProvisioningService.js";
 
@@ -44,6 +46,25 @@ devicesRouter.post(
         expected_device_id: claimToken.expected_device_id || undefined,
         expires_at: new Date(claimToken.expires_at).toISOString()
       });
+    } catch (error) {
+      if (error.name === "ZodError") {
+        return next(
+          new ApiError(422, "validation_error", "Request body is invalid.", error.flatten())
+        );
+      }
+      return next(error);
+    }
+  }
+);
+
+devicesRouter.post(
+  "/claim-token/status",
+  requireAuthenticatedUser,
+  async (req, res, next) => {
+    try {
+      const payload = claimTokenStatusPayloadSchema.parse(req.body ?? {});
+      const status = await getClaimTokenStatusForUser(req.user.id, payload.claim_token);
+      return res.json(status);
     } catch (error) {
       if (error.name === "ZodError") {
         return next(

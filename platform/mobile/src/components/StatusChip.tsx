@@ -34,6 +34,9 @@ const toneStyles = StyleSheet.create({
   offline: { backgroundColor: "#fde4e4" },
   unknown: { backgroundColor: "#eceff3" },
   degraded: { backgroundColor: "#fff1d6" },
+  stale: { backgroundColor: "#fff1d6" },
+  warning: { backgroundColor: "#fff1d6" },
+  waiting: { backgroundColor: "#e8f1ff" },
   mock: { backgroundColor: "#efe7ff" },
 });
 
@@ -42,5 +45,8 @@ const textStyles = StyleSheet.create({
   offline: { color: "#b42318" },
   unknown: { color: theme.colors.textSecondary },
   degraded: { color: "#9a6700" },
+  stale: { color: "#9a6700" },
+  warning: { color: "#9a6700" },
+  waiting: { color: "#175cd3" },
   mock: { color: "#6941c6" },
 });

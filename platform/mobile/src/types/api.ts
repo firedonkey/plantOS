@@ -1,4 +1,4 @@
-export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded";
+export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded" | "stale" | "warning" | "waiting";
 
 export type Device = {
   id: string;
@@ -17,6 +17,7 @@ export type HardwareNodeHealth = {
   nodeIndex?: number;
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
+  healthStatus?: DeviceConnectionState;
   lastSeenAt?: string;
 };
 
@@ -59,8 +60,12 @@ export type HardwareHealth = {
   primary?: HardwareNodeHealth;
   cameras: HardwareNodeHealth[];
   lastHeartbeatAt?: string;
+  heartbeatStatus?: DeviceConnectionState;
   lastReadingAt?: string;
+  readingStatus?: DeviceConnectionState;
   lastImageAt?: string;
+  imageStatus?: DeviceConnectionState;
+  cameraStatus?: DeviceConnectionState;
   lastCommand?: HardwareCommandHealth;
 };
 

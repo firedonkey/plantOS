@@ -80,6 +80,9 @@ class DeviceRead(BaseModel):
     plant_type: str | None
     api_token: str | None
     created_at: datetime
+    released_at: datetime | None = None
+    archived_at: datetime | None = None
+    release_reason: str | None = None
     status: str | None = None
     latest_reading: DeviceSummaryReadingRead | None = None
     latest_image: DeviceSummaryImageRead | None = None
@@ -103,4 +106,11 @@ class DeviceSummaryRead(BaseModel):
 class DeviceDeleteRead(BaseModel):
     status: str
     device_id: int
+    message: str
+
+
+class DeviceReleaseRead(BaseModel):
+    status: str
+    device_id: int
+    released_at: datetime
     message: str

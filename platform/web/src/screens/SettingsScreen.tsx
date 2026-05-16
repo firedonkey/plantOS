@@ -30,7 +30,7 @@ export function SettingsScreen() {
 
       <div className="card">
         <h3>Device settings</h3>
-        <p className="subtitle">Operational device details such as labels, masked token summaries, hardware identifiers, and provisioning status now live on each device dashboard.</p>
+        <p className="subtitle">Open a device, then use Device settings to edit labels, reconnect Wi-Fi, repair setup, prepare transfer, or view factory reset guidance.</p>
       </div>
 
       <button className="primary-button" onClick={() => void signOut()}>

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+import logging
 from mimetypes import guess_type
 from pathlib import Path
 from typing import Protocol
@@ -11,6 +12,9 @@ from fastapi import Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.core.settings import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,13 @@ def image_client_url(image: object, request: Request, settings: Settings) -> str
         settings.storage_backend == "gcs" or _is_gcs_url(path)
     ):
         bucket_name, object_name = _gcs_object_from_path(path, settings)
-        return _signed_gcs_image_url(bucket_name, object_name, settings)
+        try:
+            return _signed_gcs_image_url(bucket_name, object_name, settings)
+        except Exception:
+            logger.exception(
+                "GCS signed image URL generation failed; falling back to authenticated proxy.",
+                extra={"bucket_name": bucket_name, "object_name": object_name},
+            )
     return str(request.url_for("image_content", image_id=image_id))
 
 

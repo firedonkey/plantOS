@@ -1,5 +1,5 @@
 import { getConfig } from "../config.js";
-import { withTransaction } from "../db/pool.js";
+import { pool, withTransaction } from "../db/pool.js";
 import { ApiError } from "../lib/errors.js";
 import { generateClaimToken, generateDeviceAccessToken, hashToken } from "../lib/tokens.js";
 
@@ -194,6 +194,30 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
   return rows[0];
 }
 
+export async function getClaimTokenStatusForUser(userId, claimToken) {
+  const { rows } = await pool.query(
+    `
+      SELECT claim_token, user_id, expected_device_id, expires_at, used_at, used_by_device_id
+      FROM device_claim_tokens
+      WHERE claim_token = $1
+    `,
+    [claimToken]
+  );
+  const claim = rows[0];
+  if (!claim || claim.user_id !== userId) {
+    throw new ApiError(404, "claim_token_not_found", "Claim token was not found.");
+  }
+
+  return {
+    ok: true,
+    used: Boolean(claim.used_at),
+    used_by_device_id: claim.used_by_device_id ?? null,
+    expected_device_id: claim.expected_device_id ?? null,
+    expires_at: new Date(claim.expires_at).toISOString(),
+    expired: new Date(claim.expires_at).getTime() <= Date.now()
+  };
+}
+
 export async function registerDeviceFromClaim(payload) {
   return withTransaction(async (client) => {
     const claimResult = await client.query(
@@ -284,6 +308,8 @@ export async function registerDeviceFromClaim(payload) {
           SELECT id, user_id, name, location, api_token
           FROM devices
           WHERE id = $1
+            AND released_at IS NULL
+            AND archived_at IS NULL
           FOR UPDATE
         `,
         [attachDeviceId]
@@ -304,27 +330,20 @@ export async function registerDeviceFromClaim(payload) {
         );
       }
 
-      deviceAccessToken = attachedDevice.api_token || generateDeviceAccessToken(config.deviceTokenBytes);
-      if (!attachedDevice.api_token) {
-        const { rows } = await client.query(
-          `
-            UPDATE devices
-            SET
-              api_token = $2,
-              status_updated_at = NOW()
-            WHERE id = $1
-            RETURNING id, name, api_token
-          `,
-          [attachedDevice.id, deviceAccessToken]
-        );
-        deviceRow = rows[0];
-      } else {
-        deviceRow = {
-          id: attachedDevice.id,
-          name: attachedDevice.name,
-          api_token: attachedDevice.api_token
-        };
-      }
+      deviceAccessToken = generateDeviceAccessToken(config.deviceTokenBytes);
+      const { rows } = await client.query(
+        `
+          UPDATE devices
+          SET
+            api_token = $2,
+            status_message = 'online',
+            status_updated_at = NOW()
+          WHERE id = $1
+          RETURNING id, name, api_token
+        `,
+        [attachedDevice.id, deviceAccessToken]
+      );
+      deviceRow = rows[0];
 
       await upsertDeviceHardwareNode(client, {
         ...payload,

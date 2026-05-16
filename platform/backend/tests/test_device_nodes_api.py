@@ -819,7 +819,12 @@ def test_delete_device_releases_single_board_provisioning_references():
 
             assert delete_device_for_user(session, user, device_id) is True
 
-            assert session.get(Device, device_id) is None
+            released_device = session.get(Device, device_id)
+            assert released_device is not None
+            assert released_device.api_token is None
+            assert released_device.released_at is not None
+            assert released_device.archived_at is not None
+            assert released_device.release_reason == "user_removed"
             assert session.query(DeviceNode).filter(DeviceNode.device_id == device_id).count() == 0
             serial_row = session.execute(
                 text(
@@ -920,7 +925,12 @@ def test_delete_device_releases_master_and_camera_node_mappings_together():
 
             assert delete_device_for_user(session, user, device_id) is True
 
-            assert session.get(Device, device_id) is None
+            released_device = session.get(Device, device_id)
+            assert released_device is not None
+            assert released_device.api_token is None
+            assert released_device.released_at is not None
+            assert released_device.archived_at is not None
+            assert released_device.release_reason == "user_removed"
             assert session.query(DeviceNode).filter(DeviceNode.device_id == device_id).count() == 0
             claim_row = session.execute(
                 text(

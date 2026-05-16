@@ -28,6 +28,7 @@ constexpr char kConfigKeySsid[] = "wifi_ssid";
 constexpr char kConfigKeyPassword[] = "wifi_pass";
 constexpr char kConfigKeyPlatformUrl[] = "plat_url";
 constexpr char kConfigKeyDeviceToken[] = "dev_token";
+constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kNodeRoleCamera[] = "camera";
 constexpr char kCameraSoftwareVersion[] = "0.1.0";
 XiaoCamera g_camera;
@@ -39,6 +40,8 @@ String g_hardware_device_id;
 constexpr uint32_t kWifiReconnectRetryMs = 5000UL;
 constexpr uint32_t kHeartbeatHttpTimeoutMs = 8000UL;
 constexpr uint32_t kNodeRegisterRetryMs = 5000UL;
+constexpr uint8_t kImageUploadMaxAttempts = 3;
+constexpr uint32_t kImageUploadRetryBaseDelayMs = 1000UL;
 constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 unsigned long g_last_wifi_attempt_ms = 0;
@@ -54,6 +57,8 @@ bool g_scheduled_capture_paused = false;
 bool g_node_registered = false;
 bool g_restart_scheduled = false;
 unsigned long g_restart_at_ms = 0;
+uint32_t g_boot_counter = 0;
+uint32_t g_capture_sequence = 0;
 bool g_last_provision_sender_known = false;
 uint8_t g_last_provision_sender_mac[6] = {0};
 uint32_t g_last_provision_request_id = 0;
@@ -80,6 +85,25 @@ String stableHardwareDeviceId() {
       static_cast<unsigned int>(chip_id & 0xFFFFFFFF));
   g_hardware_device_id = String(buffer);
   return g_hardware_device_id;
+}
+
+void initReliabilityBootCounter() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[camera-node] boot counter unavailable");
+    return;
+  }
+  const uint32_t previous = g_preferences.getUInt(kConfigKeyBootCounter, 0);
+  g_boot_counter = previous + 1;
+  g_preferences.putUInt(kConfigKeyBootCounter, g_boot_counter);
+  g_preferences.end();
+  Serial.printf("[camera-node] reliability boot_counter=%lu\n", static_cast<unsigned long>(g_boot_counter));
+}
+
+String nextImageIdempotencyKey() {
+  ++g_capture_sequence;
+  return stableHardwareDeviceId() + ":" + String(g_boot_counter) + ":" + String(g_capture_sequence) +
+         ":" + String(static_cast<unsigned long>(g_capture_request_id)) +
+         ":" + String(static_cast<unsigned long>(g_capture_command_id));
 }
 
 String runtimeWifiSsid() {
@@ -581,15 +605,44 @@ bool captureAndUploadImage() {
       static_cast<unsigned long>(g_capture_command_id),
       static_cast<unsigned int>(g_capture_request_id),
       static_cast<unsigned int>(frame->len));
+  const String idempotency_key = nextImageIdempotencyKey();
   String error;
   int upload_http_status = 0;
-  const bool uploaded = g_platform_client->upload_jpeg(
-      frame->buf,
-      frame->len,
-      "esp32-camera.jpg",
-      camera_node_runtime_config_complete(g_runtime_config) ? stableHardwareDeviceId().c_str() : nullptr,
-      &upload_http_status,
-      &error);
+  bool uploaded = false;
+  for (uint8_t attempt = 1; attempt <= kImageUploadMaxAttempts; ++attempt) {
+    error = "";
+    upload_http_status = 0;
+    uploaded = g_platform_client->upload_jpeg(
+        frame->buf,
+        frame->len,
+        "esp32-camera.jpg",
+        camera_node_runtime_config_complete(g_runtime_config) ? stableHardwareDeviceId().c_str() : nullptr,
+        idempotency_key.c_str(),
+        &upload_http_status,
+        &error);
+    if (uploaded) {
+      Serial.printf(
+          "[camera-node] upload attempt success command_id=%lu request=%u attempt=%u/%u http=%d idempotency_key=%s\n",
+          static_cast<unsigned long>(g_capture_command_id),
+          static_cast<unsigned int>(g_capture_request_id),
+          static_cast<unsigned int>(attempt),
+          static_cast<unsigned int>(kImageUploadMaxAttempts),
+          upload_http_status,
+          idempotency_key.c_str());
+      break;
+    }
+    Serial.printf(
+        "[camera-node] upload attempt failed command_id=%lu request=%u attempt=%u/%u http=%d error=%s\n",
+        static_cast<unsigned long>(g_capture_command_id),
+        static_cast<unsigned int>(g_capture_request_id),
+        static_cast<unsigned int>(attempt),
+        static_cast<unsigned int>(kImageUploadMaxAttempts),
+        upload_http_status,
+        error.c_str());
+    if (attempt < kImageUploadMaxAttempts) {
+      delay(kImageUploadRetryBaseDelayMs * attempt);
+    }
+  }
   esp_camera_fb_return(frame);
 
   if (uploaded) {
@@ -788,6 +841,7 @@ void setup() {
   Serial.println();
   Serial.println("=== PlantLab ESP32 Camera Platform Test ===");
   Serial.printf("[camera-node] hardware_device_id: %s\n", stableHardwareDeviceId().c_str());
+  initReliabilityBootCounter();
 
   disableBluetooth();
   enterIdlePowerMode();

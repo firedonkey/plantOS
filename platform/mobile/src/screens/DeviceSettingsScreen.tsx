@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 
-import { deleteDevice, getDeviceSettingsDetails, updateDeviceSettings } from "@/api/devices";
+import { deleteDevice, getDeviceSettingsDetails, releaseDeviceForTransfer, updateDeviceSettings } from "@/api/devices";
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { Card } from "@/components/Card";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useSession } from "@/hooks/useSession";
+import { hideDeviceFromActiveList } from "@/storage/hiddenDevices";
 import { theme } from "@/styles/theme";
 
 type DeviceSettingsScreenProps = {
@@ -27,6 +28,8 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
   const [location, setLocation] = useState("");
   const [plantType, setPlantType] = useState("");
   const [isRemoving, setIsRemoving] = useState(false);
+  const [isReleasing, setIsReleasing] = useState(false);
+  const primaryHardwareId = details?.hardwareHealth?.primary?.hardwareDeviceId;
 
   useEffect(() => {
     if (!deviceId) {
@@ -100,7 +103,11 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
     setMessage(null);
     try {
       await deleteDevice(deviceId, token ?? undefined);
-      router.replace("/(app)/devices");
+      await hideDeviceFromActiveList(deviceId);
+      router.replace({
+        pathname: "/(app)/devices",
+        params: { hiddenDeviceId: deviceId, refreshAt: String(Date.now()) },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to remove device.");
     } finally {
@@ -114,6 +121,62 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: removeDevice },
     ]);
+  };
+
+  const startRecoveryFlow = (mode: "wifi" | "repair") => {
+    if (!details || !primaryHardwareId) {
+      setError("Hardware identity is not available yet. Wait for the device to register once, then retry recovery.");
+      return;
+    }
+    router.push({
+      pathname: "/(app)/devices/add",
+      params: {
+        recoveryMode: mode,
+        recoveryDeviceId: deviceId,
+        recoveryHardwareId: primaryHardwareId,
+        recoveryName: details.device.name,
+      },
+    });
+  };
+
+  const releaseForTransfer = async () => {
+    setIsReleasing(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await releaseDeviceForTransfer(deviceId, token ?? undefined);
+      setUsedMock(result.usedMock);
+      await hideDeviceFromActiveList(deviceId);
+      const goBackToDevices = () => router.replace({
+        pathname: "/(app)/devices",
+        params: { hiddenDeviceId: deviceId, refreshAt: String(Date.now()) },
+      });
+      Alert.alert(
+        "Device released",
+        `${result.message} Hold the device button for 15 seconds before the next owner adds it.`,
+        [{ text: "Back to devices", onPress: goBackToDevices }],
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to release this device for transfer.");
+    } finally {
+      setIsReleasing(false);
+    }
+  };
+
+  const onTransferPress = () => {
+    const deviceName = details?.device.name ?? "this device";
+    Alert.alert("Prepare for transfer?", `${deviceName} will stop syncing to this account. Historical data is kept here, and the next owner can add it after you hold the device button for 15 seconds.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Release device", style: "destructive", onPress: releaseForTransfer },
+    ]);
+  };
+
+  const onFactoryResetPress = () => {
+    Alert.alert(
+      "Factory reset this device",
+      "Hold the device button for 15 seconds until the light blinks rapidly. This clears local Wi-Fi and device tokens. Backend ownership stays with this account unless you prepare it for transfer first.",
+      [{ text: "OK" }],
+    );
   };
 
   if (!deviceId) {
@@ -130,7 +193,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
         <View style={{ flex: 1, gap: 8 }}>
           <Text style={styles.eyebrow}>DEVICE SETTINGS</Text>
           <Text style={styles.title}>{details?.device.name ?? "Device settings"}</Text>
-          <Text style={styles.subtitle}>Edit the core labels and review the live hardware identity and provisioning state.</Text>
+          <Text style={styles.subtitle}>Edit labels, recover Wi-Fi setup, and review provisioning state.</Text>
         </View>
         {usedMock ? <StatusChip label="Mock mode" tone="mock" /> : null}
       </View>
@@ -151,7 +214,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
 
       <Card>
         <Text style={styles.sectionTitle}>Operational details</Text>
-        {isLoading && !details ? <Text style={styles.meta}>Loading device details…</Text> : null}
+        {isLoading && !details ? <Text style={styles.meta}>Loading device details...</Text> : null}
         {details ? (
           <View style={styles.stack}>
             <DetailRow label="Provision status" value={details.onboardingStatus} />
@@ -172,12 +235,14 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       </Card>
 
       <Card>
-        <Text style={styles.sectionTitle}>Recovery guidance</Text>
+        <Text style={styles.sectionTitle}>Recovery</Text>
         <Text style={styles.meta}>{details?.onboardingGuidance ?? "Use this page to keep the operational labels in sync with the real device."}</Text>
         <View style={styles.stack}>
-          <Text style={styles.meta}>• For a clean re-provision, use the hardware button flow and watch the serial monitor rather than changing values here.</Text>
-          <Text style={styles.meta}>• If the device stops reporting, confirm power, Wi-Fi, and the current device token before deleting or re-adding it.</Text>
-          <Text style={styles.meta}>• No remote reboot or re-provision action is wired in yet, by design.</Text>
+          <PrimaryButton label="Reconnect Wi-Fi" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("wifi")} />
+          <PrimaryButton label="Re-provision / repair setup" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("repair")} />
+          <PrimaryButton label={isReleasing ? "Releasing..." : "Prepare device for transfer"} tone="secondary" disabled={isLoading || isReleasing} onPress={onTransferPress} />
+          <PrimaryButton label="Factory reset this device" tone="danger" disabled={isLoading} onPress={onFactoryResetPress} />
+          <Text style={styles.meta}>For Wi-Fi recovery, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 15 seconds.</Text>
         </View>
       </Card>
 

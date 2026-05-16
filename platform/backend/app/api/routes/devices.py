@@ -26,6 +26,7 @@ from app.schemas.devices import (
     DeviceHealthCommandRead,
     DeviceHealthNodeRead,
     DeviceRead,
+    DeviceReleaseRead,
     DeviceSummaryImageRead,
     DeviceSummaryRead,
     DeviceSummaryReadingRead,
@@ -41,6 +42,7 @@ from app.services.devices import (
     factory_reset_device,
     get_device_for_user,
     list_devices_for_user,
+    release_device_for_user,
     update_device_for_user,
 )
 from app.services.images import list_recent_images_for_device
@@ -281,9 +283,26 @@ def delete_device(
     if not deleted:
         raise HTTPException(status_code=404, detail="Device not found.")
     return DeviceDeleteRead(
-        status="deleted",
+        status="released",
         device_id=device_id,
-        message="Device removed.",
+        message="Device released and archived.",
+    )
+
+
+@router.post("/{device_id}/release", response_model=DeviceReleaseRead)
+def release_device(
+    device_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = release_device_for_user(session, current_user, device_id)
+    if device is None or device.released_at is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return DeviceReleaseRead(
+        status="released",
+        device_id=device_id,
+        released_at=device.released_at,
+        message="Device released for transfer. Hold the device button for 15 seconds to clear local Wi-Fi and tokens.",
     )
 
 
@@ -499,7 +518,7 @@ def factory_reset_device_route(
         raise HTTPException(status_code=403, detail="Device token does not match device_id.")
 
     factory_reset_device(session, device)
-    return {"ok": True, "device_id": device_id, "status": "factory_reset"}
+    return {"ok": True, "device_id": device_id, "status": "released"}
 
 
 @router.post("/register-provisioned")
@@ -576,7 +595,10 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
         plant_type=device.plant_type,
         api_token=device.api_token,
         created_at=device.created_at,
-        status=_device_status(node_summary, latest_reading),
+        released_at=device.released_at,
+        archived_at=device.archived_at,
+        release_reason=device.release_reason,
+        status=_device_status(node_summary, latest_reading, latest_node_heartbeat_at(nodes)),
         latest_reading=(
             DeviceSummaryReadingRead.model_validate(latest_reading, from_attributes=True)
             if latest_reading is not None
@@ -602,10 +624,17 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
     )
 
 
-def _device_status(node_summary: dict, latest_reading) -> str:
+def _device_status(node_summary: dict, latest_reading, last_heartbeat_at: datetime | None) -> str:
     primary = node_summary.get("primary") or {}
     primary_status = str(primary.get("status") or "").lower()
     if primary_status == "online":
+        heartbeat_status = _freshness_status(
+            last_heartbeat_at,
+            stale_after=HEARTBEAT_STALE_AFTER,
+            offline_after=HEARTBEAT_OFFLINE_AFTER,
+        )
+        if heartbeat_status in {"stale", "offline"}:
+            return heartbeat_status
         return "online"
     if primary_status in {"offline", "error"}:
         return "offline"

@@ -17,6 +17,9 @@ Local dev:
 - Set `EXPO_PUBLIC_API_BASE_URL` to your backend base URL.
 - Use [`.env.example`](/Users/gary/plantOS/platform/mobile/.env.example) as the starting point.
 - Keep `EXPO_PUBLIC_AUTH_MODE=dev` for local dev bearer login.
+- Local dev builds use the username/password form when `EXPO_PUBLIC_AUTH_MODE=dev` and `EXPO_PUBLIC_ENABLE_DEV_AUTH=true`.
+- For local username login, `dev` becomes `dev@plantlab.local`; an email address is used as-is. The password must be non-empty and is only for dev-token login against a local backend.
+- Do not point dev-token login at the production backend. Production Cloud Run has `PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false`, so production builds should use `EXPO_PUBLIC_AUTH_MODE=production` and Google sign-in.
 - Google sign-in is available from the mobile login screen and uses the backend-owned `/api/auth/google/start` handoff.
 - The mobile callback uses the app scheme `plantlab://auth/callback`. Expo Go may not claim custom app schemes reliably; use a dev build or installed app build when validating the full callback loop.
 - Leave `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
@@ -88,6 +91,21 @@ npm run start:dev
 
 Open the installed PlantLab development build on the iPhone, not Expo Go, and connect it to the LAN Metro server. For physical-device backend QA, set `EXPO_PUBLIC_API_BASE_URL` to the Mac's LAN address, not `127.0.0.1`.
 
+Local backend auth setup for iPhone QA:
+
+```bash
+cd platform/mobile
+cat > .env <<'EOF'
+EXPO_PUBLIC_API_BASE_URL=http://192.168.0.55:8000
+EXPO_PUBLIC_AUTH_MODE=dev
+EXPO_PUBLIC_ENABLE_DEV_AUTH=true
+EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false
+EOF
+npm run start:dev
+```
+
+Restart Metro after changing `.env`. The login screen should show username/password only. Use `dev` / `password` or any username with a non-empty password.
+
 Recover from Metro watcher/cache issues:
 
 ```bash
@@ -118,7 +136,7 @@ Native capability validation checklist:
 - API config: physical iPhone points at the intended LAN backend URL.
 - Auth/session: dev login works; Google handoff returns through `plantlab://auth/callback`; logout clears the session.
 - Storage: AsyncStorage-backed dev sessions behave as before; production refresh-token persistence remains disabled until secure storage is added.
-- BLE provisioning: native build loads `react-native-ble-plx`, requests Bluetooth permission, scans for `PlantLab-Setup`, reads nearby Wi-Fi names, and preserves manual SSID and SoftAP fallback paths.
+- BLE provisioning: native build loads `react-native-ble-plx`, requests Bluetooth permission, scans for `PlantLab-Setup`, reads nearby Wi-Fi names, sends credentials, and waits for the ESP32 to validate Wi-Fi before backend polling starts. Wrong passwords should stay on the Wi-Fi screen with an immediate BLE error.
 - Camera/QR: camera permission prompt appears and the QR scanner can populate the device serial number.
 - Image gallery: remote recent images still load with auth headers when required.
 - SoftAP/local network: fallback setup page can be opened and the local network prompt is validated if iOS shows it.

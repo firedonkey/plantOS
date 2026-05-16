@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 
-import { getSetupStatus, requestDeviceClaimToken, requestDeviceSetupCode } from "@/api/devices";
+import { ApiError } from "@/api/client";
+import { getClaimTokenStatus, getSetupStatus, requestDeviceClaimToken, requestDeviceSetupCode } from "@/api/devices";
 import type { DeviceSetupHandoff } from "@/api/devices";
 import { getApiBaseUrl } from "@/api/config";
 import {
@@ -29,10 +30,22 @@ const ONLINE_POLL_INTERVAL_MS = 2000;
 const ONLINE_POLL_TIMEOUT_MS = 90000;
 const ONLINE_CONFIRMATION_TIMEOUT =
   "We could not confirm your Smart Planter is online yet. Please make sure your Wi-Fi password is correct and the device is nearby.";
+const RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG =
+  "The new Wi-Fi details did not connect, so the device restored its previous connection. Check the Wi-Fi password and try reconnecting.";
 type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online";
 
 export function AddDeviceScreen() {
   const { token } = useSession();
+  const params = useLocalSearchParams<{
+    recoveryMode?: string;
+    recoveryDeviceId?: string;
+    recoveryHardwareId?: string;
+    recoveryName?: string;
+  }>();
+  const recoveryMode = params.recoveryMode === "repair" ? "repair" : params.recoveryMode === "wifi" ? "wifi" : null;
+  const recoveryPlatformDeviceId = parsePositiveIntParam(params.recoveryDeviceId);
+  const recoveryHardwareId = typeof params.recoveryHardwareId === "string" ? params.recoveryHardwareId.trim() : "";
+  const isRecoveryFlow = recoveryMode !== null && recoveryPlatformDeviceId !== null;
   const [deviceName, setDeviceName] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [wifiSsid, setWifiSsid] = useState("");
@@ -66,6 +79,16 @@ export function AddDeviceScreen() {
   const canConfirmWifiDetails = wifiSsid.trim().length > 0 && wifiPassword.length > 0;
   const blePlatformUrl = handoff?.platformUrl?.trim() || getApiBaseUrl().trim();
   const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle && !isWaitingForOnline);
+
+  useEffect(() => {
+    if (!isRecoveryFlow) {
+      return;
+    }
+    const recoveryName = typeof params.recoveryName === "string" ? params.recoveryName.trim() : "";
+    if (recoveryName && !deviceName.trim()) {
+      setDeviceName(recoveryName);
+    }
+  }, [deviceName, isRecoveryFlow, params.recoveryName]);
 
   function updateWifiSsid(value: string) {
     setWifiSsid(value);
@@ -142,6 +165,7 @@ export function AddDeviceScreen() {
     setError(null);
     try {
       const identity = await readBleDeviceIdentity(device.id);
+      assertRecoveryHardwareMatch(identity.hardwareDeviceId);
       const deviceWithIdentity = {
         ...device,
         name: identity.bleName || device.name,
@@ -278,12 +302,13 @@ export function AddDeviceScreen() {
     setBleProvisioningMessage(null);
     setIsProvisioningOverBle(true);
     try {
-      const device = selectedBleDevice ?? (await findSingleBleProvisioningDevice());
-      if (!device) {
+      const discoveredDevice = selectedBleDevice ?? (await findSingleBleProvisioningDevice());
+      if (!discoveredDevice) {
         setBleProvisioningTone("error");
         setBleProvisioningMessage("Select the PlantLab setup device, then retry setup.");
         return;
       }
+      const device = await ensureRecoveryDeviceIdentity(discoveredDevice);
       setSelectedBleDevice(device);
       await provisionDeviceOverBle({
         deviceId: device.id,
@@ -292,12 +317,17 @@ export function AddDeviceScreen() {
         setupToken: handoff.setupToken,
         platformUrl: blePlatformUrl,
         backendUrl: handoff.provisioningApiUrl,
+        attachToPlatformDeviceId: recoveryPlatformDeviceId,
         onProgress: handleBleProvisioningProgress,
       });
       await waitForProvisionedDeviceOnline(device);
     } catch (err) {
+      const message = provisioningErrorMessage(err);
       setBleProvisioningTone("error");
-      setBleProvisioningMessage(provisioningErrorMessage(err));
+      setBleProvisioningMessage(message);
+      if (isWifiCredentialProvisioningError(err)) {
+        Alert.alert("Wi-Fi did not connect", message);
+      }
     } finally {
       setIsProvisioningOverBle(false);
     }
@@ -308,7 +338,7 @@ export function AddDeviceScreen() {
       return;
     }
     const expectedDeviceId = handoff.expectedDeviceId ?? device?.identity?.hardwareDeviceId;
-    const fallbackDeviceName = deviceName.trim() || DEFAULT_DEVICE_NAME;
+    const fallbackDeviceName = deviceName.trim() || (isRecoveryFlow ? "Recovered Smart Planter" : DEFAULT_DEVICE_NAME);
     setStep("waiting_online");
     setIsWaitingForOnline(true);
     setBleProvisioningTone("idle");
@@ -316,6 +346,19 @@ export function AddDeviceScreen() {
     try {
       const startedAt = Date.now();
       while (Date.now() - startedAt <= ONLINE_POLL_TIMEOUT_MS) {
+        const { result: claimStatusResult, unavailable: claimStatusUnavailable } =
+          isRecoveryFlow && handoff.setupToken
+            ? await getRecoveryClaimTokenStatus(handoff.setupToken)
+            : { result: null, unavailable: false };
+        if (claimStatusResult) {
+          setUsedMock((current) => current || claimStatusResult.usedMock);
+          if (claimStatusResult.status.expired && !claimStatusResult.status.used) {
+            setBleProvisioningTone("error");
+            setBleProvisioningMessage("Setup timed out before the device confirmed the new Wi-Fi. Start recovery again to get a fresh setup token.");
+            return;
+          }
+        }
+
         const result = await getSetupStatus(
           {
             expectedDeviceId,
@@ -325,10 +368,42 @@ export function AddDeviceScreen() {
           token ?? undefined,
         );
         setUsedMock((current) => current || result.usedMock);
+        const claimWasUsed = claimStatusResult?.status.used ?? (claimStatusUnavailable || !isRecoveryFlow);
+        const claimUsedByExpectedDevice =
+          claimStatusUnavailable ||
+          !isRecoveryFlow ||
+          !claimStatusResult ||
+          !claimStatusResult.status.usedByDeviceId ||
+          claimStatusResult.status.usedByDeviceId === String(recoveryPlatformDeviceId);
+        if (
+          isRecoveryFlow &&
+          !claimWasUsed &&
+          result.status.deviceId === String(recoveryPlatformDeviceId) &&
+          result.status.online &&
+          heartbeatIsAfterStart(result.status.lastHeartbeatAt, startedAt)
+        ) {
+          setBleProvisioningTone("error");
+          setBleProvisioningMessage(RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG);
+          Alert.alert("Wi-Fi did not connect", RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG);
+          return;
+        }
         if (result.status.deviceId && (result.status.online || result.status.ready)) {
+          if (!claimWasUsed) {
+            await sleep(ONLINE_POLL_INTERVAL_MS);
+            continue;
+          }
+          if (!claimUsedByExpectedDevice) {
+            setBleProvisioningTone("error");
+            setBleProvisioningMessage("Setup completed for a different device. Start recovery again and select the matching PlantLab setup device.");
+            return;
+          }
           setBleProvisioningTone("success");
           setBleProvisioningMessage("Smart Planter is online.");
-          router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`);
+          if (isRecoveryFlow && recoveryPlatformDeviceId !== null) {
+            router.replace(`/(app)/devices/${recoveryPlatformDeviceId}?setup=complete`);
+          } else {
+            router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`);
+          }
           return;
         }
         await sleep(ONLINE_POLL_INTERVAL_MS);
@@ -340,6 +415,23 @@ export function AddDeviceScreen() {
       setBleProvisioningMessage(err instanceof Error ? err.message : ONLINE_CONFIRMATION_TIMEOUT);
     } finally {
       setIsWaitingForOnline(false);
+    }
+  }
+
+  async function getRecoveryClaimTokenStatus(setupToken: string): Promise<{
+    result: Awaited<ReturnType<typeof getClaimTokenStatus>> | null;
+    unavailable: boolean;
+  }> {
+    try {
+      return {
+        result: await getClaimTokenStatus({ setupToken }, token ?? undefined),
+        unavailable: false,
+      };
+    } catch (err) {
+      if (isNotFoundApiError(err)) {
+        return { result: null, unavailable: true };
+      }
+      throw err;
     }
   }
 
@@ -368,19 +460,61 @@ export function AddDeviceScreen() {
     }
   }
 
+  function assertRecoveryHardwareMatch(hardwareDeviceId?: string) {
+    if (!isRecoveryFlow || !recoveryHardwareId || !hardwareDeviceId) {
+      return;
+    }
+    if (hardwareDeviceId.trim() !== recoveryHardwareId) {
+      throw new BleProvisioningError(
+        "identity_mismatch",
+        "This setup device does not match the selected PlantLab device. Choose the matching device before sending Wi-Fi details.",
+      );
+    }
+  }
+
+  async function ensureRecoveryDeviceIdentity(device: BleProvisioningDevice): Promise<BleProvisioningDevice> {
+    if (!isRecoveryFlow) {
+      return device;
+    }
+    if (device.identity) {
+      assertRecoveryHardwareMatch(device.identity.hardwareDeviceId);
+      return device;
+    }
+    const identity = await readBleDeviceIdentity(device.id);
+    assertRecoveryHardwareMatch(identity.hardwareDeviceId);
+    return {
+      ...device,
+      name: identity.bleName || device.name,
+      displaySuffix: shortHardwareSuffix(identity.hardwareDeviceId) ?? device.displaySuffix,
+      identity,
+    };
+  }
+
   return (
     <Screen scrollToTopSignal={step}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>DEVICE ONBOARDING</Text>
+        <Text style={styles.eyebrow}>{isRecoveryFlow ? "DEVICE RECOVERY" : "DEVICE ONBOARDING"}</Text>
         <Text style={styles.title}>
-          {step === "find_device" ? "Add PlantLab device" : step === "waiting_online" ? "Connecting device" : "Set up Wi-Fi"}
+          {step === "find_device"
+            ? isRecoveryFlow
+              ? recoveryMode === "repair"
+                ? "Repair device setup"
+                : "Reconnect Wi-Fi"
+              : "Add PlantLab device"
+            : step === "waiting_online"
+              ? "Connecting device"
+              : "Set up Wi-Fi"}
         </Text>
         <Text style={styles.subtitle}>
           {step === "find_device"
-            ? "Put your Smart Planter in setup mode, then connect it to this app."
+            ? isRecoveryFlow
+              ? "Hold the setup button for 5 seconds until the status light blinks, then connect to the same device."
+              : "Put your Smart Planter in setup mode, then connect it to this app."
             : step === "waiting_online"
               ? "Your Smart Planter is joining Wi-Fi and checking in."
-            : "Confirm the home Wi-Fi network and enter the password."}
+              : isRecoveryFlow
+                ? "Your account and history stay with this device while Wi-Fi is updated."
+                : "Confirm the home Wi-Fi network and enter the password."}
         </Text>
       </View>
 
@@ -390,8 +524,14 @@ export function AddDeviceScreen() {
       {step === "find_device" ? (
         <Card>
           <Text style={styles.cardTitle}>Device details</Text>
-          <LabeledInput label="Device name" value={deviceName} onChangeText={setDeviceName} placeholder={DEFAULT_DEVICE_NAME} />
-          <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_NAME}.</Text>
+          {isRecoveryFlow ? (
+            <Text style={styles.meta}>The app will verify the BLE hardware identity before sending new Wi-Fi details.</Text>
+          ) : (
+            <>
+              <LabeledInput label="Device name" value={deviceName} onChangeText={setDeviceName} placeholder={DEFAULT_DEVICE_NAME} />
+              <Text style={styles.meta}>Leave blank to use {DEFAULT_DEVICE_NAME}.</Text>
+            </>
+          )}
           <PrimaryButton
             label={isFindingBleDevice || isSubmitting ? "Finding PlantLab device..." : "Find PlantLab device"}
             onPress={startBleIdentityOnboarding}
@@ -445,7 +585,7 @@ export function AddDeviceScreen() {
           />
           <Text style={styles.meta}>Enter the Wi-Fi password for this network.</Text>
           <PrimaryButton
-            label={isProvisioningOverBle ? "Confirming..." : "Confirm"}
+            label={isProvisioningOverBle ? "Connecting..." : "Confirm"}
             onPress={sendProvisioningOverBle}
             disabled={!canProvisionOverBle}
           />
@@ -461,14 +601,6 @@ export function AddDeviceScreen() {
             <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
               {bleProvisioningMessage}
             </Text>
-          ) : null}
-          {bleProvisioningTone === "error" ? (
-            <>
-              <PrimaryButton label="Retry setup" tone="secondary" onPress={sendProvisioningOverBle} disabled={!canProvisionOverBle} />
-              {!isLoadingWifiNetworks ? (
-                <PrimaryButton label="Refresh Wi-Fi networks" tone="secondary" onPress={loadDeviceWifiNetworks} disabled={isLoadingWifiNetworks} />
-              ) : null}
-            </>
           ) : null}
         </Card>
       ) : null}
@@ -497,7 +629,7 @@ export function AddDeviceScreen() {
         </Card>
       ) : null}
 
-      {(step === "wifi_provisioning" || step === "waiting_online") && handoff && bleProvisioningTone === "error" ? (
+      {step === "waiting_online" && handoff && bleProvisioningTone === "error" ? (
         <Card>
           <Text style={styles.cardTitle}>Existing Wi-Fi setup fallback</Text>
           <Text style={styles.cardSubtitle}>
@@ -805,6 +937,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function heartbeatIsAfterStart(lastHeartbeatAt: string | undefined, startedAt: number): boolean {
+  if (!lastHeartbeatAt) {
+    return false;
+  }
+  const heartbeatMs = Date.parse(lastHeartbeatAt);
+  return Number.isFinite(heartbeatMs) && heartbeatMs >= startedAt;
+}
+
 function shortHardwareSuffix(value?: string): string | undefined {
   const normalized = value?.trim();
   if (!normalized) {
@@ -837,6 +986,17 @@ function provisioningErrorMessage(err: unknown): string {
     return err.message;
   }
   return "Could not finish device setup. Retry, or use the compatibility fallback.";
+}
+
+function isWifiCredentialProvisioningError(err: unknown): boolean {
+  return (
+    err instanceof BleProvisioningError &&
+    ["wifi_connect_failed", "wifi_connect_timeout", "wifi_network_not_found"].includes(err.code)
+  );
+}
+
+function isNotFoundApiError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
 }
 
 const styles = StyleSheet.create({

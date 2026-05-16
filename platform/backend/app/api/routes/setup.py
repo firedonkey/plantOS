@@ -1,11 +1,14 @@
+import httpx
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.api.errors import api_error
 from app.api.deps import get_current_user
+from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import User
-from app.schemas.setup import SetupStatusRead
+from app.schemas.setup import ClaimTokenStatusRead, ClaimTokenStatusRequest, SetupStatusRead
 from app.services.device_nodes import latest_node_heartbeat_at, list_nodes_for_device
 from app.services.devices import list_devices_for_user
 from app.services.images import list_recent_images_for_device
@@ -102,6 +105,47 @@ def get_setup_status(
             status=status,
             redirect_path=f"/devices/{matching_device.id}?setup=complete" if ready else None,
         ).model_dump(mode="json")
+    )
+
+
+@router.post("/claim-token/status", response_model=ClaimTokenStatusRead)
+async def get_claim_token_status(
+    payload: ClaimTokenStatusRequest,
+    current_user: User = Depends(get_current_user),
+):
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{settings.provisioning_api_url}/api/devices/claim-token/status",
+                json={"claim_token": payload.setup_token},
+                headers={
+                    "x-plantlab-service-secret": settings.provisioning_service_secret or "",
+                    "x-plantlab-user-id": str(current_user.id),
+                    "x-plantlab-user-email": current_user.email or "",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise api_error(502, "provisioning_service_unavailable", f"Provisioning service unavailable: {exc}") from exc
+
+    try:
+        upstream_payload = response.json()
+    except ValueError as exc:
+        raise api_error(502, "invalid_upstream_response", "Provisioning service returned an invalid response.") from exc
+
+    if response.status_code >= 400:
+        raise api_error(
+            response.status_code,
+            "claim_token_status_failed",
+            upstream_payload.get("message") or upstream_payload.get("error") or "Could not check setup token status.",
+        )
+
+    return ClaimTokenStatusRead(
+        used=bool(upstream_payload.get("used")),
+        used_by_device_id=upstream_payload.get("used_by_device_id"),
+        expected_device_id=upstream_payload.get("expected_device_id"),
+        expires_at=upstream_payload.get("expires_at"),
+        expired=bool(upstream_payload.get("expired")),
     )
 
 

@@ -43,6 +43,12 @@ def _apply_lightweight_migrations(selected_engine) -> None:
                 connection.execute(text("ALTER TABLE devices ADD COLUMN status_message VARCHAR(160)"))
             if "status_updated_at" not in device_columns:
                 connection.execute(text("ALTER TABLE devices ADD COLUMN status_updated_at DATETIME"))
+            if "released_at" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN released_at DATETIME"))
+            if "archived_at" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN archived_at DATETIME"))
+            if "release_reason" not in device_columns:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN release_reason VARCHAR(80)"))
         if "sensor_readings" in table_names:
             reading_columns = {column["name"] for column in inspector.get_columns("sensor_readings")}
             if "light_on" not in reading_columns:

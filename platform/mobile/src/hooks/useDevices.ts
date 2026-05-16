@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listDevices } from "@/api/devices";
 import { Device } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { loadHiddenDeviceIds } from "@/storage/hiddenDevices";
 
 export function useDevices() {
   const autoRefreshMs = 10000;
@@ -20,8 +21,11 @@ export function useDevices() {
       if (!options?.background || !hasLoadedRef.current) {
         setIsLoading(true);
       }
-      const result = await listDevices(token ?? undefined);
-      setDevices(result.devices);
+      const [result, hiddenDeviceIds] = await Promise.all([
+        listDevices(token ?? undefined),
+        loadHiddenDeviceIds(),
+      ]);
+      setDevices(result.devices.filter((device) => !hiddenDeviceIds.has(device.id)));
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
       hasLoadedRef.current = true;

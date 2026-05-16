@@ -10,6 +10,8 @@
 namespace plantlab {
 namespace {
 
+constexpr TickType_t kBleMutexTimeout = pdMS_TO_TICKS(500);
+
 std::string statusJson(ProvisioningState state, ProvisioningParseError error, bool accepting_writes) {
   std::string json = "{\"state\":\"";
   json += provisioningStateName(state);
@@ -29,6 +31,16 @@ std::string statusJson(ProvisioningState state, ProvisioningParseError error, bo
 
 bool containsCommand(const std::string& value, const char* command) {
   return value.find(command) != std::string::npos;
+}
+
+bool takeMutex(SemaphoreHandle_t mutex) {
+  return mutex != nullptr && xSemaphoreTake(mutex, kBleMutexTimeout) == pdTRUE;
+}
+
+void giveMutex(SemaphoreHandle_t mutex) {
+  if (mutex != nullptr) {
+    xSemaphoreGive(mutex);
+  }
 }
 
 size_t parseCursor(const std::string& value) {
@@ -101,12 +113,29 @@ BleProvisioningService::~BleProvisioningService() {
   stop();
 }
 
+bool BleProvisioningService::ensureSynchronization() {
+  if (pending_mutex_ == nullptr) {
+    pending_mutex_ = xSemaphoreCreateMutex();
+  }
+  if (wifi_scan_mutex_ == nullptr) {
+    wifi_scan_mutex_ = xSemaphoreCreateMutex();
+  }
+  if (characteristic_mutex_ == nullptr) {
+    characteristic_mutex_ = xSemaphoreCreateMutex();
+  }
+  return pending_mutex_ != nullptr && wifi_scan_mutex_ != nullptr && characteristic_mutex_ != nullptr;
+}
+
 bool BleProvisioningService::begin(
     const std::string& advertised_name,
     const char* fallback_platform_url,
     const char* device_identity_json) {
   if (active_) {
     return true;
+  }
+  if (!ensureSynchronization()) {
+    stop();
+    return false;
   }
 
   fallback_platform_url_ = fallback_platform_url == nullptr ? "" : fallback_platform_url;
@@ -187,14 +216,16 @@ void BleProvisioningService::stop() {
   active_ = false;
   connected_ = false;
   accepting_writes_ = false;
-  portENTER_CRITICAL(&pending_lock_);
-  pending_result_ready_ = false;
-  pending_result_ = ProvisioningParseResult{};
-  portEXIT_CRITICAL(&pending_lock_);
-  portENTER_CRITICAL(&wifi_scan_lock_);
-  pending_wifi_scan_request_ready_ = false;
-  pending_wifi_scan_request_ = BleWifiScanRequest{};
-  portEXIT_CRITICAL(&wifi_scan_lock_);
+  if (takeMutex(pending_mutex_)) {
+    pending_result_ready_ = false;
+    pending_result_ = ProvisioningParseResult{};
+    giveMutex(pending_mutex_);
+  }
+  if (takeMutex(wifi_scan_mutex_)) {
+    pending_wifi_scan_request_ready_ = false;
+    pending_wifi_scan_request_ = BleWifiScanRequest{};
+    giveMutex(wifi_scan_mutex_);
+  }
   server_ = nullptr;
   service_ = nullptr;
   write_characteristic_ = nullptr;
@@ -205,6 +236,18 @@ void BleProvisioningService::stop() {
   server_callbacks_.reset();
   write_callbacks_.reset();
   wifi_scan_control_callbacks_.reset();
+  if (pending_mutex_ != nullptr) {
+    vSemaphoreDelete(pending_mutex_);
+    pending_mutex_ = nullptr;
+  }
+  if (wifi_scan_mutex_ != nullptr) {
+    vSemaphoreDelete(wifi_scan_mutex_);
+    wifi_scan_mutex_ = nullptr;
+  }
+  if (characteristic_mutex_ != nullptr) {
+    vSemaphoreDelete(characteristic_mutex_);
+    characteristic_mutex_ = nullptr;
+  }
 }
 
 bool BleProvisioningService::active() const {
@@ -216,16 +259,21 @@ bool BleProvisioningService::connected() const {
 }
 
 bool BleProvisioningService::hasPendingResult() const {
-  portENTER_CRITICAL(&pending_lock_);
+  if (!takeMutex(pending_mutex_)) {
+    return false;
+  }
   const bool ready = pending_result_ready_;
-  portEXIT_CRITICAL(&pending_lock_);
+  giveMutex(pending_mutex_);
   return ready;
 }
 
 ProvisioningParseResult BleProvisioningService::takePendingResult() {
   bool status_changed = false;
-  portENTER_CRITICAL(&pending_lock_);
-  const ProvisioningParseResult result = pending_result_;
+  ProvisioningParseResult result;
+  if (!takeMutex(pending_mutex_)) {
+    return result;
+  }
+  result = pending_result_;
   if (provisioningShouldStopAcceptingWritesOnTake(
           pending_result_ready_,
           result.ok,
@@ -235,7 +283,7 @@ ProvisioningParseResult BleProvisioningService::takePendingResult() {
   }
   pending_result_ready_ = false;
   pending_result_ = ProvisioningParseResult{};
-  portEXIT_CRITICAL(&pending_lock_);
+  giveMutex(pending_mutex_);
   if (status_changed) {
     publishStatus(true);
   }
@@ -249,14 +297,20 @@ void BleProvisioningService::setStatus(ProvisioningState state, ProvisioningPars
 }
 
 void BleProvisioningService::setAcceptingWrites(bool accepting) {
-  portENTER_CRITICAL(&pending_lock_);
-  accepting_writes_ = accepting;
-  portEXIT_CRITICAL(&pending_lock_);
+  if (takeMutex(pending_mutex_)) {
+    accepting_writes_ = accepting;
+    giveMutex(pending_mutex_);
+  } else {
+    accepting_writes_ = accepting;
+  }
   publishStatus(true);
 }
 
 void BleProvisioningService::setWifiNetworksJson(const std::string& wifi_networks_json, bool notify) {
   if (wifi_networks_characteristic_ == nullptr) {
+    return;
+  }
+  if (!takeMutex(characteristic_mutex_)) {
     return;
   }
   wifi_networks_characteristic_->setValue(
@@ -265,29 +319,38 @@ void BleProvisioningService::setWifiNetworksJson(const std::string& wifi_network
   if (notify) {
     wifi_networks_characteristic_->notify();
   }
+  giveMutex(characteristic_mutex_);
 }
 
 bool BleProvisioningService::hasPendingWifiScanRequest() const {
-  portENTER_CRITICAL(&wifi_scan_lock_);
+  if (!takeMutex(wifi_scan_mutex_)) {
+    return false;
+  }
   const bool ready = pending_wifi_scan_request_ready_;
-  portEXIT_CRITICAL(&wifi_scan_lock_);
+  giveMutex(wifi_scan_mutex_);
   return ready;
 }
 
 BleWifiScanRequest BleProvisioningService::takePendingWifiScanRequest() {
-  portENTER_CRITICAL(&wifi_scan_lock_);
-  const BleWifiScanRequest request = pending_wifi_scan_request_;
+  BleWifiScanRequest request;
+  if (!takeMutex(wifi_scan_mutex_)) {
+    return request;
+  }
+  request = pending_wifi_scan_request_;
   pending_wifi_scan_request_ready_ = false;
   pending_wifi_scan_request_ = BleWifiScanRequest{};
-  portEXIT_CRITICAL(&wifi_scan_lock_);
+  giveMutex(wifi_scan_mutex_);
   return request;
 }
 
 void BleProvisioningService::handleWrite(const std::string& value) {
-  portENTER_CRITICAL(&pending_lock_);
+  if (!takeMutex(pending_mutex_)) {
+    setStatus(state_, ProvisioningParseError::kBusy);
+    return;
+  }
   const bool pending = pending_result_ready_;
   const bool accepting = accepting_writes_;
-  portEXIT_CRITICAL(&pending_lock_);
+  giveMutex(pending_mutex_);
 
   ProvisioningParseError error = provisioningWriteRejectionError(state_, pending, accepting);
   if (error != ProvisioningParseError::kNone) {
@@ -300,7 +363,10 @@ void BleProvisioningService::handleWrite(const std::string& value) {
       value.length(),
       fallback_platform_url_.c_str());
 
-  portENTER_CRITICAL(&pending_lock_);
+  if (!takeMutex(pending_mutex_)) {
+    setStatus(state_, ProvisioningParseError::kBusy);
+    return;
+  }
   error = provisioningWriteRejectionError(state_, pending_result_ready_, accepting_writes_);
   if (error == ProvisioningParseError::kNone) {
     pending_result_ = result;
@@ -310,7 +376,7 @@ void BleProvisioningService::handleWrite(const std::string& value) {
     result = ProvisioningParseResult{};
     result.error = error;
   }
-  portEXIT_CRITICAL(&pending_lock_);
+  giveMutex(pending_mutex_);
 
   if (result.error == ProvisioningParseError::kBusy ||
       result.error == ProvisioningParseError::kAlreadyCommitted) {
@@ -319,7 +385,9 @@ void BleProvisioningService::handleWrite(const std::string& value) {
   }
   if (!result.ok) {
     setStatus(provisioningStateAfterInvalidPayload(), result.error);
+    return;
   }
+  setStatus(provisioningStateAfterValidPayload());
 }
 
 void BleProvisioningService::handleWifiScanControlWrite(const std::string& value) {
@@ -334,10 +402,11 @@ void BleProvisioningService::handleWifiScanControlWrite(const std::string& value
     return;
   }
 
-  portENTER_CRITICAL(&wifi_scan_lock_);
-  pending_wifi_scan_request_ = request;
-  pending_wifi_scan_request_ready_ = true;
-  portEXIT_CRITICAL(&wifi_scan_lock_);
+  if (takeMutex(wifi_scan_mutex_)) {
+    pending_wifi_scan_request_ = request;
+    pending_wifi_scan_request_ready_ = true;
+    giveMutex(wifi_scan_mutex_);
+  }
 }
 
 void BleProvisioningService::handleConnect() {
@@ -358,12 +427,16 @@ void BleProvisioningService::publishStatus(bool notify) {
     return;
   }
   const std::string json = statusJson(state_, last_error_, accepting_writes_);
+  if (!takeMutex(characteristic_mutex_)) {
+    return;
+  }
   status_characteristic_->setValue(
       reinterpret_cast<const uint8_t*>(json.data()),
       json.size());
   if (notify) {
     status_characteristic_->notify();
   }
+  giveMutex(characteristic_mutex_);
 }
 
 }  // namespace plantlab

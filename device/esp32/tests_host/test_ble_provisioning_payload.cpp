@@ -12,7 +12,8 @@ void test_valid_payload() {
       "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\","
       "\"plantlab_token\":\"claim-token-123456\","
       "\"platform_url\":\"https://platform.example\","
-      "\"backend_url\":\"https://provisioning.example\"}";
+      "\"backend_url\":\"https://provisioning.example\","
+      "\"attach_to_platform_device_id\":42}";
   const plantlab::ProvisioningParseResult result =
       plantlab::parseBleProvisioningPayload(json, strlen(json));
   assert(result.ok);
@@ -21,6 +22,7 @@ void test_valid_payload() {
   assert(result.payload.plantlab_token == "claim-token-123456");
   assert(result.payload.platform_url == "https://platform.example");
   assert(result.payload.backend_url == "https://provisioning.example");
+  assert(result.payload.attach_to_platform_device_id == 42);
 }
 
 void test_alias_payload() {
@@ -168,6 +170,22 @@ void test_direct_token_rejected() {
       "\"device_token\":\"long-term-token\",\"platform_url\":\"https://platform.example\"}";
   assert(plantlab::parseBleProvisioningPayload(device_token_json, strlen(device_token_json)).error ==
          plantlab::ProvisioningParseError::kDirectDeviceTokenUnsupported);
+}
+
+void test_invalid_attach_target_rejected() {
+  const char zero_json[] =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\","
+      "\"plantlab_token\":\"token\",\"platform_url\":\"https://platform.example\","
+      "\"attach_to_platform_device_id\":0}";
+  assert(plantlab::parseBleProvisioningPayload(zero_json, strlen(zero_json)).error ==
+         plantlab::ProvisioningParseError::kMalformedPayload);
+
+  const char string_json[] =
+      "{\"ssid\":\"HomeWiFi\",\"password\":\"wifi-password\","
+      "\"plantlab_token\":\"token\",\"platform_url\":\"https://platform.example\","
+      "\"attach_to_platform_device_id\":\"42\"}";
+  assert(plantlab::parseBleProvisioningPayload(string_json, strlen(string_json)).error ==
+         plantlab::ProvisioningParseError::kMalformedPayload);
 }
 
 void test_length_limits() {
@@ -366,6 +384,15 @@ void test_error_codes() {
   assert(strcmp(
              plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kAlreadyCommitted),
              "already_committed") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kWifiNetworkNotFound),
+             "wifi_network_not_found") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kWifiConnectFailed),
+             "wifi_connect_failed") == 0);
+  assert(strcmp(
+             plantlab::provisioningParseErrorCode(plantlab::ProvisioningParseError::kWifiConnectTimeout),
+             "wifi_connect_timeout") == 0);
 }
 
 void test_duplicate_valid_write_gate() {
@@ -422,6 +449,7 @@ int main() {
   test_platform_url_fallback();
   test_invalid_json_and_malformed_payload();
   test_direct_token_rejected();
+  test_invalid_attach_target_rejected();
   test_length_limits();
   test_secret_masking();
   test_state_helpers();

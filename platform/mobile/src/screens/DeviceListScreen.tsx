@@ -1,4 +1,5 @@
-import { router } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
@@ -10,6 +11,21 @@ import { theme } from "@/styles/theme";
 
 export function DeviceListScreen() {
   const { devices, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDevices();
+  const params = useLocalSearchParams<{ hiddenDeviceId?: string; refreshAt?: string }>();
+  const hiddenDeviceIds = useMemo(() => {
+    const raw = Array.isArray(params.hiddenDeviceId) ? params.hiddenDeviceId : params.hiddenDeviceId ? [params.hiddenDeviceId] : [];
+    return new Set(raw.map((value) => String(value).trim()).filter(Boolean));
+  }, [params.hiddenDeviceId]);
+  const visibleDevices = useMemo(
+    () => devices.filter((device) => !hiddenDeviceIds.has(device.id)),
+    [devices, hiddenDeviceIds],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh({ background: true });
+    }, [refresh, params.refreshAt]),
+  );
 
   return (
     <Screen onRefresh={refresh} refreshing={isLoading}>
@@ -29,8 +45,8 @@ export function DeviceListScreen() {
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {isLoading && devices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
-      {devices.map((device) => (
+      {isLoading && visibleDevices.length === 0 ? <Text style={styles.info}>Loading your devices…</Text> : null}
+      {visibleDevices.map((device) => (
         <Pressable key={device.id} onPress={() => router.push(`/(app)/devices/${device.id}`)}>
           <Card>
             <View style={styles.cardHeader}>

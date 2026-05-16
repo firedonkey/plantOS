@@ -25,7 +25,7 @@ Current status:
   - Short tap: toggle light
   - Double tap: camera capture request log
   - Long press 5s: provisioning trigger requested log
-  - Long press 10s: factory reset requested log
+  - Long press 15s: factory reset requested log
 
 ## Current Test
 
@@ -120,13 +120,20 @@ The status characteristic returns JSON such as:
 
 ```json
 {"state":"PROVISIONING_BLE","ready":true}
-{"state":"PROVISIONING_FAILED","ready":true,"error":"missing_ssid"}
+{"state":"WIFI_CONNECTING","ready":false}
+{"state":"PROVISIONING_BLE","ready":true,"error":"wifi_connect_failed"}
 {"state":"PROVISIONING_SUCCESS","ready":false,"rebooting":true}
 ```
 
-After a valid payload is saved to ESP32 NVS, the device notifies success,
-reboots, connects to Wi-Fi, exchanges the claim token through the existing
-`/api/devices/register-provisioned` backend flow, and resumes hardware
+After a valid BLE payload is received, the device first validates the supplied
+Wi-Fi SSID and password while BLE stays active. If Wi-Fi cannot be joined, the
+status characteristic returns to `PROVISIONING_BLE` with `ready:true` and an
+error such as `wifi_connect_failed`, `wifi_connect_timeout`, or
+`wifi_network_not_found`, so the mobile app can let the user edit the password
+without waiting for backend polling. Only after Wi-Fi validation succeeds does
+the firmware save the pending config to ESP32 NVS, notify success, reboot,
+exchange the claim token through the existing
+`/api/devices/register-provisioned` backend flow, and resume hardware
 heartbeats with the returned device token. Wi-Fi passwords and full tokens are
 not printed to serial logs.
 

@@ -54,3 +54,15 @@ class SetupStatusRead(BaseModel):
     last_heartbeat_at: datetime | None = None
     status: str | None = None
     redirect_path: str | None = None
+
+
+class ClaimTokenStatusRequest(BaseModel):
+    setup_token: str = Field(min_length=6, max_length=120)
+
+
+class ClaimTokenStatusRead(BaseModel):
+    used: bool = False
+    used_by_device_id: int | None = None
+    expected_device_id: str | None = None
+    expires_at: datetime | None = None
+    expired: bool = False

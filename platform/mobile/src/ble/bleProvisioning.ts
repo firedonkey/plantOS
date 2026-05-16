@@ -78,6 +78,7 @@ export type ProvisionDeviceOverBleInput = {
   setupToken: string;
   platformUrl: string;
   backendUrl?: string | null;
+  attachToPlatformDeviceId?: number | null;
   timeoutMs?: number;
   onProgress?: (progress: BleProvisioningProgress) => void;
 };
@@ -573,6 +574,7 @@ function createProvisioningStatusWaiter(
 } {
   let settled = false;
   let writeCompleted = false;
+  let sawCurrentAttemptProgress = false;
   let pollId: ReturnType<typeof setInterval> | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let subscriptionRemoved = false;
@@ -585,6 +587,7 @@ function createProvisioningStatusWaiter(
       settle(undefined, new BleProvisioningError("provisioning_timeout", "Timed out waiting for the device to confirm provisioning."));
     }, timeoutMs);
   });
+  void promise.catch(() => undefined);
 
   const subscription = device.monitorCharacteristicForService(
     BLE_PROVISIONING_SERVICE_UUID,
@@ -641,12 +644,22 @@ function createProvisioningStatusWaiter(
       return;
     }
     if (isBleProvisioningFailure(status)) {
+      if (status.state === "PROVISIONING_BLE" && !sawCurrentAttemptProgress) {
+        return;
+      }
       const message = status.error ? provisioningErrorMessage(status.error) : "The device rejected provisioning details. Retry provisioning.";
       onProgress?.({ phase: "error", message, status });
       settle(undefined, new BleProvisioningError(status.error ?? "provisioning_failed", message));
       return;
     }
-    onProgress?.({ phase: status.state === "PROVISIONING_COMMITTING" ? "committing" : "sending", message: provisioningStatusMessage(status), status });
+    const phase =
+      status.state === "WIFI_CONNECTING"
+        ? "connecting"
+        : status.state === "PROVISIONING_COMMITTING"
+          ? "committing"
+          : "sending";
+    sawCurrentAttemptProgress = true;
+    onProgress?.({ phase, message: provisioningStatusMessage(status), status });
   }
 
   function settle(status?: BleProvisioningStatus, error?: BleProvisioningError) {

@@ -110,6 +110,12 @@ const char* provisioningParseErrorCode(ProvisioningParseError error) {
       return "ble_init_failed";
     case ProvisioningParseError::kAlreadyCommitted:
       return "already_committed";
+    case ProvisioningParseError::kWifiNetworkNotFound:
+      return "wifi_network_not_found";
+    case ProvisioningParseError::kWifiConnectFailed:
+      return "wifi_connect_failed";
+    case ProvisioningParseError::kWifiConnectTimeout:
+      return "wifi_connect_timeout";
     default:
       return "malformed_payload";
   }
@@ -149,6 +155,15 @@ ProvisioningParseResult parseBleProvisioningPayload(
   }
   payload.backend_url = first_string(object, "backend_url");
   payload.platform_url = first_string(object, "platform_url");
+  if (!object["attach_to_platform_device_id"].isNull()) {
+    if (!object["attach_to_platform_device_id"].is<int>()) {
+      return fail(ProvisioningParseError::kMalformedPayload);
+    }
+    payload.attach_to_platform_device_id = object["attach_to_platform_device_id"].as<int>();
+    if (payload.attach_to_platform_device_id <= 0) {
+      return fail(ProvisioningParseError::kMalformedPayload);
+    }
+  }
   if (payload.platform_url.empty()) {
     payload.platform_url = trim_copy(fallback_platform_url);
   }

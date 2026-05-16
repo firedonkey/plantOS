@@ -6,6 +6,7 @@ export const BLE_PROVISIONING_LIMITS = {
   tokenBytes: 256,
   urlBytes: 256,
   payloadBytes: 768,
+  platformDeviceIdBytes: 32,
 } as const;
 
 export type BleProvisioningErrorCode =
@@ -38,6 +39,9 @@ export type BleProvisioningErrorCode =
   | "token_too_long"
   | "wifi_scan_error"
   | "wifi_scan_timeout"
+  | "wifi_connect_failed"
+  | "wifi_connect_timeout"
+  | "wifi_network_not_found"
   | "write_failed";
 
 export class BleProvisioningError extends Error {
@@ -56,6 +60,7 @@ export type BuildBleProvisioningPayloadInput = {
   setupToken: string;
   platformUrl: string;
   backendUrl?: string | null;
+  attachToPlatformDeviceId?: number | null;
 };
 
 export type BleProvisioningStatus = {
@@ -71,6 +76,7 @@ export function buildBleProvisioningPayload(input: BuildBleProvisioningPayloadIn
   const setupToken = input.setupToken.trim();
   const platformUrl = input.platformUrl.trim();
   const backendUrl = input.backendUrl?.trim() ?? "";
+  const attachToPlatformDeviceId = input.attachToPlatformDeviceId ?? null;
   const password = input.password;
 
   assertRequired(ssid, "missing_ssid", "Select or type the Wi-Fi name before provisioning.");
@@ -84,8 +90,11 @@ export function buildBleProvisioningPayload(input: BuildBleProvisioningPayloadIn
   if (backendUrl) {
     assertByteLength(backendUrl, BLE_PROVISIONING_LIMITS.urlBytes, "backend_url_too_long", "Provisioning URL is too long for ESP32 provisioning.");
   }
+  if (attachToPlatformDeviceId !== null && (!Number.isInteger(attachToPlatformDeviceId) || attachToPlatformDeviceId <= 0)) {
+    throw new BleProvisioningError("invalid_payload", "The selected device could not be linked for recovery setup.");
+  }
 
-  const payload: Record<string, string> = {
+  const payload: Record<string, string | number> = {
     ssid,
     password,
     plantlab_token: setupToken,
@@ -93,6 +102,9 @@ export function buildBleProvisioningPayload(input: BuildBleProvisioningPayloadIn
   };
   if (backendUrl) {
     payload.backend_url = backendUrl;
+  }
+  if (attachToPlatformDeviceId !== null) {
+    payload.attach_to_platform_device_id = attachToPlatformDeviceId;
   }
 
   const json = JSON.stringify(payload);
@@ -177,6 +189,9 @@ export function provisioningStatusMessage(status: BleProvisioningStatus): string
   if (status.state === "PROVISIONING_COMMITTING") {
     return "Saving credentials on the device...";
   }
+  if (status.state === "WIFI_CONNECTING") {
+    return "Checking the Wi-Fi password on the device...";
+  }
   return "Waiting for device confirmation...";
 }
 
@@ -196,6 +211,12 @@ export function provisioningErrorMessage(code: string): string {
       return "Setup token is missing. Create another setup token and retry.";
     case "save_failed":
       return "The device could not save provisioning details. Retry provisioning.";
+    case "wifi_connect_failed":
+      return "The device could not join Wi-Fi. Check the password and try again.";
+    case "wifi_connect_timeout":
+      return "The device could not join Wi-Fi before the connection timed out. Check the password, move closer to the router, and try again.";
+    case "wifi_network_not_found":
+      return "The device could not find that Wi-Fi network. Select a nearby 2.4 GHz network and try again.";
     default:
       return "The device rejected provisioning details. Check the Wi-Fi details and retry.";
   }
