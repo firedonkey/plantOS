@@ -46,3 +46,12 @@ platform/infra/cloud-run/.provisioning_deploy_state
 device/esp32/.pio/
 device/esp32/include/platform_secrets.h
 tools/
+
+# Pantheon project control
+.pantheon/runs/
+.pantheon/tasks/
+.pantheon/memory/
+.pantheon/logs/
+.pantheon/events/
+.pantheon/user_config.json
+.pantheon/*.local.json

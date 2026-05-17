@@ -1,6 +1,0 @@
-APPROVED_PLAN
-.*_attempt_*.md
-scripts/__pycache__/
-
-# Agent execution outputs are local runtime artifacts.
-outputs/

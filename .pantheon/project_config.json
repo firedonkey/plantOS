@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "pantheon_root": "/Users/gary/pantheon",
+  "target_project_root": "/Users/gary/plantOS",
+  "execution_mode": "target_project",
+  "project_control_root": ".pantheon",
+  "runs_dir": ".pantheon/runs",
+  "tasks_dir": ".pantheon/tasks",
+  "memory_dir": ".pantheon/memory",
+  "logs_dir": ".pantheon/logs",
+  "events_dir": ".pantheon/events",
+  "created_at": "2026-05-17T16:05:17Z",
+  "updated_at": "2026-05-17T16:05:17Z",
+  "target_environments": {}
+}
