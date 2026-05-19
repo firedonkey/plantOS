@@ -216,6 +216,9 @@ def test_device_summary_readings_and_latest_image_api():
                 "moisture": 42.5,
                 "temperature": 22.2,
                 "humidity": 51.0,
+                "water_temperature_c": 19.7,
+                "water_level_raw": 35240,
+                "water_level_state": "ok",
                 "light_on": True,
                 "pump_on": False,
                 "pump_status": "idle",
@@ -231,6 +234,9 @@ def test_device_summary_readings_and_latest_image_api():
         summary = summary_response.json()
         assert summary["name"] == "Kitchen Rose"
         assert summary["latest_reading"]["moisture"] == 42.5
+        assert summary["latest_reading"]["water_temperature_c"] == 19.7
+        assert summary["latest_reading"]["water_level_raw"] == 35240
+        assert summary["latest_reading"]["water_level_state"] == "ok"
         assert summary["latest_image"]["content_url"].endswith("/api/images/1/content")
         assert summary["hardware_health"]["last_reading_at"] == summary["latest_reading"]["timestamp"]
         assert summary["hardware_health"]["last_image_at"] == summary["latest_image"]["timestamp"]
@@ -241,6 +247,9 @@ def test_device_summary_readings_and_latest_image_api():
         readings = readings_response.json()
         assert len(readings) == 1
         assert readings[0]["temperature"] == 22.2
+        assert readings[0]["water_temperature_c"] == 19.7
+        assert readings[0]["water_level_raw"] == 35240
+        assert readings[0]["water_level_state"] == "ok"
 
         latest_image_response = client.get(f"/api/devices/{device_id}/images/latest")
         assert latest_image_response.status_code == 200
@@ -250,6 +259,9 @@ def test_device_summary_readings_and_latest_image_api():
         assert list_response.status_code == 200
         listed = list_response.json()
         assert listed[0]["latest_reading"]["temperature"] == 22.2
+        assert listed[0]["latest_reading"]["water_temperature_c"] == 19.7
+        assert listed[0]["latest_reading"]["water_level_raw"] == 35240
+        assert listed[0]["latest_reading"]["water_level_state"] == "ok"
         assert listed[0]["latest_image"]["content_url"].endswith("/api/images/1/content")
         assert listed[0]["status"] == "online"
         assert listed[0]["hardware_health"]["last_reading_at"] == listed[0]["latest_reading"]["timestamp"]
@@ -486,6 +498,45 @@ def test_device_command_wrapper_apis():
         assert light_payload["action"] == "on"
         assert light_payload["queued"] is True
         assert light_payload["command_status"] == "pending"
+
+        unsupported_intensity_response = client.post(
+            f"/api/devices/{device_id}/commands/light",
+            json={"intensity_percent": 65},
+        )
+        assert unsupported_intensity_response.status_code == 409
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                capabilities={
+                    "light_control": True,
+                    "light_intensity_control": True,
+                    "light_control_modes": ["on_off", "intensity"],
+                },
+            )
+
+        intensity_response = client.post(
+            f"/api/devices/{device_id}/commands/light",
+            json={"intensity_percent": 65},
+        )
+        assert intensity_response.status_code == 201
+        intensity_payload = intensity_response.json()
+        assert intensity_payload["status"] == "accepted"
+        assert intensity_payload["command"] == "light"
+        assert intensity_payload["action"] == "set_intensity"
+        assert intensity_payload["value"] == "65"
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            intensity_command = session.get(Command, intensity_payload["command_id"])
+            assert intensity_command is not None
+            assert intensity_command.target == CommandTarget.LIGHT
+            assert intensity_command.action == CommandAction.SET_INTENSITY
+            assert intensity_command.value == "65"
 
         pump_response = client.post(f"/api/devices/{device_id}/commands/pump", json={"action": "run", "seconds": 7})
         assert pump_response.status_code == 201
@@ -1390,6 +1441,9 @@ def test_device_detail_page_shows_latest_data():
                 "moisture": 42.5,
                 "temperature": 22.2,
                 "humidity": 51.0,
+                "water_temperature_c": 19.9,
+                "water_level_raw": 35110,
+                "water_level_state": "ok",
                 "light_on": True,
                 "pump_on": False,
                 "pump_status": "not_needed",
@@ -1429,6 +1483,8 @@ def test_device_detail_page_shows_latest_data():
         assert "42.5%" in detail_response.text
         assert "22.2 C" in detail_response.text
         assert "51.0%" in detail_response.text
+        assert "19.9 C" in detail_response.text
+        assert "ok (35110)" in detail_response.text
     finally:
         teardown_overrides()
 
@@ -1488,6 +1544,9 @@ def test_device_summary_json_returns_latest_status():
                 "moisture": 41.0,
                 "temperature": 23.4,
                 "humidity": 52.5,
+                "water_temperature_c": 20.2,
+                "water_level_raw": 34950,
+                "water_level_state": "ok",
                 "light_on": False,
                 "pump_on": False,
                 "pump_status": "not_needed",
@@ -1501,6 +1560,8 @@ def test_device_summary_json_returns_latest_status():
         payload = response.json()
         assert payload["latest_reading"]["moisture"] == "41.0%"
         assert payload["latest_reading"]["temperature"] == "23.4 C"
+        assert payload["latest_reading"]["water_temperature"] == "20.2 C"
+        assert payload["latest_reading"]["water_level"] == "ok (34950)"
         assert payload["latest_reading"]["light"] == "off"
         assert payload["connection"]["label"] == "Online"
         assert payload["connection"]["source"] == "Last seen from sensor reading"

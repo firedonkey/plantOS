@@ -76,7 +76,7 @@ export function DeviceListScreen() {
             </p>
             <p className="metric-summary">
               {device.latestReading
-                ? `${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C • ${device.latestReading.humidityPercent?.toFixed(1) ?? "--"}% • ${device.latestReading.soilMoisturePercent?.toFixed(1) ?? "--"}%`
+                ? `Air ${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C • Water ${device.latestReading.waterTemperatureC?.toFixed(1) ?? "--"} C • Level ${device.latestReading.waterLevelState ?? "--"}`
                 : "Latest sensor summary unavailable."}
             </p>
           </Link>

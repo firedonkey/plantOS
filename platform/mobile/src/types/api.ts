@@ -31,6 +31,9 @@ export type Device = {
   plantType?: string;
   status: DeviceConnectionState;
   lastSeenAt?: string;
+  currentLightOn?: boolean;
+  currentLightIntensityPercent?: number;
+  currentPumpOn?: boolean;
   latestReading?: SensorReading;
   latestImage?: LatestImage;
 };
@@ -66,10 +69,11 @@ export type SensorReading = {
   waterLevelRaw?: number;
   waterLevelState?: string;
   lightOn?: boolean;
+  lightIntensityPercent?: number;
   pumpOn?: boolean;
 };
 
-export type DeviceCommandAction = "light_on" | "light_off" | "pump_run" | "capture_image";
+export type DeviceCommandAction = "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image";
 
 export type DeviceCommandStatus = "pending" | "sent" | "in_progress" | "completed" | "failed";
 

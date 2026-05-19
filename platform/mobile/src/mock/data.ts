@@ -30,6 +30,7 @@ const latestReading: SensorReading = {
   waterLevelRaw: 35200,
   waterLevelState: "ok",
   lightOn: false,
+  lightIntensityPercent: 0,
 };
 
 const recentCommands: DeviceCommand[] = [
@@ -59,6 +60,7 @@ const history: SensorReading[] = Array.from({ length: 8 }, (_, index) => ({
   waterLevelRaw: 35000 + index * 180,
   waterLevelState: index > 6 ? "low" : "ok",
   lightOn: index % 2 === 0,
+  lightIntensityPercent: index % 2 === 0 ? 55 : 0,
 })).reverse();
 
 export const mockDevices: Device[] = [
@@ -94,6 +96,8 @@ const hardwareHealth: HardwareHealth = {
       water_temperature_sensor: true,
       water_level_sensor: true,
       light_control: true,
+      light_intensity_control: true,
+      light_control_modes: ["on_off", "intensity"],
       led_driver: "AL8860QMP-13",
     },
     lastSeenAt: new Date(now.getTime() - 15 * 1000).toISOString(),

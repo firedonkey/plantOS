@@ -27,7 +27,11 @@ type ApiDeviceSummary = {
     moisture?: number | null;
     temperature?: number | null;
     humidity?: number | null;
+    water_temperature_c?: number | null;
+    water_level_raw?: number | null;
+    water_level_state?: string | null;
     light_on?: boolean | null;
+    light_intensity_percent?: number | null;
     pump_on?: boolean | null;
   } | null;
   latest_image?: {
@@ -81,6 +85,7 @@ type ApiHealthNode = {
   node_index?: number | null;
   display_name?: string | null;
   status: string;
+  capabilities?: Record<string, unknown> | null;
   diagnostics?: ApiHardwareDiagnostics | null;
   last_seen_at?: string | null;
 };
@@ -88,7 +93,7 @@ type ApiHealthNode = {
 type ApiHealthCommand = {
   id: number;
   target: "light" | "pump" | "camera";
-  action: "on" | "off" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   timestamp: string;
@@ -99,7 +104,11 @@ type ApiSensorReading = {
   moisture?: number | null;
   temperature?: number | null;
   humidity?: number | null;
+  water_temperature_c?: number | null;
+  water_level_raw?: number | null;
+  water_level_state?: string | null;
   light_on?: boolean | null;
+  light_intensity_percent?: number | null;
   pump_on?: boolean | null;
 };
 
@@ -107,7 +116,7 @@ type ApiCommandRead = {
   id: number;
   device_id: number;
   target: "light" | "pump" | "camera";
-  action: "on" | "off" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "run" | "capture";
   value?: string | null;
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
@@ -238,7 +247,11 @@ function mapReading(reading?: ApiDeviceSummary["latest_reading"] | ApiSensorRead
     temperatureC: reading.temperature ?? undefined,
     humidityPercent: reading.humidity ?? undefined,
     soilMoisturePercent: reading.moisture ?? undefined,
+    waterTemperatureC: reading.water_temperature_c ?? undefined,
+    waterLevelRaw: reading.water_level_raw ?? undefined,
+    waterLevelState: reading.water_level_state ?? undefined,
     lightOn: reading.light_on ?? undefined,
+    lightIntensityPercent: reading.light_intensity_percent ?? undefined,
     pumpOn: reading.pump_on ?? undefined,
   };
 }
@@ -262,6 +275,9 @@ function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRe
   if (target === "light" && action === "off") {
     return "light_off";
   }
+  if (target === "light" && action === "set_intensity") {
+    return "light_intensity";
+  }
   if (target === "pump" && action === "run") {
     return "pump_run";
   }
@@ -278,6 +294,7 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
     nodeIndex: node.node_index ?? undefined,
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
+    capabilities: node.capabilities ?? undefined,
     diagnostics: mapHardwareDiagnostics(node.diagnostics),
     lastSeenAt: node.last_seen_at ?? undefined,
   };
@@ -521,10 +538,11 @@ function filterMockHistory(history: DeviceDashboard["history"], range: RangeKey)
 export async function sendDeviceCommand(
   deviceId: string,
   action: DeviceCommand["action"],
+  options?: { intensityPercent?: number },
   token?: string,
 ): Promise<{ command: DeviceCommand; usedMock: boolean }> {
   try {
-    const request = commandRequestForAction(action);
+    const request = commandRequestForAction(action, options);
     const created = await apiRequest<ApiCommandEnvelope>(request.path(deviceId), request.init, token);
     return {
       usedMock: false,
@@ -555,7 +573,7 @@ export async function sendDeviceCommand(
   }
 }
 
-function commandRequestForAction(action: DeviceCommand["action"]) {
+function commandRequestForAction(action: DeviceCommand["action"], options?: { intensityPercent?: number }) {
   switch (action) {
     case "light_on":
       return {
@@ -571,6 +589,14 @@ function commandRequestForAction(action: DeviceCommand["action"]) {
         init: {
           method: "POST",
           body: JSON.stringify({ state: "off" }),
+        },
+      };
+    case "light_intensity":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands/light`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ intensity_percent: options?.intensityPercent ?? 0 }),
         },
       };
     case "pump_run":

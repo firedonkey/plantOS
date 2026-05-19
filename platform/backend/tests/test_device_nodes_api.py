@@ -186,6 +186,7 @@ def test_device_node_register_creates_camera_node_for_token_device():
         assert payload["node_index"] == 1
         assert payload["display_name"] == "Camera 1"
         assert payload["hardware_model"] == "xiao_esp32s3_camera"
+        assert payload["capabilities"] == {"camera": True}
         assert payload["status"] == "online"
 
         with TestingSessionLocal() as session:
@@ -225,6 +226,7 @@ def test_device_summary_json_includes_node_summary():
         assert payload["node_summary"]["overall_status"] == "degraded"
         assert payload["node_summary"]["primary"]["node_role"] == "master"
         assert payload["node_summary"]["primary"]["display_name"] == "Master"
+        assert payload["node_summary"]["primary"]["capabilities"] == {}
         assert payload["node_summary"]["cameras"][0]["node_role"] == "camera"
         assert payload["node_summary"]["cameras"][0]["display_name"] == "Camera 1"
         assert payload["node_summary"]["cameras"][0]["status"] == "offline"

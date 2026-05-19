@@ -255,6 +255,7 @@ def device_detail_page(
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     nodes = list_nodes_for_device(session, device.id)
+    node_summary = build_node_summary(nodes)
     latest_image = recent_images[0] if recent_images else None
     latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
@@ -276,7 +277,8 @@ def device_detail_page(
             "recent_commands": recent_commands,
             "command_activity": command_activity,
             "connection": connection,
-            "node_summary": build_node_summary(nodes),
+            "node_summary": node_summary,
+            "light_intensity_supported": _node_summary_supports_light_intensity(node_summary),
             "image_src": proxied_image_src,
             "reading_chart": reading_chart,
             "chart_range": chart_range,
@@ -309,6 +311,7 @@ def device_summary_json(
     recent_images = list_recent_images_for_device(session, device.id, limit=6)
     recent_commands = list_commands_for_device(session, device.id, limit=10)
     nodes = list_nodes_for_device(session, device.id)
+    node_summary = build_node_summary(nodes)
     latest_image = recent_images[0] if recent_images else None
     latest_activity = _latest_device_activity(device, latest_reading, latest_image, recent_commands)
     connection = _device_connection(latest_activity)
@@ -321,7 +324,8 @@ def device_summary_json(
             "recent_images": [_image_summary(image) for image in recent_images],
             "command_activity": [_command_activity_item(command) for command in recent_commands[:8]],
             "active_command_keys": _active_command_keys(recent_commands),
-            "node_summary": build_node_summary(nodes),
+            "node_summary": node_summary,
+            "light_intensity_supported": _node_summary_supports_light_intensity(node_summary),
         }
     )
 
@@ -653,6 +657,11 @@ def _device_overview_card(session: Session, device) -> dict:
         "moisture": _metric_value(latest_reading.moisture if latest_reading else None, "%"),
         "temperature": _metric_value(latest_reading.temperature if latest_reading else None, " C"),
         "humidity": _metric_value(latest_reading.humidity if latest_reading else None, "%"),
+        "water_temperature": _metric_value(latest_reading.water_temperature_c if latest_reading else None, " C"),
+        "water_level": _water_level_label(
+            latest_reading.water_level_state if latest_reading else None,
+            latest_reading.water_level_raw if latest_reading else None,
+        ),
         "light": _bool_label(light_value),
         "pump": _bool_label(pump_value),
         "node_health": _device_node_health_summary(node_summary),
@@ -667,25 +676,35 @@ def _reading_summary(device, reading, recent_commands: list | None = None) -> di
             "moisture": "n/a",
             "temperature": "n/a",
             "humidity": "n/a",
+            "water_temperature": "n/a",
+            "water_level": "n/a",
             "last_reading": device.status_updated_at.strftime("%b %-d, %-I:%M %p"),
             "light": _bool_label(device.current_light_on),
+            "light_intensity": _intensity_label(device.current_light_intensity_percent),
             "pump": _bool_label(device.current_pump_on),
         }
     command_state = _latest_completed_command_state(recent_commands or [], reading.timestamp)
     status_state = _device_status_state(device, reading.timestamp)
     light_value = status_state.get("light", command_state.get("light", reading.light_on))
+    light_intensity_value = status_state.get(
+        "light_intensity",
+        command_state.get("light_intensity", reading.light_intensity_percent),
+    )
     pump_value = status_state.get("pump", command_state.get("pump", reading.pump_on))
     return {
         "moisture": _metric_value(reading.moisture, "%"),
         "temperature": _metric_value(reading.temperature, " C"),
         "humidity": _metric_value(reading.humidity, "%"),
+        "water_temperature": _metric_value(reading.water_temperature_c, " C"),
+        "water_level": _water_level_label(reading.water_level_state, reading.water_level_raw),
         "last_reading": reading.timestamp.strftime("%b %-d, %-I:%M %p"),
         "light": _bool_label(light_value),
+        "light_intensity": _intensity_label(light_intensity_value),
         "pump": _bool_label(pump_value),
     }
 
 
-def _device_status_state(device, since: datetime | None) -> dict[str, bool]:
+def _device_status_state(device, since: datetime | None) -> dict:
     if device.status_updated_at is None:
         return {}
     if since is not None and _as_utc(device.status_updated_at) <= _as_utc(since):
@@ -694,12 +713,14 @@ def _device_status_state(device, since: datetime | None) -> dict[str, bool]:
     state = {}
     if device.current_light_on is not None:
         state["light"] = device.current_light_on
+    if device.current_light_intensity_percent is not None:
+        state["light_intensity"] = device.current_light_intensity_percent
     if device.current_pump_on is not None:
         state["pump"] = device.current_pump_on
     return state
 
 
-def _latest_completed_command_state(commands: list, reading_timestamp: datetime) -> dict[str, bool]:
+def _latest_completed_command_state(commands: list, reading_timestamp: datetime) -> dict:
     state = {}
     reading_time = _as_utc(reading_timestamp)
     for command in sorted(commands, key=lambda item: _as_utc(item.completed_at or item.created_at), reverse=True):
@@ -711,6 +732,9 @@ def _latest_completed_command_state(commands: list, reading_timestamp: datetime)
         target = _enum_value(command.target)
         if target == "light" and "light" not in state and command.light_on is not None:
             state["light"] = command.light_on
+        light_intensity_percent = getattr(command, "light_intensity_percent", None)
+        if target == "light" and "light_intensity" not in state and light_intensity_percent is not None:
+            state["light_intensity"] = light_intensity_percent
         if target == "pump" and "pump" not in state and command.pump_on is not None:
             state["pump"] = command.pump_on
     return state
@@ -832,6 +856,15 @@ def _metric_value(value: float | None, unit: str) -> str:
     return f"{round(float(value), 1)}{unit}"
 
 
+def _water_level_label(state: str | None, raw: int | None) -> str:
+    if state is None and raw is None:
+        return "n/a"
+    label = str(state or "unknown").replace("_", " ")
+    if raw is None:
+        return label
+    return f"{label} ({raw})"
+
+
 def _bool_label(value: bool | None) -> str:
     if value is None:
         return "n/a"
@@ -872,7 +905,7 @@ def _reading_chart(readings: list, max_points: int = MAX_CHART_POINTS) -> list[d
         },
         {
             "key": "temperature",
-            "label": "Temperature",
+            "label": "Air temperature",
             "unit": " C",
             "min": 0,
             "max": 40,
@@ -884,12 +917,26 @@ def _reading_chart(readings: list, max_points: int = MAX_CHART_POINTS) -> list[d
             "min": 0,
             "max": 100,
         },
+        {
+            "key": "water_temperature_c",
+            "label": "Water temperature",
+            "unit": " C",
+            "min": 0,
+            "max": 40,
+        },
+        {
+            "key": "water_level_raw",
+            "label": "Water level raw",
+            "unit": "",
+            "min": 0,
+            "max": 60000,
+        },
     ]
     chart = []
     for metric in metrics:
         values = []
         for reading in ordered:
-            value = getattr(reading, metric["key"])
+            value = getattr(reading, metric["key"], None)
             if value is None:
                 continue
             percent = _chart_percent(float(value), metric["min"], metric["max"])
@@ -962,6 +1009,7 @@ def _command_activity_item(command) -> dict:
         "tone": status_tones.get(status, "waiting"),
         "message": command.message,
         "light_on": command.light_on,
+        "light_intensity_percent": command.light_intensity_percent,
         "pump_on": command.pump_on,
         "time": command.created_at.strftime("%b %-d, %-I:%M %p"),
     }
@@ -971,9 +1019,37 @@ def _command_label(command) -> str:
     target_value = _enum_value(command.target)
     target = "Growing light" if target_value == "light" else target_value.title()
     action = _enum_value(command.action)
+    if action == "set_intensity" and command.value:
+        return f"{target} {command.value}%"
     if action == "run" and command.value:
         return f"{target} run {command.value}s"
     return f"{target} {action}"
+
+
+def _intensity_label(value) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value}%"
+
+
+def _node_summary_supports_light_intensity(node_summary: dict) -> bool:
+    nodes = []
+    if node_summary.get("primary"):
+        nodes.append(node_summary["primary"])
+    nodes.extend(node_summary.get("cameras") or [])
+    return any(_capabilities_support_light_intensity(node.get("capabilities") or {}) for node in nodes)
+
+
+def _capabilities_support_light_intensity(capabilities: dict) -> bool:
+    if capabilities.get("light_intensity_control") is True:
+        return True
+    if capabilities.get("light_dimming") is True or capabilities.get("light_pwm") is True:
+        return True
+    modes = capabilities.get("light_control_modes")
+    if isinstance(modes, list):
+        normalized = {str(mode).strip().lower() for mode in modes}
+        return bool(normalized & {"intensity", "dimming", "pwm"})
+    return False
 
 
 def _active_command_keys(commands: list) -> list[str]:

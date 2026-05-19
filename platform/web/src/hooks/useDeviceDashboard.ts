@@ -136,7 +136,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   );
 
   const runCommand = useCallback(
-    async (action: DeviceCommand["action"]) => {
+    async (action: DeviceCommand["action"], options?: { intensityPercent?: number }) => {
       if (isActionBlocked(action)) {
         setCommandTone("info");
         setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);
@@ -148,7 +148,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setCommandMessage(null);
       setCommandTone(null);
       try {
-        const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
+        const result = await sendDeviceCommand(deviceId, action, options, token ?? undefined);
         setCommandMessage(
           result.usedMock
             ? `Simulated ${friendlyCommandLabel(action)} in mock mode.`
@@ -218,6 +218,8 @@ function friendlyCommandLabel(action: DeviceCommand["action"]): string {
       return "Light on";
     case "light_off":
       return "Light off";
+    case "light_intensity":
+      return "Light intensity";
     case "pump_run":
       return "Pump run";
     case "capture_image":

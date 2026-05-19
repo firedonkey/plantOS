@@ -76,7 +76,7 @@ int PlatformClient::device_id() const {
 }
 
 bool PlatformClient::send_reading(const PlatformReading& reading, String* error) {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   doc["device_id"] = device_id_;
   if (reading.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = reading.hardware_device_id;
@@ -90,7 +90,19 @@ bool PlatformClient::send_reading(const PlatformReading& reading, String* error)
   if (reading.moisture_valid) {
     doc["moisture"] = reading.moisture_percent;
   }
+  if (reading.water_temperature_valid) {
+    doc["water_temperature_c"] = reading.water_temperature_c;
+  }
+  if (reading.water_level_valid) {
+    doc["water_level_raw"] = reading.water_level_raw;
+    if (reading.water_level_state.length() > 0) {
+      doc["water_level_state"] = reading.water_level_state;
+    }
+  }
   doc["light_on"] = reading.light_on;
+  if (reading.light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = reading.light_intensity_percent;
+  }
   doc["pump_on"] = reading.pump_on;
   doc["pump_status"] = reading.pump_status;
   if (reading.idempotency_key.length() > 0) {
@@ -114,7 +126,7 @@ bool PlatformClient::send_reading(const PlatformReading& reading, String* error)
 }
 
 bool PlatformClient::send_hardware_reading(const PlatformReading& reading, String* error) {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   if (reading.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = reading.hardware_device_id;
   }
@@ -127,7 +139,19 @@ bool PlatformClient::send_hardware_reading(const PlatformReading& reading, Strin
   if (reading.moisture_valid) {
     doc["moisture"] = reading.moisture_percent;
   }
+  if (reading.water_temperature_valid) {
+    doc["water_temperature_c"] = reading.water_temperature_c;
+  }
+  if (reading.water_level_valid) {
+    doc["water_level_raw"] = reading.water_level_raw;
+    if (reading.water_level_state.length() > 0) {
+      doc["water_level_state"] = reading.water_level_state;
+    }
+  }
   doc["light_on"] = reading.light_on;
+  if (reading.light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = reading.light_intensity_percent;
+  }
   doc["pump_on"] = reading.pump_on;
   doc["pump_status"] = reading.pump_status;
   if (reading.idempotency_key.length() > 0) {
@@ -153,6 +177,9 @@ bool PlatformClient::send_hardware_reading(const PlatformReading& reading, Strin
 bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
   StaticJsonDocument<192> doc;
   doc["light_on"] = status.light_on;
+  if (status.light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = status.light_intensity_percent;
+  }
   doc["pump_on"] = status.pump_on;
   doc["message"] = status.message;
   if (status.software_version.length() > 0) {
@@ -185,6 +212,9 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
   }
   doc["status"] = status.status.length() > 0 ? status.status : "online";
   doc["light_on"] = status.light_on;
+  if (status.light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = status.light_intensity_percent;
+  }
   doc["pump_on"] = status.pump_on;
   doc["message"] = status.message;
   if (status.software_version.length() > 0) {
@@ -345,11 +375,15 @@ bool PlatformClient::acknowledge_command(
     const char* message,
     bool light_on,
     bool pump_on,
-    String* error) {
+    String* error,
+    int light_intensity_percent) {
   StaticJsonDocument<256> doc;
   doc["status"] = status == nullptr ? "failed" : status;
   doc["message"] = message == nullptr ? "" : message;
   doc["light_on"] = light_on;
+  if (light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = light_intensity_percent;
+  }
   doc["pump_on"] = pump_on;
 
   String body;
@@ -378,11 +412,15 @@ bool PlatformClient::report_hardware_command_result(
     const char* message,
     bool light_on,
     bool pump_on,
-    String* error) {
+    String* error,
+    int light_intensity_percent) {
   StaticJsonDocument<256> doc;
   doc["status"] = status == nullptr ? "failed" : status;
   doc["message"] = message == nullptr ? "" : message;
   doc["light_on"] = light_on;
+  if (light_intensity_percent >= 0) {
+    doc["light_intensity_percent"] = light_intensity_percent;
+  }
   doc["pump_on"] = pump_on;
 
   String body;
@@ -565,7 +603,7 @@ bool PlatformClient::register_device_node(
     doc["software_version"] = software_version;
   }
   if (capabilities_json != nullptr && String(capabilities_json).length() > 0) {
-    StaticJsonDocument<256> capabilities_doc;
+    StaticJsonDocument<512> capabilities_doc;
     DeserializationError capabilities_error = deserializeJson(capabilities_doc, capabilities_json);
     if (capabilities_error) {
       set_error(error, "device node registration capabilities JSON parse failed");

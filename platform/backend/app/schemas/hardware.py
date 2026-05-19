@@ -12,7 +12,11 @@ class HardwareReadingCreate(BaseModel):
     moisture: float | None = Field(default=None, ge=0, le=100)
     temperature: float | None = None
     humidity: float | None = Field(default=None, ge=0, le=100)
+    water_temperature_c: float | None = None
+    water_level_raw: int | None = None
+    water_level_state: str | None = Field(default=None, max_length=40)
     light_on: bool | None = None
+    light_intensity_percent: int | None = Field(default=None, ge=0, le=100)
     pump_on: bool | None = None
     pump_status: str | None = Field(default=None, max_length=120)
     timestamp: datetime | None = None
@@ -23,6 +27,7 @@ class HardwareCommandResultCreate(BaseModel):
     message: str | None = Field(default=None, max_length=240)
     error: str | None = Field(default=None, max_length=240)
     light_on: bool | None = None
+    light_intensity_percent: int | None = Field(default=None, ge=0, le=100)
     pump_on: bool | None = None
 
     @model_validator(mode="after")
@@ -42,6 +47,7 @@ class HardwareHeartbeatCreate(BaseModel):
     status: str = Field(default="online", min_length=2, max_length=40)
     software_version: str | None = Field(default=None, max_length=120)
     light_on: bool | None = None
+    light_intensity_percent: int | None = Field(default=None, ge=0, le=100)
     pump_on: bool | None = None
     message: str | None = Field(default=None, max_length=160)
     diagnostics: HardwareDiagnosticsCreate | None = None
@@ -54,6 +60,7 @@ class HardwareHeartbeatRead(BaseModel):
     node_role: str | None
     software_version: str | None = None
     light_on: bool | None
+    light_intensity_percent: int | None
     pump_on: bool | None
     message: str | None
     updated_at: datetime | None

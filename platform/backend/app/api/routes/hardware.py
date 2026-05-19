@@ -46,7 +46,11 @@ def upload_hardware_reading(
             moisture=payload.moisture,
             temperature=payload.temperature,
             humidity=payload.humidity,
+            water_temperature_c=payload.water_temperature_c,
+            water_level_raw=payload.water_level_raw,
+            water_level_state=payload.water_level_state,
             light_on=payload.light_on,
+            light_intensity_percent=payload.light_intensity_percent,
             pump_on=payload.pump_on,
             pump_status=payload.pump_status,
             timestamp=payload.timestamp,
@@ -81,6 +85,7 @@ def report_hardware_command_result(
         status=payload.status,
         message=payload.final_message,
         light_on=payload.light_on,
+        light_intensity_percent=payload.light_intensity_percent,
         pump_on=payload.pump_on,
     )
 
@@ -128,6 +133,7 @@ def hardware_heartbeat(
         device,
         DeviceStatusCreate(
             light_on=payload.light_on,
+            light_intensity_percent=payload.light_intensity_percent,
             pump_on=payload.pump_on,
             message=payload.message or payload.status,
         ),
@@ -139,6 +145,7 @@ def hardware_heartbeat(
         node_role=node_role,
         software_version=updated_node.software_version if payload.hardware_device_id and updated_node is not None else None,
         light_on=status_read.light_on,
+        light_intensity_percent=status_read.light_intensity_percent,
         pump_on=status_read.pump_on,
         message=status_read.message,
         updated_at=status_read.updated_at,

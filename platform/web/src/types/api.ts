@@ -21,11 +21,11 @@ export type SensorReading = {
   temperatureC?: number;
   humidityPercent?: number;
   soilMoisturePercent?: number;
-  waterLevelPercent?: number;
   waterTemperatureC?: number;
   waterLevelRaw?: number;
   waterLevelState?: string;
   lightOn?: boolean;
+  lightIntensityPercent?: number;
   pumpOn?: boolean;
 };
 
@@ -53,6 +53,7 @@ export type HardwareNodeHealth = {
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
   lastSeenAt?: string;
+  capabilities?: Record<string, unknown>;
   diagnostics?: HardwareDiagnostics;
 };
 
@@ -61,7 +62,7 @@ export type DeviceCommandStatus = "pending" | "sent" | "in_progress" | "complete
 export type DeviceCommand = {
   id: string;
   deviceId: string;
-  action: "light_on" | "light_off" | "pump_run" | "capture_image";
+  action: "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image";
   createdAt: string;
   status: DeviceCommandStatus;
   detail?: string;

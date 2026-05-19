@@ -332,6 +332,9 @@ def get_device_summary(
         name=device.name,
         location=device.location,
         plant_type=device.plant_type,
+        current_light_on=device.current_light_on,
+        current_light_intensity_percent=device.current_light_intensity_percent,
+        current_pump_on=device.current_pump_on,
         latest_reading=(
             DeviceSummaryReadingRead.model_validate(latest_reading, from_attributes=True)
             if latest_reading is not None
@@ -457,6 +460,25 @@ def create_light_command(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
+    if payload.intensity_percent is not None:
+        nodes = list_nodes_for_device(session, device.id)
+        if not _device_supports_light_intensity(nodes):
+            raise HTTPException(status_code=409, detail="Light intensity control is not supported by this device.")
+        command = create_command(
+            session,
+            device.id,
+            CommandCreate(target="light", action="set_intensity", value=str(payload.intensity_percent)),
+        )
+        return _queued_command_response(
+            device_id=device.id,
+            command_name="light",
+            action="set_intensity",
+            command=command,
+            message=f"Light command queued: set intensity to {payload.intensity_percent}%.",
+        )
+
+    if payload.state is None:
+        raise HTTPException(status_code=422, detail="Light command state is required.")
     command = create_command(
         session,
         device.id,
@@ -623,6 +645,9 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
         archived_at=device.archived_at,
         release_reason=device.release_reason,
         status=_device_status(node_summary, latest_reading, latest_node_heartbeat_at(nodes)),
+        current_light_on=device.current_light_on,
+        current_light_intensity_percent=device.current_light_intensity_percent,
+        current_pump_on=device.current_pump_on,
         latest_reading=(
             DeviceSummaryReadingRead.model_validate(latest_reading, from_attributes=True)
             if latest_reading is not None
@@ -689,6 +714,22 @@ def _queued_command_response(
         created_at=command.created_at,
         value=command.value,
     )
+
+
+def _device_supports_light_intensity(nodes: list) -> bool:
+    return any(_node_supports_light_intensity(getattr(node, "capabilities", None) or {}) for node in nodes)
+
+
+def _node_supports_light_intensity(capabilities: dict) -> bool:
+    if capabilities.get("light_intensity_control") is True:
+        return True
+    if capabilities.get("light_dimming") is True or capabilities.get("light_pwm") is True:
+        return True
+    modes = capabilities.get("light_control_modes")
+    if isinstance(modes, list):
+        normalized_modes = {str(mode).strip().lower() for mode in modes}
+        return bool(normalized_modes & {"intensity", "dimming", "pwm"})
+    return False
 
 
 def _command_health(session: Session, device_id: int) -> CommandHealthSnapshot:

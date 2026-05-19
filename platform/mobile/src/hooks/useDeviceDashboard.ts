@@ -5,9 +5,14 @@ import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
+type OptimisticLightState = {
+  lightOn: boolean;
+  lightIntensityPercent?: number;
+};
+
 export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
   const autoRefreshMs = 10000;
-  const captureRefreshMs = 1000;
+  const commandRefreshMs = 1000;
   const autoRefreshEnabled = options?.autoRefresh ?? true;
   const { token } = useSession();
   const [dashboard, setDashboard] = useState<DeviceDashboard | null>(null);
@@ -25,6 +30,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     action: DeviceCommand["action"];
     baselineImageId?: string | null;
   } | null>(null);
+  const [optimisticLight, setOptimisticLight] = useState<OptimisticLightState | null>(null);
   const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
@@ -34,7 +40,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setIsLoading(true);
       }
       const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
-      setDashboard(result.dashboard);
+      let optimisticForRender = optimisticLight;
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
       if (trackedCommand && !result.usedMock) {
@@ -59,11 +65,19 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
               setCommandMessage(null);
               setCommandTone(null);
               setTrackedCommand(null);
+              if (isLightCommand(trackedCommand.action)) {
+                setOptimisticLight(null);
+                optimisticForRender = null;
+              }
             }
           } else if (matchingCommand.status === "failed") {
             setCommandTone("error");
             setCommandMessage(matchingCommand.detail ?? `${friendlyCommandLabel(trackedCommand.action)} failed.`);
             setTrackedCommand(null);
+            if (isLightCommand(trackedCommand.action)) {
+              setOptimisticLight(null);
+              optimisticForRender = null;
+            }
           } else if (trackedCommand.action === "capture_image") {
             setCommandTone("info");
             setCommandMessage(
@@ -90,9 +104,14 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
             setCommandMessage(null);
             setCommandTone(null);
             setTrackedCommand(null);
+            if (isLightCommand(trackedCommand.action)) {
+              setOptimisticLight(null);
+              optimisticForRender = null;
+            }
           }
         }
       }
+      setDashboard(applyOptimisticLight(result.dashboard, optimisticForRender));
       hasLoadedRef.current = true;
     } catch (err) {
       setUsedMock(false);
@@ -100,9 +119,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, selectedRange, token, trackedCommand]);
+  }, [deviceId, optimisticLight, selectedRange, token, trackedCommand]);
 
-  const refreshIntervalMs = trackedCommand?.action === "capture_image" ? captureRefreshMs : autoRefreshMs;
+  const refreshIntervalMs = trackedCommand ? commandRefreshMs : autoRefreshMs;
 
   useEffect(() => {
     if (!deviceId) {
@@ -136,7 +155,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   );
 
   const runCommand = useCallback(
-    async (action: DeviceCommand["action"]) => {
+    async (action: DeviceCommand["action"], options?: { intensityPercent?: number }) => {
       if (isActionBlocked(action)) {
         setCommandTone("info");
         setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);
@@ -144,10 +163,15 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       }
       setActiveCommandAction(action);
       setIsCommandRunning(true);
+      const nextOptimisticLight = optimisticLightForCommand(action, options, dashboard);
+      if (nextOptimisticLight) {
+        setOptimisticLight(nextOptimisticLight);
+        setDashboard((current) => (current ? applyOptimisticLight(current, nextOptimisticLight) : current));
+      }
       try {
         setError(null);
         setCommandTone(null);
-        const result = await sendDeviceCommand(deviceId, action, token ?? undefined);
+        const result = await sendDeviceCommand(deviceId, action, options, token ?? undefined);
         setCommandTone(result.usedMock ? "success" : "info");
         setCommandMessage(
           result.usedMock
@@ -166,7 +190,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
                     : undefined,
               },
         );
-        if (!result.usedMock) {
+        if (!result.usedMock && action === "capture_image") {
           const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
           setDashboard(refreshed.dashboard);
           setUsedMock(refreshed.usedMock);
@@ -174,6 +198,17 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         }
       } catch (err) {
         setTrackedCommand(null);
+        if (nextOptimisticLight) {
+          setOptimisticLight(null);
+          try {
+            const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
+            setDashboard(refreshed.dashboard);
+            setUsedMock(refreshed.usedMock);
+            setLastUpdatedAt(new Date().toISOString());
+          } catch {
+            // Keep the original command failure visible.
+          }
+        }
         setCommandTone("error");
         setCommandMessage(null);
         setError(err instanceof Error ? err.message : "Unable to send command.");
@@ -182,7 +217,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setActiveCommandAction(null);
       }
     },
-    [deviceId, isActionBlocked, selectedRange, token],
+    [dashboard, deviceId, isActionBlocked, selectedRange, token],
   );
 
   return {
@@ -203,12 +238,69 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   };
 }
 
+function isLightCommand(action: DeviceCommand["action"]): boolean {
+  return action === "light_on" || action === "light_off" || action === "light_intensity";
+}
+
+function optimisticLightForCommand(
+  action: DeviceCommand["action"],
+  options: { intensityPercent?: number } | undefined,
+  dashboard: DeviceDashboard | null,
+): OptimisticLightState | null {
+  const currentIntensity =
+    dashboard?.device.currentLightIntensityPercent ??
+    dashboard?.device.latestReading?.lightIntensityPercent ??
+    (dashboard?.device.currentLightOn ?? dashboard?.device.latestReading?.lightOn ? 100 : 0);
+  switch (action) {
+    case "light_on":
+      return { lightOn: true, lightIntensityPercent: Math.max(1, currentIntensity || 100) };
+    case "light_off":
+      return { lightOn: false, lightIntensityPercent: 0 };
+    case "light_intensity": {
+      const lightIntensityPercent = clampPercent(options?.intensityPercent ?? 0);
+      return { lightOn: lightIntensityPercent > 0, lightIntensityPercent };
+    }
+    default:
+      return null;
+  }
+}
+
+function applyOptimisticLight(dashboard: DeviceDashboard, optimisticLight: OptimisticLightState | null): DeviceDashboard {
+  if (!optimisticLight) {
+    return dashboard;
+  }
+  return {
+    ...dashboard,
+    device: {
+      ...dashboard.device,
+      currentLightOn: optimisticLight.lightOn,
+      currentLightIntensityPercent: optimisticLight.lightIntensityPercent,
+      latestReading: dashboard.device.latestReading
+        ? {
+            ...dashboard.device.latestReading,
+            lightOn: optimisticLight.lightOn,
+            lightIntensityPercent: optimisticLight.lightIntensityPercent,
+          }
+        : dashboard.device.latestReading,
+    },
+  };
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 function friendlyCommandLabel(action: DeviceCommand["action"]): string {
   switch (action) {
     case "light_on":
       return "Grow LED on";
     case "light_off":
       return "Grow LED off";
+    case "light_intensity":
+      return "Grow LED intensity";
     case "pump_run":
       return "Pump run";
     case "capture_image":

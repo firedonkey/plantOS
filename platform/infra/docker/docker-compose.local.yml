@@ -51,6 +51,10 @@ services:
       PLANTLAB_LOCAL_SETUP_URL: ${PLANTLAB_LOCAL_SETUP_URL:-http://10.42.0.1:8080}
       PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX: ${PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX:-^https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]+\.[0-9]+)(:[0-9]+)?$}
       PORT: 8080
+    command: >
+      sh -c "python -m app.db.local_migration_bootstrap &&
+      uvicorn app.main:app --host 0.0.0.0 --port $${PORT:-8080}
+      --proxy-headers --forwarded-allow-ips='*'"
     ports:
       - "8000:8080"
     volumes:

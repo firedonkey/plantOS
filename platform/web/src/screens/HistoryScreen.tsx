@@ -51,10 +51,10 @@ export function HistoryScreen() {
           <div className="card" key={reading.timestamp}>
             <strong>{new Date(reading.timestamp).toLocaleString()}</strong>
             <p className="subtitle">
-              {reading.temperatureC?.toFixed(1) ?? "--"} C • {reading.humidityPercent?.toFixed(1) ?? "--"}% • {reading.soilMoisturePercent?.toFixed(1) ?? "--"}%
+              Air {reading.temperatureC?.toFixed(1) ?? "--"} C • Humidity {reading.humidityPercent?.toFixed(1) ?? "--"}% • Water {reading.waterTemperatureC?.toFixed(1) ?? "--"} C
             </p>
             <p className="meta-text">
-              Light {reading.lightOn ? "on" : "off"} • Pump {reading.pumpOn ? "on" : "off"}
+              Grow LED {reading.lightOn ? "on" : "off"} • Water level {reading.waterLevelState ?? "unknown"} {reading.waterLevelRaw !== undefined ? `(${reading.waterLevelRaw})` : ""}
             </p>
           </div>
         ))}

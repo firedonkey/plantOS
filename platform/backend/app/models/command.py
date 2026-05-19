@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -20,6 +20,7 @@ class CommandTarget(str, Enum):
 class CommandAction(str, Enum):
     ON = "on"
     OFF = "off"
+    SET_INTENSITY = "set_intensity"
     RUN = "run"
     CAPTURE = "capture"
 
@@ -48,6 +49,7 @@ class Command(Base):
     )
     message: Mapped[Optional[str]] = mapped_column(String(240), default=None)
     light_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
+    light_intensity_percent: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     pump_on: Mapped[Optional[bool]] = mapped_column(Boolean, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

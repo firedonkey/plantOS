@@ -42,5 +42,6 @@ class DeviceNodeRegisterRead(BaseModel):
     hardware_model: str | None
     hardware_version: str | None
     software_version: str | None
+    capabilities: dict = Field(default_factory=dict)
     status: str
     last_seen_at: datetime | None

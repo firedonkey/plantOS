@@ -15,9 +15,21 @@
 #define PIN_SOIL_MOISTURE_ADC 1
 #define PIN_DHT22_DATA 4
 
+// Water sensors
+// Defaults are placeholders until confirmed against the wired master board.
+#define PIN_WATER_TEMPERATURE_ONEWIRE 5
+#define PIN_WATER_LEVEL_TOUCH 13
+
 // Moisture ADC behavior
 #define MOISTURE_SAMPLE_COUNT 10
 #define MOISTURE_SAMPLE_DELAY_MS 5
+
+// Water level touch behavior. ESP32 touch readings typically drop when a
+// capacitive probe is active, so raw values at or below the threshold mean water
+// is present. Set threshold below 0 to report "unknown" while still sending raw.
+#define WATER_LEVEL_SAMPLE_COUNT 10
+#define WATER_LEVEL_SAMPLE_DELAY_MS 5
+#define WATER_LEVEL_PRESENT_RAW_THRESHOLD 36000
 
 // Calibration defaults (adjust later with real calibration)
 // Typical capacitive sensors read higher when dry and lower when wet.
@@ -29,11 +41,20 @@
 #define PIN_I2C_SCL 9
 
 // Actuators (AO3400A low-side MOSFET gate control)
-#define PIN_LIGHT_MOSFET_GATE 16
-#define PIN_PUMP_MOSFET_GATE 15
+// Current PCB hardware uses GPIO15 for the grow LED gate.
+#define PIN_LIGHT_MOSFET_GATE 15
+// Legacy pump support is retained in firmware, but it must not share the grow
+// LED pin. GPIO16 is unused on the current PCB.
+#define PIN_PUMP_MOSFET_GATE 16
 
 #define ACTUATOR_ON_LEVEL HIGH
 #define ACTUATOR_OFF_LEVEL LOW
+
+// Grow LED intensity control uses PWM on the MOSFET gate. Set this to 0 for
+// relay or other on/off-only light hardware.
+#ifndef PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED
+#define PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED 1
+#endif
 
 // Power button + status LED
 // Power button input (active low with internal pull-up).

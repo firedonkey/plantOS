@@ -113,12 +113,43 @@ def test_duplicate_active_command_returns_existing_command():
         teardown_overrides()
 
 
+def test_light_intensity_command_accepts_percent_value():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "set_intensity", "value": "65"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["target"] == "light"
+        assert payload["action"] == "set_intensity"
+        assert payload["value"] == "65"
+        assert payload["status"] == "pending"
+    finally:
+        teardown_overrides()
+
+
 def test_command_rejects_invalid_target_action():
     client, device_id, _ = build_client_with_devices()
     try:
         response = client.post(
             f"/api/devices/{device_id}/commands",
             json={"target": "pump", "action": "on"},
+        )
+
+        assert response.status_code == 422
+    finally:
+        teardown_overrides()
+
+
+def test_light_intensity_command_rejects_invalid_percent_value():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "light", "action": "set_intensity", "value": "125"},
         )
 
         assert response.status_code == 422

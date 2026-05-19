@@ -23,6 +23,10 @@ cd /Users/gary/plantOS
 docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
 ```
 
+The Docker `platform` service runs local database bootstrap/migrations before
+starting the backend, so schema changes are applied to the local Postgres
+volume during restart.
+
 Current local test flow:
 
 ```bash

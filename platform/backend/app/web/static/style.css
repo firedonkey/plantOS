@@ -1271,6 +1271,30 @@ input {
   opacity: 0.86;
 }
 
+.light-intensity-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  max-width: 320px;
+}
+
+.light-intensity-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.light-intensity-field strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.light-intensity-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--green);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

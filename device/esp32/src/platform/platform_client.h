@@ -17,10 +17,16 @@ struct PlatformReading {
   float temperature_c;
   float humidity_percent;
   float moisture_percent;
+  float water_temperature_c;
+  int water_level_raw = 0;
   bool temperature_valid;
   bool humidity_valid;
   bool moisture_valid;
+  bool water_temperature_valid = false;
+  bool water_level_valid = false;
+  String water_level_state;
   bool light_on;
+  int light_intensity_percent = -1;
   bool pump_on;
   String pump_status;
   String idempotency_key;
@@ -63,6 +69,7 @@ struct PlatformStatus {
   String node_role;
   String status;
   bool light_on;
+  int light_intensity_percent = -1;
   bool pump_on;
   String message;
   String software_version;
@@ -89,14 +96,16 @@ class PlatformClient {
       const char* message,
       bool light_on,
       bool pump_on,
-      String* error = nullptr);
+      String* error = nullptr,
+      int light_intensity_percent = -1);
   bool report_hardware_command_result(
       int command_id,
       const char* status,
       const char* message,
       bool light_on,
       bool pump_on,
-      String* error = nullptr);
+      String* error = nullptr,
+      int light_intensity_percent = -1);
   bool upload_jpeg(
       const uint8_t* bytes,
       size_t length,

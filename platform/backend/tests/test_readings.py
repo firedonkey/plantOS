@@ -81,7 +81,11 @@ def test_ingest_sensor_data_for_owned_device():
                 "moisture": 42.5,
                 "temperature": 22.2,
                 "humidity": 51.0,
+                "water_temperature_c": 19.8,
+                "water_level_raw": 35120,
+                "water_level_state": "ok",
                 "light_on": True,
+                "light_intensity_percent": 70,
                 "pump_on": False,
                 "pump_status": "not_needed",
                 "timestamp": timestamp.isoformat(),
@@ -94,7 +98,11 @@ def test_ingest_sensor_data_for_owned_device():
         assert payload["moisture"] == 42.5
         assert payload["temperature"] == 22.2
         assert payload["humidity"] == 51.0
+        assert payload["water_temperature_c"] == 19.8
+        assert payload["water_level_raw"] == 35120
+        assert payload["water_level_state"] == "ok"
         assert payload["light_on"] is True
+        assert payload["light_intensity_percent"] == 70
         assert payload["pump_on"] is False
         assert payload["pump_status"] == "not_needed"
     finally:

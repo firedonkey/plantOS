@@ -185,6 +185,7 @@ def acknowledge_command(session: Session, command: Command, payload: CommandAck)
         status=payload.status,
         message=payload.message,
         light_on=payload.light_on,
+        light_intensity_percent=payload.light_intensity_percent,
         pump_on=payload.pump_on,
     )
 
@@ -196,19 +197,23 @@ def report_command_result(
     status: CommandStatus,
     message: str | None = None,
     light_on: bool | None = None,
+    light_intensity_percent: int | None = None,
     pump_on: bool | None = None,
 ) -> Command:
     now = datetime.now(timezone.utc)
     command.status = status
     command.message = message
     command.light_on = light_on
+    command.light_intensity_percent = light_intensity_percent
     command.pump_on = pump_on
     command.completed_at = now if status in {CommandStatus.COMPLETED, CommandStatus.FAILED, CommandStatus.TIMED_OUT} else None
     if light_on is not None:
         command.device.current_light_on = light_on
+    if light_intensity_percent is not None:
+        command.device.current_light_intensity_percent = light_intensity_percent
     if pump_on is not None:
         command.device.current_pump_on = pump_on
-    if light_on is not None or pump_on is not None:
+    if light_on is not None or light_intensity_percent is not None or pump_on is not None:
         command.device.status_message = message
         command.device.status_updated_at = now
     session.add(command)

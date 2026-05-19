@@ -215,6 +215,7 @@ def _node_summary_item(node: DeviceNode) -> dict:
         "ota_error": node.ota_error,
         "ota_updated_at": node.ota_updated_at.isoformat() if node.ota_updated_at is not None else None,
         "ota_last_success_at": node.ota_last_success_at.isoformat() if node.ota_last_success_at is not None else None,
+        "capabilities": node.capabilities or {},
         "status": _normalized_node_status(node.status),
         "last_seen_at": node.last_seen_at.isoformat() if node.last_seen_at is not None else None,
     }

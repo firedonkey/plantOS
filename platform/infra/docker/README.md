@@ -26,7 +26,21 @@ The local compose stack is intentionally development-only:
 - `PLANTLAB_DEV_TOKEN_AUTH_ENABLED=true` is set for local mobile username/password login.
 - image URLs use the authenticated local proxy path instead of GCS signed URLs.
 - container dotenv loading is disabled with `PLANTLAB_SKIP_DOTENV=1`; runtime values come from compose and `platform/infra/env/.env.local`.
+- the `platform` service runs local database bootstrap/migrations before
+  starting Uvicorn, so existing Postgres volumes get new backend columns.
 - both backend services include Docker healthchecks.
+
+Apply backend schema changes to the local Docker database:
+
+```bash
+docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build platform
+```
+
+Check the migration state:
+
+```bash
+docker exec plantlab-local-postgres psql -U plantlab_user -d plantlab -c "SELECT * FROM alembic_version;"
+```
 
 For iPhone local QA, set `platform/mobile/.env` to the Mac LAN URL, for example:
 

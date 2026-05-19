@@ -11,7 +11,7 @@ PlantOS is a local-to-cloud plant monitoring and control system. It includes ESP
 ## Main Features
 
 - BLE Wi-Fi provisioning and repair flows.
-- ESP32 master node sensor reporting and grow LED control.
+- ESP32 master node sensor reporting and grow LED on/off or capability-gated intensity control.
 - ESP-NOW camera node scheduling and manual capture.
 - Backend APIs for auth, devices, readings, images, firmware OTA, and diagnostics.
 - Mobile and web dashboards for device status, recent images, trends, and settings.

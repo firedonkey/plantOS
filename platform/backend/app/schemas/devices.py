@@ -10,7 +10,11 @@ class DeviceSummaryReadingRead(BaseModel):
     moisture: float | None
     temperature: float | None
     humidity: float | None
+    water_temperature_c: float | None
+    water_level_raw: int | None
+    water_level_state: str | None
     light_on: bool | None
+    light_intensity_percent: int | None
     pump_on: bool | None
     pump_status: str | None
 
@@ -39,6 +43,7 @@ class DeviceHealthNodeRead(BaseModel):
     ota_error: str | None = None
     ota_updated_at: datetime | None = None
     ota_last_success_at: datetime | None = None
+    capabilities: dict | None = None
     last_seen_at: datetime | None = None
     health_status: str | None = None
     diagnostics: DeviceDiagnosticSnapshotRead | None = None
@@ -101,6 +106,9 @@ class DeviceRead(BaseModel):
     archived_at: datetime | None = None
     release_reason: str | None = None
     status: str | None = None
+    current_light_on: bool | None = None
+    current_light_intensity_percent: int | None = None
+    current_pump_on: bool | None = None
     latest_reading: DeviceSummaryReadingRead | None = None
     latest_image: DeviceSummaryImageRead | None = None
     node_summary: dict | None = None
@@ -114,6 +122,9 @@ class DeviceSummaryRead(BaseModel):
     name: str
     location: str | None
     plant_type: str | None
+    current_light_on: bool | None = None
+    current_light_intensity_percent: int | None = None
+    current_pump_on: bool | None = None
     latest_reading: DeviceSummaryReadingRead | None
     latest_image: DeviceSummaryImageRead | None
     node_summary: dict

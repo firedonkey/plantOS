@@ -30,10 +30,16 @@ export function DeviceDashboardScreen() {
   } = useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
   const growLedOn = dashboard?.device.latestReading?.lightOn === true;
+  const growLedIntensityPercent = dashboard?.device.latestReading?.lightIntensityPercent;
+  const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);
+  const currentLightIntensity = clampLightIntensity(growLedIntensityPercent ?? (growLedOn ? 100 : 0));
+  const [lightIntensityDraft, setLightIntensityDraft] = useState(currentLightIntensity);
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
+  const pendingLightIntensity = activeCommandAction === "light_intensity" || isActionBlocked("light_intensity");
   const nextLightAction = growLedOn ? "light_off" : "light_on";
   const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
+  const lightIntensityDisabled = isCommandRunning || pendingLightIntensity;
   const lightToggleLabel = pendingLightOn
     ? "Turning on..."
     : pendingLightOff
@@ -43,6 +49,11 @@ export function DeviceDashboardScreen() {
         : growLedOn
           ? "Turn off"
           : "Turn on";
+  const lightIntensityApplyLabel = pendingLightIntensity ? "Setting..." : isCommandRunning ? "Working..." : "Set";
+
+  useEffect(() => {
+    setLightIntensityDraft(currentLightIntensity);
+  }, [currentLightIntensity, dashboard?.device.id]);
 
   useEffect(() => {
     if (!dashboard?.recentImages.length) {
@@ -140,7 +151,7 @@ export function DeviceDashboardScreen() {
             <div className="metric-card metric-card-control">
               <span>Grow LED</span>
               <div className="metric-control-row">
-                <strong>{growLedOn ? "On" : "Off"}</strong>
+                <strong>{growLedOn ? (lightIntensitySupported ? `${currentLightIntensity}%` : "On") : "Off"}</strong>
                 <button
                   aria-label={lightToggleLabel}
                   aria-pressed={growLedOn}
@@ -153,6 +164,33 @@ export function DeviceDashboardScreen() {
                   <span className="toggle-switch-knob" aria-hidden="true" />
                 </button>
               </div>
+              {lightIntensitySupported ? (
+                <div className="light-intensity-control">
+                  <label htmlFor="grow-led-intensity">
+                    <span>Intensity</span>
+                    <strong>{lightIntensityDraft}%</strong>
+                  </label>
+                  <input
+                    id="grow-led-intensity"
+                    aria-label="Grow LED intensity"
+                    disabled={lightIntensityDisabled}
+                    max={100}
+                    min={0}
+                    onChange={(event) => setLightIntensityDraft(clampLightIntensity(Number(event.currentTarget.value)))}
+                    step={5}
+                    type="range"
+                    value={lightIntensityDraft}
+                  />
+                  <button
+                    className="secondary-button light-intensity-button"
+                    disabled={lightIntensityDisabled || lightIntensityDraft === currentLightIntensity}
+                    onClick={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}
+                    type="button"
+                  >
+                    {lightIntensityApplyLabel}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -209,4 +247,29 @@ function shouldUseImageAuthHeaders(url: string): boolean {
 function formatWaterLevel(state?: string, raw?: number) {
   const label = state ? state.charAt(0).toUpperCase() + state.slice(1) : "--";
   return raw !== undefined ? `${label} (${raw})` : label;
+}
+
+function clampLightIntensity(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function hasLightIntensitySupport(capabilities?: Record<string, unknown>): boolean {
+  if (!capabilities) {
+    return false;
+  }
+  if (
+    capabilities.light_intensity_control === true ||
+    capabilities.light_dimming === true ||
+    capabilities.light_pwm === true
+  ) {
+    return true;
+  }
+  const modes = capabilities.light_control_modes;
+  if (!Array.isArray(modes)) {
+    return false;
+  }
+  return modes.some((mode) => ["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase()));
 }

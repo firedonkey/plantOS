@@ -241,6 +241,40 @@ input {
   left: 7px;
 }
 
+.light-intensity-control {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.light-intensity-control label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #55635d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.light-intensity-control label strong {
+  color: #1f2a24;
+  font-size: 16px;
+}
+
+.light-intensity-control input[type="range"] {
+  width: 100%;
+  accent-color: #2f855a;
+}
+
+.light-intensity-control input[type="range"]:disabled {
+  opacity: 0.6;
+}
+
+.light-intensity-button {
+  width: 100%;
+}
+
 .dashboard-action-button {
   width: 100%;
   text-decoration: none;

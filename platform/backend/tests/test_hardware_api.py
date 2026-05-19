@@ -67,7 +67,14 @@ def test_hardware_readings_accept_valid_device_token():
     try:
         response = client.post(
             "/api/hardware/readings",
-            json={"moisture": 41.5, "temperature": 22.4, "timestamp": datetime.now(timezone.utc).isoformat()},
+            json={
+                "moisture": 41.5,
+                "temperature": 22.4,
+                "water_temperature_c": 20.1,
+                "water_level_raw": 34890,
+                "water_level_state": "ok",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
             headers={"X-Device-Token": "token-owner"},
         )
 
@@ -75,10 +82,16 @@ def test_hardware_readings_accept_valid_device_token():
         payload = response.json()
         assert payload["device_id"] == device_id
         assert payload["moisture"] == 41.5
+        assert payload["water_temperature_c"] == 20.1
+        assert payload["water_level_raw"] == 34890
+        assert payload["water_level_state"] == "ok"
 
         with client.testing_session_local() as session:
             readings = session.query(SensorReading).filter(SensorReading.device_id == device_id).all()
             assert len(readings) == 1
+            assert readings[0].water_temperature_c == 20.1
+            assert readings[0].water_level_raw == 34890
+            assert readings[0].water_level_state == "ok"
     finally:
         teardown_overrides()
 
@@ -118,6 +131,50 @@ def test_hardware_pending_commands_are_scoped_to_device():
         teardown_overrides()
 
 
+def test_hardware_pending_commands_include_light_intensity_contract():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        with client.testing_session_local() as session:
+            session.add(
+                DeviceNode(
+                    device_id=device_id,
+                    hardware_device_id="master-01",
+                    node_role="master",
+                    display_name="Master",
+                    status="online",
+                    capabilities={
+                        "light_control": True,
+                        "light_intensity_control": True,
+                        "light_control_modes": ["on_off", "intensity"],
+                    },
+                )
+            )
+            session.commit()
+
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands/light",
+            json={"intensity_percent": 65},
+        )
+        assert create_response.status_code == 201
+        command_id = create_response.json()["command_id"]
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        response = client.get("/api/hardware/commands/pending", headers={"X-Device-Token": "token-owner"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["id"] == command_id
+        assert payload[0]["device_id"] == device_id
+        assert payload[0]["target"] == "light"
+        assert payload[0]["action"] == "set_intensity"
+        assert payload[0]["value"] == "65"
+        assert payload[0]["status"] == "in_progress"
+    finally:
+        teardown_overrides()
+
+
 def test_hardware_command_result_updates_status_and_hides_completed_from_pending():
     client, device_id, _ = build_client_with_devices()
     try:
@@ -140,12 +197,19 @@ def test_hardware_command_result_updates_status_and_hides_completed_from_pending
 
         done_response = client.post(
             f"/api/hardware/commands/{command_id}/result",
-            json={"status": "completed", "message": "light on", "light_on": True, "pump_on": False},
+            json={
+                "status": "completed",
+                "message": "light on",
+                "light_on": True,
+                "light_intensity_percent": 80,
+                "pump_on": False,
+            },
             headers={"X-Device-Token": "token-owner"},
         )
         assert done_response.status_code == 200
         assert done_response.json()["status"] == "completed"
         assert done_response.json()["light_on"] is True
+        assert done_response.json()["light_intensity_percent"] == 80
 
         empty_pending = client.get("/api/hardware/commands/pending", headers={"X-Device-Token": "token-owner"})
         assert empty_pending.status_code == 200
@@ -156,7 +220,9 @@ def test_hardware_command_result_updates_status_and_hides_completed_from_pending
             device = session.get(Device, device_id)
             assert command.status == CommandStatus.COMPLETED
             assert command.message == "light on"
+            assert command.light_intensity_percent == 80
             assert device.current_light_on is True
+            assert device.current_light_intensity_percent == 80
     finally:
         teardown_overrides()
 
@@ -213,6 +279,7 @@ def test_hardware_heartbeat_updates_device_and_node_status():
                 "node_role": "master",
                 "status": "online",
                 "light_on": True,
+                "light_intensity_percent": 55,
                 "pump_on": False,
                 "message": "hardware loop healthy",
             },
@@ -223,6 +290,7 @@ def test_hardware_heartbeat_updates_device_and_node_status():
         payload = response.json()
         assert payload["status"] == "online"
         assert payload["hardware_device_id"] == "master-01"
+        assert payload["light_intensity_percent"] == 55
         assert payload["last_seen_at"] is not None
         assert payload["diagnostics"] is None
 
@@ -230,6 +298,7 @@ def test_hardware_heartbeat_updates_device_and_node_status():
             device = session.get(Device, device_id)
             node = session.get(DeviceNode, "master-01")
             assert device.current_light_on is True
+            assert device.current_light_intensity_percent == 55
             assert device.status_message == "hardware loop healthy"
             assert node.status == "online"
             assert node.last_seen_at is not None

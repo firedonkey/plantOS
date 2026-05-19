@@ -16,6 +16,7 @@ int main() {
   status.node_role = "master";
   status.status = "online";
   status.light_on = true;
+  status.light_intensity_percent = 45;
   status.pump_on = false;
   status.message = "heartbeat";
   status.software_version = "0.2.3";
@@ -59,6 +60,7 @@ int main() {
   assert(std::string(doc["message"] | "") == "heartbeat");
   assert(std::string(doc["software_version"] | "") == "0.2.3");
   assert((doc["light_on"] | false) == true);
+  assert((doc["light_intensity_percent"] | 0) == 45);
   assert((doc["pump_on"] | true) == false);
   assert((doc["diagnostics"]["schema_version"] | 0) == 1);
   assert((doc["diagnostics"]["uptime_seconds"] | 0) == 3661);
@@ -91,6 +93,57 @@ int main() {
   assert(!json_error);
   assert(!legacy_doc.containsKey("software_version"));
   assert(!legacy_doc.containsKey("diagnostics"));
+  assert(!legacy_doc.containsKey("light_intensity_percent"));
+
+  platform_client_host_test::reset_http_capture();
+  PlatformReading reading;
+  reading.hardware_device_id = "master-01";
+  reading.temperature_c = 22.5f;
+  reading.humidity_percent = 51.0f;
+  reading.moisture_percent = 38.5f;
+  reading.water_temperature_c = 19.75f;
+  reading.water_level_raw = 35120;
+  reading.temperature_valid = true;
+  reading.humidity_valid = true;
+  reading.moisture_valid = true;
+  reading.water_temperature_valid = true;
+  reading.water_level_valid = true;
+  reading.water_level_state = "ok";
+  reading.light_on = true;
+  reading.light_intensity_percent = 65;
+  reading.pump_on = false;
+  reading.pump_status = "idle";
+
+  assert(client.send_hardware_reading(reading, &error));
+  assert(platform_client_host_test::last_url == "https://api.example.test/base/api/hardware/readings");
+
+  StaticJsonDocument<768> reading_doc;
+  json_error = deserializeJson(reading_doc, platform_client_host_test::last_post_body);
+  assert(!json_error);
+  assert(std::string(reading_doc["hardware_device_id"] | "") == "master-01");
+  assert((reading_doc["temperature"] | 0.0f) == 22.5f);
+  assert((reading_doc["humidity"] | 0.0f) == 51.0f);
+  assert((reading_doc["moisture"] | 0.0f) == 38.5f);
+  assert((reading_doc["water_temperature_c"] | 0.0f) == 19.75f);
+  assert((reading_doc["water_level_raw"] | 0) == 35120);
+  assert(std::string(reading_doc["water_level_state"] | "") == "ok");
+  assert((reading_doc["light_on"] | false) == true);
+  assert((reading_doc["light_intensity_percent"] | 0) == 65);
+  assert((reading_doc["pump_on"] | true) == false);
+  assert(std::string(reading_doc["pump_status"] | "") == "idle");
+
+  platform_client_host_test::reset_http_capture();
+  assert(client.send_reading(reading, &error));
+  assert(platform_client_host_test::last_url == "https://api.example.test/base/api/data");
+
+  StaticJsonDocument<768> legacy_reading_doc;
+  json_error = deserializeJson(legacy_reading_doc, platform_client_host_test::last_post_body);
+  assert(!json_error);
+  assert((legacy_reading_doc["device_id"] | 0) == 42);
+  assert(std::string(legacy_reading_doc["hardware_device_id"] | "") == "master-01");
+  assert((legacy_reading_doc["water_temperature_c"] | 0.0f) == 19.75f);
+  assert((legacy_reading_doc["water_level_raw"] | 0) == 35120);
+  assert(std::string(legacy_reading_doc["water_level_state"] | "") == "ok");
 
   return 0;
 }

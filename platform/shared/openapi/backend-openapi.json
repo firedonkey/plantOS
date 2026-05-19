@@ -2813,6 +2813,19 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -2836,6 +2849,7 @@
         "enum": [
           "on",
           "off",
+          "set_intensity",
           "run",
           "capture"
         ],
@@ -2921,6 +2935,17 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -2972,6 +2997,7 @@
           "status",
           "message",
           "light_on",
+          "light_intensity_percent",
           "pump_on",
           "created_at",
           "sent_at",
@@ -4003,6 +4029,18 @@
             ],
             "title": "Ota Last Success At"
           },
+          "capabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
           "last_seen_at": {
             "anyOf": [
               {
@@ -4313,6 +4351,11 @@
             ],
             "title": "Software Version"
           },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -4438,6 +4481,39 @@
               }
             ],
             "title": "Status"
+          },
+          "current_light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Light On"
+          },
+          "current_light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Light Intensity Percent"
+          },
+          "current_pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pump On"
           },
           "latest_reading": {
             "anyOf": [
@@ -4673,6 +4749,19 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -4716,6 +4805,17 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -4755,6 +4855,7 @@
         "required": [
           "device_id",
           "light_on",
+          "light_intensity_percent",
           "pump_on",
           "message",
           "updated_at"
@@ -4827,6 +4928,39 @@
               }
             ],
             "title": "Plant Type"
+          },
+          "current_light_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Light On"
+          },
+          "current_light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Light Intensity Percent"
+          },
+          "current_pump_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pump On"
           },
           "latest_reading": {
             "anyOf": [
@@ -4916,6 +5050,39 @@
             ],
             "title": "Humidity"
           },
+          "water_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Temperature C"
+          },
+          "water_level_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level Raw"
+          },
+          "water_level_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level State"
+          },
           "light_on": {
             "anyOf": [
               {
@@ -4926,6 +5093,17 @@
               }
             ],
             "title": "Light On"
+          },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
           },
           "pump_on": {
             "anyOf": [
@@ -4956,7 +5134,11 @@
           "moisture",
           "temperature",
           "humidity",
+          "water_temperature_c",
+          "water_level_raw",
+          "water_level_state",
           "light_on",
+          "light_intensity_percent",
           "pump_on",
           "pump_status"
         ],
@@ -5465,6 +5647,19 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -5656,6 +5851,19 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -5747,6 +5955,17 @@
             ],
             "title": "Light On"
           },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
+          },
           "pump_on": {
             "anyOf": [
               {
@@ -5811,6 +6030,7 @@
           "hardware_device_id",
           "node_role",
           "light_on",
+          "light_intensity_percent",
           "pump_on",
           "message",
           "updated_at",
@@ -5869,6 +6089,40 @@
             ],
             "title": "Humidity"
           },
+          "water_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Temperature C"
+          },
+          "water_level_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level Raw"
+          },
+          "water_level_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level State"
+          },
           "light_on": {
             "anyOf": [
               {
@@ -5879,6 +6133,19 @@
               }
             ],
             "title": "Light On"
+          },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
           },
           "pump_on": {
             "anyOf": [
@@ -5962,18 +6229,35 @@
       "LightCommandRequest": {
         "properties": {
           "state": {
-            "type": "string",
-            "enum": [
-              "on",
-              "off"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "on",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "State"
+          },
+          "intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intensity Percent"
           }
         },
         "type": "object",
-        "required": [
-          "state"
-        ],
         "title": "LightCommandRequest"
       },
       "PumpCommandRequest": {
@@ -6059,6 +6343,40 @@
             ],
             "title": "Humidity"
           },
+          "water_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Temperature C"
+          },
+          "water_level_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level Raw"
+          },
+          "water_level_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level State"
+          },
           "light_on": {
             "anyOf": [
               {
@@ -6069,6 +6387,19 @@
               }
             ],
             "title": "Light On"
+          },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
           },
           "pump_on": {
             "anyOf": [
@@ -6160,6 +6491,39 @@
             ],
             "title": "Humidity"
           },
+          "water_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Temperature C"
+          },
+          "water_level_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level Raw"
+          },
+          "water_level_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Level State"
+          },
           "light_on": {
             "anyOf": [
               {
@@ -6170,6 +6534,17 @@
               }
             ],
             "title": "Light On"
+          },
+          "light_intensity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Intensity Percent"
           },
           "pump_on": {
             "anyOf": [
@@ -6202,7 +6577,11 @@
           "moisture",
           "temperature",
           "humidity",
+          "water_temperature_c",
+          "water_level_raw",
+          "water_level_state",
           "light_on",
+          "light_intensity_percent",
           "pump_on",
           "pump_status"
         ],

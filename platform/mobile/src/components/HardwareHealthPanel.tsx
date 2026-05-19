@@ -349,6 +349,8 @@ function formatAction(action: string) {
       return "Grow LED on";
     case "light_off":
       return "Grow LED off";
+    case "light_intensity":
+      return "Grow LED intensity";
     case "pump_run":
       return "Pump run";
     default:

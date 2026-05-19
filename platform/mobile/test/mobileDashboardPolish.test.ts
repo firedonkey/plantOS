@@ -75,6 +75,24 @@ test("device dashboard has polished loading, setup, controls, and empty states",
   assert.doesNotMatch(source, /FreshnessStrip|Operational controls stay disabled|>Controls<|MetricCard label="Grow LED"/);
 });
 
+test("device dashboard gates grow LED intensity controls on capability support", async () => {
+  const source = await readText("../src/screens/DeviceDashboardScreen.tsx");
+
+  for (const requiredText of [
+    "const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);",
+    "lightIntensitySupported ? (",
+    "LightIntensityStepper",
+    'onSubmit={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}',
+    'accessibilityLabel="Set grow LED intensity"',
+    "capabilities.light_intensity_control === true",
+    "capabilities.light_dimming === true",
+    "capabilities.light_pwm === true",
+    '["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase())',
+  ]) {
+    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
 test("device list replaces blank loading and empty screens with reusable polished states", async () => {
   const source = await readText("../src/screens/DeviceListScreen.tsx");
 

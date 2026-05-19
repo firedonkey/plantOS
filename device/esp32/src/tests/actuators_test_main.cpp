@@ -6,7 +6,10 @@
 
 namespace {
 LightController g_light(
-    PIN_LIGHT_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
+    PIN_LIGHT_MOSFET_GATE,
+    ACTUATOR_ON_LEVEL,
+    ACTUATOR_OFF_LEVEL,
+    PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED != 0);
 PumpController g_pump(PIN_PUMP_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
 
 enum class ToggleTarget { kLight, kPump };
@@ -21,6 +24,7 @@ void print_help() {
   Serial.println("  p             select pump for [Space] toggle");
   Serial.println("  light on");
   Serial.println("  light off");
+  Serial.println("  light <0-100>");
   Serial.println("  light toggle");
   Serial.println("  pump on");
   Serial.println("  pump off");
@@ -33,8 +37,9 @@ void print_status() {
   const char* target =
       g_toggle_target == ToggleTarget::kLight ? "light" : "pump";
   Serial.printf(
-      "[status] light=%s pump=%s pump_timed=%s selected=%s\n",
+      "[status] light=%s intensity=%d%% pump=%s pump_timed=%s selected=%s\n",
       g_light.is_on() ? "on" : "off",
+      g_light.intensity_percent(),
       g_pump.is_on() ? "on" : "off",
       g_pump.is_timed_run_active() ? "active" : "inactive",
       target);
@@ -54,6 +59,16 @@ void handle_command(const String& line) {
   if (line == "light toggle") {
     g_light.toggle();
     Serial.printf("[light] %s\n", g_light.is_on() ? "ON" : "OFF");
+    return;
+  }
+  if (line.startsWith("light ")) {
+    const int percent = line.substring(6).toInt();
+    if (!g_light.supports_intensity_control() || percent < 0 || percent > 100) {
+      Serial.println("[light] invalid intensity");
+      return;
+    }
+    g_light.set_intensity_percent(percent);
+    Serial.printf("[light] intensity %d%%\n", percent);
     return;
   }
   if (line == "pump on") {

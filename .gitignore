@@ -28,6 +28,7 @@ platform/data/*.sqlite3
 platform/data/uploads/*
 !platform/data/uploads/.gitkeep
 platform/backend/data/*.db
+platform/backend/data/*.bak
 platform/backend/data/*.sqlite
 platform/backend/data/*.sqlite3
 platform/backend/data/uploads/*

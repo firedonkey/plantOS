@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocalSearchParams } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -41,11 +42,17 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
   const { token } = useSession();
   const latestReading = dashboard?.device.latestReading;
   const setupComplete = params.setup === "complete";
-  const growLedOn = dashboard?.device.latestReading?.lightOn === true;
+  const growLedOn = (dashboard?.device.currentLightOn ?? dashboard?.device.latestReading?.lightOn) === true;
+  const growLedIntensityPercent = dashboard?.device.currentLightIntensityPercent ?? dashboard?.device.latestReading?.lightIntensityPercent;
+  const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);
+  const currentLightIntensity = clampLightIntensity(growLedIntensityPercent ?? (growLedOn ? 100 : 0));
+  const [lightIntensityDraft, setLightIntensityDraft] = useState(currentLightIntensity);
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
+  const pendingLightIntensity = activeCommandAction === "light_intensity" || isActionBlocked("light_intensity");
   const nextLightAction = growLedOn ? "light_off" : "light_on";
   const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
+  const lightIntensityDisabled = isCommandRunning || pendingLightIntensity;
   const lightToggleLabel = pendingLightOn
     ? "Turning on..."
     : pendingLightOff
@@ -55,6 +62,10 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
         : growLedOn
           ? "Turn off"
           : "Turn on";
+
+  useEffect(() => {
+    setLightIntensityDraft(currentLightIntensity);
+  }, [currentLightIntensity, dashboard?.device.id]);
 
   if (!deviceId) {
     return (
@@ -113,7 +124,9 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             <View style={styles.growLedRow}>
               <View style={styles.growLedCopy}>
                 <Text style={styles.sectionTitle}>Grow LED</Text>
-                <Text style={styles.meta}>{growLedOn ? "On" : "Off"}</Text>
+                <Text style={styles.meta}>
+                  {growLedOn ? (lightIntensitySupported ? `On | ${currentLightIntensity}%` : "On") : "Off"}
+                </Text>
               </View>
               <ToggleButton
                 disabled={lightToggleDisabled}
@@ -122,6 +135,16 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                 onPress={() => runCommand(nextLightAction)}
               />
             </View>
+            {lightIntensitySupported ? (
+              <LightIntensityStepper
+                disabled={lightIntensityDisabled}
+                onChange={setLightIntensityDraft}
+                onSubmit={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}
+                pending={pendingLightIntensity}
+                unchanged={lightIntensityDraft === currentLightIntensity}
+                value={lightIntensityDraft}
+              />
+            ) : null}
           </Card>
 
           <RecentImageGallery
@@ -185,9 +208,90 @@ function ToggleButton({ disabled, label, on, onPress }: { disabled: boolean; lab
   );
 }
 
+function LightIntensityStepper({
+  disabled,
+  onChange,
+  onSubmit,
+  pending,
+  unchanged,
+  value,
+}: {
+  disabled: boolean;
+  onChange: (value: number) => void;
+  onSubmit: () => void;
+  pending: boolean;
+  unchanged: boolean;
+  value: number;
+}) {
+  const decrease = () => onChange(clampLightIntensity(value - 5));
+  const increase = () => onChange(clampLightIntensity(value + 5));
+  return (
+    <View style={styles.intensityControl}>
+      <View style={styles.intensityHeader}>
+        <Text style={styles.intensityLabel}>Intensity</Text>
+        <Text style={styles.intensityValue}>{value}%</Text>
+      </View>
+      <View style={styles.intensityActions}>
+        <Pressable
+          accessibilityLabel="Decrease grow LED intensity"
+          accessibilityRole="button"
+          disabled={disabled || value <= 0}
+          onPress={decrease}
+          style={[styles.intensityStepButton, disabled || value <= 0 ? styles.intensityDisabled : null]}
+        >
+          <Text style={styles.intensityStepLabel}>-</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Increase grow LED intensity"
+          accessibilityRole="button"
+          disabled={disabled || value >= 100}
+          onPress={increase}
+          style={[styles.intensityStepButton, disabled || value >= 100 ? styles.intensityDisabled : null]}
+        >
+          <Text style={styles.intensityStepLabel}>+</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Set grow LED intensity"
+          accessibilityRole="button"
+          disabled={disabled || unchanged}
+          onPress={onSubmit}
+          style={[styles.intensityApplyButton, disabled || unchanged ? styles.intensityDisabled : null]}
+        >
+          <Text style={styles.intensityApplyLabel}>{pending ? "Setting" : "Set"}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function formatWaterLevel(state?: string, raw?: number) {
   const label = state ? state.charAt(0).toUpperCase() + state.slice(1) : "--";
   return raw !== undefined ? `${label} (${raw})` : label;
+}
+
+function clampLightIntensity(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function hasLightIntensitySupport(capabilities?: Record<string, unknown>): boolean {
+  if (!capabilities) {
+    return false;
+  }
+  if (
+    capabilities.light_intensity_control === true ||
+    capabilities.light_dimming === true ||
+    capabilities.light_pwm === true
+  ) {
+    return true;
+  }
+  const modes = capabilities.light_control_modes;
+  if (!Array.isArray(modes)) {
+    return false;
+  }
+  return modes.some((mode) => ["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase()));
 }
 
 function formatAge(timestamp?: string) {
@@ -225,6 +329,37 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   growLedCopy: { flex: 1, gap: 4 },
+  intensityControl: {
+    borderTopColor: theme.colors.borderSoft,
+    borderTopWidth: 1,
+    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.md,
+  },
+  intensityHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  intensityLabel: { color: theme.colors.textSecondary, fontSize: theme.typography.body, fontWeight: "700" },
+  intensityValue: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "800" },
+  intensityActions: { alignItems: "center", flexDirection: "row", gap: theme.spacing.sm },
+  intensityStepButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceInset,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 52,
+  },
+  intensityStepLabel: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "800" },
+  intensityApplyButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radii.md,
+    flex: 1,
+    height: 44,
+    justifyContent: "center",
+  },
+  intensityApplyLabel: { color: theme.colors.white, fontSize: 15, fontWeight: "800" },
+  intensityDisabled: { opacity: 0.55 },
   toggleSwitch: {
     width: 108,
     height: 48,

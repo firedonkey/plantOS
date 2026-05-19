@@ -60,6 +60,14 @@
               <span>Humidity</span>
               <strong data-field="humidity">{% if latest_reading_summary %}{{ latest_reading_summary.humidity }}{% else %}n/a{% endif %}</strong>
             </article>
+            <article class="metric-card metric-card-primary">
+              <span>Water temp</span>
+              <strong data-field="water_temperature">{% if latest_reading_summary %}{{ latest_reading_summary.water_temperature }}{% else %}n/a{% endif %}</strong>
+            </article>
+            <article class="metric-card metric-card-primary">
+              <span>Water level</span>
+              <strong data-field="water_level">{% if latest_reading_summary %}{{ latest_reading_summary.water_level }}{% else %}n/a{% endif %}</strong>
+            </article>
             <article class="metric-card metric-card-state">
               <span>Growing light</span>
               <strong data-field="light">{% if latest_reading_summary %}{{ latest_reading_summary.light }}{% else %}n/a{% endif %}</strong>
@@ -217,6 +225,19 @@
                   </label>
                 </form>
               </div>
+              {% if light_intensity_supported %}
+              {% set light_intensity = latest_reading.light_intensity_percent if latest_reading and latest_reading.light_intensity_percent is not none else (device.current_light_intensity_percent if device.current_light_intensity_percent is not none else (100 if light_is_on else 0)) %}
+              <form class="command-form light-intensity-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-command-key="light:set_intensity:{{ light_intensity }}">
+                <input type="hidden" name="target" value="light">
+                <input type="hidden" name="action" value="set_intensity">
+                <label class="light-intensity-field">
+                  <span>Intensity</span>
+                  <strong data-field="light_intensity">{% if latest_reading_summary %}{{ latest_reading_summary.light_intensity }}{% else %}{{ light_intensity }}%{% endif %}</strong>
+                  <input type="range" name="value" min="0" max="100" step="5" value="{{ light_intensity }}" aria-label="Growing light intensity">
+                </label>
+                <button type="submit" data-command-button>Set intensity</button>
+              </form>
+              {% endif %}
             </section>
           </div>
         </article>
@@ -363,8 +384,11 @@
         setField("moisture", reading.moisture);
         setField("temperature", reading.temperature);
         setField("humidity", reading.humidity);
+        setField("water_temperature", reading.water_temperature);
+        setField("water_level", reading.water_level);
         setField("last_reading", reading.last_reading);
         setField("light", lightValue);
+        setField("light_intensity", reading.light_intensity);
         setField("pump", reading.pump);
         setField("light_state", titleCase(lightValue));
         setField("pump_state", titleCase(reading.pump));

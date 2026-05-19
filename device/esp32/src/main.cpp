@@ -24,6 +24,8 @@
 #include "provisioning/wifi_networks_payload.h"
 #include "sensors/dht22_sensor.h"
 #include "sensors/moisture_sensor.h"
+#include "sensors/water_level_sensor.h"
+#include "sensors/water_temperature_sensor.h"
 #include "system/power_button.h"
 #include "system/status_led.h"
 
@@ -138,8 +140,17 @@ enum class DeviceMode {
 Dht22Sensor g_dht22(PIN_DHT22_DATA);
 MoistureSensor g_moisture(
     PIN_SOIL_MOISTURE_ADC, MOISTURE_SAMPLE_COUNT, MOISTURE_SAMPLE_DELAY_MS);
+WaterTemperatureSensor g_water_temperature(PIN_WATER_TEMPERATURE_ONEWIRE);
+WaterLevelSensor g_water_level(
+    PIN_WATER_LEVEL_TOUCH,
+    WATER_LEVEL_SAMPLE_COUNT,
+    WATER_LEVEL_SAMPLE_DELAY_MS,
+    WATER_LEVEL_PRESENT_RAW_THRESHOLD);
 LightController g_growing_light(
-    PIN_LIGHT_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
+    PIN_LIGHT_MOSFET_GATE,
+    ACTUATOR_ON_LEVEL,
+    ACTUATOR_OFF_LEVEL,
+    PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED != 0);
 PumpController g_pump(PIN_PUMP_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
 PowerButton g_power_button(
     PIN_POWER_BUTTON,
@@ -473,6 +484,10 @@ bool ensureMasterDeviceNodeRegistered(unsigned long now) {
   g_last_master_node_register_attempt_ms = now;
 
   String error;
+  const char* capabilities_json =
+      g_growing_light.supports_intensity_control()
+          ? "{\"sensors\":true,\"actuators\":true,\"esp_now\":true,\"light_control\":true,\"light_intensity_control\":true,\"light_intensity_min_percent\":0,\"light_intensity_max_percent\":100,\"light_control_modes\":[\"on_off\",\"intensity\"],\"water_temperature_sensor\":true,\"water_level_sensor\":true}"
+          : "{\"sensors\":true,\"actuators\":true,\"esp_now\":true,\"light_control\":true,\"light_intensity_control\":false,\"light_control_modes\":[\"on_off\"],\"water_temperature_sensor\":true,\"water_level_sensor\":true}";
   const bool registered = g_platform_client->register_device_node(
       stableHardwareDeviceId().c_str(),
       "master",
@@ -480,7 +495,7 @@ bool ensureMasterDeviceNodeRegistered(unsigned long now) {
       "esp32_master",
       BOARD_NAME,
       kSoftwareVersion,
-      "{\"sensors\":true,\"actuators\":true,\"esp_now\":true}",
+      capabilities_json,
       &error);
   if (registered) {
     g_master_node_registered = true;
@@ -2760,7 +2775,17 @@ bool registerProvisionedDevice() {
   capabilities["camera"] = false;
   capabilities["pump"] = true;
   capabilities["moisture_sensor"] = true;
+  capabilities["water_temperature_sensor"] = true;
+  capabilities["water_level_sensor"] = true;
   capabilities["light_control"] = true;
+  capabilities["light_intensity_control"] = g_growing_light.supports_intensity_control();
+  capabilities["light_intensity_min_percent"] = 0;
+  capabilities["light_intensity_max_percent"] = 100;
+  JsonArray light_control_modes = capabilities.createNestedArray("light_control_modes");
+  light_control_modes.add("on_off");
+  if (g_growing_light.supports_intensity_control()) {
+    light_control_modes.add("intensity");
+  }
   capabilities["temperature_sensor"] = true;
   capabilities["humidity_sensor"] = true;
 
@@ -2885,6 +2910,8 @@ PlatformReading read_platform_reading() {
   g_last_sensor_reading_ms = millis();
   const Dht22Reading reading = g_dht22.read();
   const MoistureReading moisture = g_moisture.read();
+  const WaterTemperatureReading water_temperature = g_water_temperature.read();
+  const WaterLevelReading water_level = g_water_level.read();
 
   if (!reading.valid) {
     Serial.println("[dht22] read failed (NaN)");
@@ -2908,10 +2935,26 @@ PlatformReading read_platform_reading() {
     }
   }
 
+  if (!water_temperature.valid) {
+    Serial.println("[water-temp] DS18B20 read failed");
+  } else if (kVerboseSensorPollingLogs) {
+    Serial.printf("[water-temp] temp_c=%.1f\n", water_temperature.temperature_c);
+  }
+
+  if (!water_level.valid) {
+    Serial.println("[water-level] touch read failed");
+  } else if (kVerboseSensorPollingLogs) {
+    Serial.printf(
+        "[water-level] raw=%d state=%s\n",
+        water_level.raw,
+        water_level.state.c_str());
+  }
+
   if (kVerboseSensorPollingLogs) {
     Serial.printf(
-        "[actuators] growing_light=%s pump=%s\n",
+        "[actuators] growing_light=%s intensity=%d%% pump=%s\n",
         g_growing_light.is_on() ? "on" : "off",
+        g_growing_light.intensity_percent(),
         g_pump.is_on() ? "on" : "off");
   }
 
@@ -2920,10 +2963,18 @@ PlatformReading read_platform_reading() {
   platform_reading.temperature_c = reading.temperature_c;
   platform_reading.humidity_percent = reading.humidity_percent;
   platform_reading.moisture_percent = moisture.moisture_percent;
+  platform_reading.water_temperature_c = water_temperature.temperature_c;
+  platform_reading.water_level_raw = water_level.raw;
   platform_reading.temperature_valid = reading.valid;
   platform_reading.humidity_valid = reading.valid;
   platform_reading.moisture_valid = moisture.valid;
+  platform_reading.water_temperature_valid = water_temperature.valid;
+  platform_reading.water_level_valid = water_level.valid;
+  platform_reading.water_level_state = water_level.state;
   platform_reading.light_on = g_growing_light.is_on();
+  if (g_growing_light.supports_intensity_control()) {
+    platform_reading.light_intensity_percent = g_growing_light.intensity_percent();
+  }
   platform_reading.pump_on = g_pump.is_on();
   platform_reading.pump_status = g_pump.is_on() ? "running" : "idle";
   return platform_reading;
@@ -2936,6 +2987,9 @@ PlatformStatus platform_status(const String& message) {
   status.node_role = "master";
   status.status = "online";
   status.light_on = g_growing_light.is_on();
+  if (g_growing_light.supports_intensity_control()) {
+    status.light_intensity_percent = g_growing_light.intensity_percent();
+  }
   status.pump_on = g_pump.is_on();
   status.message = message;
   status.software_version = kSoftwareVersion;
@@ -3102,6 +3156,31 @@ void send_platform_status(unsigned long now, const String& message = "online") {
   }
 }
 
+bool parseLightIntensityPercent(const String& value, int* percent) {
+  String normalized = value;
+  normalized.trim();
+  if (normalized.length() == 0) {
+    return false;
+  }
+  for (size_t index = 0; index < normalized.length(); ++index) {
+    if (!isDigit(normalized.charAt(index))) {
+      return false;
+    }
+  }
+  const int parsed = normalized.toInt();
+  if (parsed < 0 || parsed > 100) {
+    return false;
+  }
+  if (percent != nullptr) {
+    *percent = parsed;
+  }
+  return true;
+}
+
+int reportedLightIntensityPercent() {
+  return g_growing_light.supports_intensity_control() ? g_growing_light.intensity_percent() : -1;
+}
+
 void execute_platform_command(const PlatformCommand& command) {
   String message;
   bool success = true;
@@ -3113,6 +3192,18 @@ void execute_platform_command(const PlatformCommand& command) {
     } else if (command.action == "off") {
       g_growing_light.set_on(false);
       message = "growing light turned off";
+    } else if (command.action == "set_intensity") {
+      int intensity_percent = 0;
+      if (!g_growing_light.supports_intensity_control()) {
+        success = false;
+        message = "growing light intensity control is not supported";
+      } else if (!parseLightIntensityPercent(command.value, &intensity_percent)) {
+        success = false;
+        message = "invalid growing light intensity";
+      } else {
+        g_growing_light.set_intensity_percent(intensity_percent);
+        message = "growing light intensity set to " + String(intensity_percent) + "%";
+      }
     } else {
       success = false;
       message = "unsupported growing light command";
@@ -3155,7 +3246,8 @@ void execute_platform_command(const PlatformCommand& command) {
           message.c_str(),
           g_growing_light.is_on(),
           g_pump.is_on(),
-          &ack_error)) {
+          &ack_error,
+          reportedLightIntensityPercent())) {
     ++g_diagnostic_error_counters.upload_failures;
     recordDiagnosticError("command_result_upload_failed", "command result update failed");
     Serial.printf("[platform] command ack failed: %s\n", ack_error.c_str());
@@ -3196,8 +3288,8 @@ void setup() {
   Serial.printf("Provisioning env: %s\n", PLANTLAB_ENV_LABEL);
   Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
-  Serial.printf("Growing light gate pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
-  Serial.printf("Pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
+  Serial.printf("PCB grow LED control pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
+  Serial.printf("Legacy pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
   Serial.printf("Provisioning button pin: GPIO%d\n", PIN_POWER_BUTTON);
   Serial.printf("Status LED pin: GPIO%d\n", PIN_STATUS_LED);
   if (String(PLANTLAB_PLATFORM_URL).length() > 0) {
@@ -3220,11 +3312,15 @@ void setup() {
   g_status_led.set_mode(StatusLedMode::kBooting);
   g_dht22.begin();
   g_moisture.begin();
+  g_water_temperature.begin();
+  g_water_level.begin();
   g_growing_light.begin();
   g_pump.begin();
 
   Serial.println("[dht22] sensor initialized");
   Serial.println("[moisture] sensor initialized");
+  Serial.println("[water-temp] sensor initialized");
+  Serial.println("[water-level] touch sensor initialized");
   Serial.println("[growing-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
   capture_schedule_init(

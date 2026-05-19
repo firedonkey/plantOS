@@ -62,6 +62,7 @@ def register_device_node(
         hardware_model=node.hardware_model,
         hardware_version=node.hardware_version,
         software_version=node.software_version,
+        capabilities=node.capabilities or {},
         status=node.status,
         last_seen_at=node.last_seen_at,
     )

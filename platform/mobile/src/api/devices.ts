@@ -11,6 +11,9 @@ type ApiDevice = {
   plant_type?: string | null;
   api_token?: string | null;
   status?: string | null;
+  current_light_on?: boolean | null;
+  current_light_intensity_percent?: number | null;
+  current_pump_on?: boolean | null;
   latest_reading?: ApiDeviceSummary["latest_reading"] | null;
   latest_image?: ApiDeviceSummary["latest_image"] | null;
   node_summary?: ApiDeviceSummary["node_summary"] | null;
@@ -22,6 +25,9 @@ type ApiDeviceSummary = {
   name: string;
   location?: string | null;
   plant_type?: string | null;
+  current_light_on?: boolean | null;
+  current_light_intensity_percent?: number | null;
+  current_pump_on?: boolean | null;
   latest_reading?: {
     timestamp: string;
     moisture?: number | null;
@@ -31,6 +37,7 @@ type ApiDeviceSummary = {
     water_level_raw?: number | null;
     water_level_state?: string | null;
     light_on?: boolean | null;
+    light_intensity_percent?: number | null;
     pump_on?: boolean | null;
   } | null;
   latest_image?: {
@@ -111,7 +118,7 @@ type ApiHealthNode = {
 type ApiHealthCommand = {
   id: number;
   target: "light" | "pump" | "camera";
-  action: "on" | "off" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   timestamp: string;
@@ -126,6 +133,7 @@ type ApiSensorReading = {
   water_level_raw?: number | null;
   water_level_state?: string | null;
   light_on?: boolean | null;
+  light_intensity_percent?: number | null;
   pump_on?: boolean | null;
 };
 
@@ -133,7 +141,7 @@ type ApiCommandRead = {
   id: number;
   device_id: number;
   target: "light" | "pump" | "camera";
-  action: "on" | "off" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "run" | "capture";
   value?: string | null;
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
@@ -313,6 +321,7 @@ function mapReading(reading?: ApiDeviceSummary["latest_reading"] | ApiSensorRead
     waterLevelRaw: reading.water_level_raw ?? undefined,
     waterLevelState: reading.water_level_state ?? undefined,
     lightOn: reading.light_on ?? undefined,
+    lightIntensityPercent: reading.light_intensity_percent ?? undefined,
     pumpOn: reading.pump_on ?? undefined,
   };
 }
@@ -335,6 +344,9 @@ function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRe
   }
   if (target === "light" && action === "off") {
     return "light_off";
+  }
+  if (target === "light" && action === "set_intensity") {
+    return "light_intensity";
   }
   if (target === "pump" && action === "run") {
     return "pump_run";
@@ -504,6 +516,9 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
           plantType: device.plant_type ?? undefined,
           status: mapStatus(summary, device.status),
           lastSeenAt: device.hardware_health?.last_heartbeat_at ?? device.latest_reading?.timestamp ?? undefined,
+          currentLightOn: device.current_light_on ?? undefined,
+          currentLightIntensityPercent: device.current_light_intensity_percent ?? undefined,
+          currentPumpOn: device.current_pump_on ?? undefined,
           latestReading: mapReading(device.latest_reading),
           latestImage: device.latest_image
             ? {
@@ -568,6 +583,9 @@ export async function getDeviceDashboard(
           plantType: summary.plant_type ?? undefined,
           status: mapStatus(summary),
           lastSeenAt: summary.hardware_health?.last_heartbeat_at ?? summary.latest_reading?.timestamp ?? undefined,
+          currentLightOn: summary.current_light_on ?? undefined,
+          currentLightIntensityPercent: summary.current_light_intensity_percent ?? undefined,
+          currentPumpOn: summary.current_pump_on ?? undefined,
           latestReading: mapReading(summary.latest_reading),
           latestImage,
         },
@@ -631,10 +649,11 @@ function filterMockHistory(history: DeviceDashboard["history"], range: RangeKey)
 export async function sendDeviceCommand(
   deviceId: string,
   action: DeviceCommand["action"],
+  options?: { intensityPercent?: number },
   token?: string,
 ): Promise<{ command: DeviceCommand; usedMock: boolean }> {
   try {
-    const request = commandRequestForAction(action);
+    const request = commandRequestForAction(action, options);
     const created = await apiRequest<ApiCommandEnvelope>(request.path(deviceId), request.init, token);
     return {
       usedMock: false,
@@ -1101,7 +1120,7 @@ function deriveOnboardingGuidance(device: Device, health?: HardwareHealth) {
   return "For a reboot or re-provision, use the physical device controls and watch the serial monitor. No remote recovery action is wired in yet.";
 }
 
-function commandRequestForAction(action: DeviceCommand["action"]) {
+function commandRequestForAction(action: DeviceCommand["action"], options?: { intensityPercent?: number }) {
   switch (action) {
     case "light_on":
       return {
@@ -1117,6 +1136,14 @@ function commandRequestForAction(action: DeviceCommand["action"]) {
         init: {
           method: "POST",
           body: JSON.stringify({ state: "off" }),
+        },
+      };
+    case "light_intensity":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands/light`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ intensity_percent: options?.intensityPercent ?? 0 }),
         },
       };
     case "pump_run":

@@ -44,6 +44,8 @@ Current ESP32 systems are split into:
   - `ESP32-S3-DevKitC-1-N32R16V`
   - moisture sensor
   - DHT22
+  - DS18B20 water temperature sensor
+  - water level touch sensor
   - light control
   - pump control
   - provisioning button
@@ -144,6 +146,8 @@ Rules:
 - soil moisture
 - temperature
 - humidity
+- water temperature
+- water level raw/state
 - growing light state
 - pump state
 - command execution

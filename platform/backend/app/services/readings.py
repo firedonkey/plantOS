@@ -13,7 +13,11 @@ def create_sensor_reading(session: Session, payload: SensorReadingCreate) -> Sen
         moisture=payload.moisture,
         temperature=payload.temperature,
         humidity=payload.humidity,
+        water_temperature_c=payload.water_temperature_c,
+        water_level_raw=payload.water_level_raw,
+        water_level_state=payload.water_level_state,
         light_on=payload.light_on,
+        light_intensity_percent=payload.light_intensity_percent,
         pump_on=payload.pump_on,
         pump_status=payload.pump_status,
     )

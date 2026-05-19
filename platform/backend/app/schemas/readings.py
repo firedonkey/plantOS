@@ -9,7 +9,11 @@ class SensorReadingCreate(BaseModel):
     moisture: float | None = Field(default=None, ge=0, le=100)
     temperature: float | None = None
     humidity: float | None = Field(default=None, ge=0, le=100)
+    water_temperature_c: float | None = None
+    water_level_raw: int | None = None
+    water_level_state: str | None = Field(default=None, max_length=40)
     light_on: bool | None = None
+    light_intensity_percent: int | None = Field(default=None, ge=0, le=100)
     pump_on: bool | None = None
     pump_status: str | None = Field(default=None, max_length=120)
     timestamp: datetime | None = None
@@ -22,7 +26,11 @@ class SensorReadingRead(BaseModel):
     moisture: float | None
     temperature: float | None
     humidity: float | None
+    water_temperature_c: float | None
+    water_level_raw: int | None
+    water_level_state: str | None
     light_on: bool | None
+    light_intensity_percent: int | None
     pump_on: bool | None
     pump_status: str | None
 

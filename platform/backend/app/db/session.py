@@ -1,7 +1,8 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.schema import CreateColumn
 
 from app.core.settings import get_settings
 from app.models.base import Base
@@ -33,74 +34,80 @@ def _apply_lightweight_migrations(selected_engine) -> None:
     with selected_engine.begin() as connection:
         if "devices" in table_names:
             device_columns = {column["name"] for column in inspector.get_columns("devices")}
-            if "api_token" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN api_token VARCHAR(80)"))
-            if "current_light_on" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN current_light_on BOOLEAN"))
-            if "current_pump_on" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN current_pump_on BOOLEAN"))
-            if "status_message" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN status_message VARCHAR(160)"))
-            if "status_updated_at" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN status_updated_at DATETIME"))
-            if "released_at" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN released_at DATETIME"))
-            if "archived_at" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN archived_at DATETIME"))
-            if "release_reason" not in device_columns:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN release_reason VARCHAR(80)"))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("api_token", String(80)))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("current_light_on", Boolean))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("current_light_intensity_percent", Integer))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("current_pump_on", Boolean))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("status_message", String(160)))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("status_updated_at", DateTime(timezone=True)))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("released_at", DateTime(timezone=True)))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("archived_at", DateTime(timezone=True)))
+            _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("release_reason", String(80)))
         if "sensor_readings" in table_names:
             reading_columns = {column["name"] for column in inspector.get_columns("sensor_readings")}
-            if "light_on" not in reading_columns:
-                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN light_on BOOLEAN"))
-            if "pump_on" not in reading_columns:
-                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_on BOOLEAN"))
-            if "pump_status" not in reading_columns:
-                connection.execute(text("ALTER TABLE sensor_readings ADD COLUMN pump_status VARCHAR(120)"))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("light_on", Boolean))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("light_intensity_percent", Integer))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("water_temperature_c", Float))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("water_level_raw", Integer))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("water_level_state", String(40)))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("pump_on", Boolean))
+            _add_column_if_missing(connection, selected_engine, "sensor_readings", reading_columns, Column("pump_status", String(120)))
         if "images" in table_names:
             image_columns = {column["name"] for column in inspector.get_columns("images")}
-            if "source_hardware_device_id" not in image_columns:
-                connection.execute(text("ALTER TABLE images ADD COLUMN source_hardware_device_id VARCHAR(120)"))
+            _add_column_if_missing(connection, selected_engine, "images", image_columns, Column("source_hardware_device_id", String(120)))
         if "commands" in table_names:
             command_columns = {column["name"] for column in inspector.get_columns("commands")}
-            if "light_on" not in command_columns:
-                connection.execute(text("ALTER TABLE commands ADD COLUMN light_on BOOLEAN"))
-            if "pump_on" not in command_columns:
-                connection.execute(text("ALTER TABLE commands ADD COLUMN pump_on BOOLEAN"))
+            _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_on", Boolean))
+            _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_intensity_percent", Integer))
+            _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("pump_on", Boolean))
         if "device_hardware_ids" in table_names:
             node_columns = {column["name"] for column in inspector.get_columns("device_hardware_ids")}
-            if "node_role" not in node_columns:
-                connection.execute(
-                    text("ALTER TABLE device_hardware_ids ADD COLUMN node_role VARCHAR(40) NOT NULL DEFAULT 'single_board'")
-                )
-            if "node_index" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN node_index INTEGER"))
-            if "display_name" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN display_name VARCHAR(120)"))
-            if "hardware_model" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN hardware_model VARCHAR(120)"))
-            if "status" not in node_columns:
-                connection.execute(
-                    text("ALTER TABLE device_hardware_ids ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'provisioning'")
-                )
-            if "software_version" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN software_version VARCHAR(120)"))
-            if "ota_status" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_status VARCHAR(40) NOT NULL DEFAULT 'idle'"))
-            if "ota_available_version" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_available_version VARCHAR(120)"))
-            if "ota_target_version" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_target_version VARCHAR(120)"))
-            if "ota_release_id" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_release_id VARCHAR(80)"))
-            if "ota_progress" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_progress INTEGER"))
-            if "ota_error" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_error VARCHAR(240)"))
-            if "ota_updated_at" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_updated_at DATETIME"))
-            if "ota_last_success_at" not in node_columns:
-                connection.execute(text("ALTER TABLE device_hardware_ids ADD COLUMN ota_last_success_at DATETIME"))
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "device_hardware_ids",
+                node_columns,
+                Column("node_role", String(40), nullable=False, server_default="single_board"),
+            )
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("node_index", Integer))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("display_name", String(120)))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("hardware_model", String(120)))
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "device_hardware_ids",
+                node_columns,
+                Column("status", String(40), nullable=False, server_default="provisioning"),
+            )
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("software_version", String(120)))
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "device_hardware_ids",
+                node_columns,
+                Column("ota_status", String(40), nullable=False, server_default="idle"),
+            )
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_available_version", String(120)))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_target_version", String(120)))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_release_id", String(80)))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_progress", Integer))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_error", String(240)))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("ota_updated_at", DateTime(timezone=True)))
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "device_hardware_ids",
+                node_columns,
+                Column("ota_last_success_at", DateTime(timezone=True)),
+            )
+
+
+def _add_column_if_missing(connection, selected_engine, table_name: str, existing_columns: set[str], column: Column) -> None:
+    if column.name in existing_columns:
+        return
+    column_sql = str(CreateColumn(column).compile(dialect=selected_engine.dialect))
+    connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
+    existing_columns.add(column.name)
 
 
 def get_session() -> Generator[Session, None, None]:

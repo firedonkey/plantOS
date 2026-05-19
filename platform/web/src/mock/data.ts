@@ -26,9 +26,11 @@ const latestReading: SensorReading = {
   timestamp: now.toISOString(),
   temperatureC: 23.4,
   humidityPercent: 52.8,
-  soilMoisturePercent: 31.2,
-  waterLevelPercent: 72,
+  waterTemperatureC: 20.4,
+  waterLevelRaw: 35200,
+  waterLevelState: "ok",
   lightOn: false,
+  lightIntensityPercent: 0,
   pumpOn: false,
 };
 
@@ -47,9 +49,11 @@ const history: SensorReading[] = Array.from({ length: 12 }, (_, index) => ({
   timestamp: new Date(now.getTime() - index * 2 * 60 * 60 * 1000).toISOString(),
   temperatureC: 22.4 + index * 0.08,
   humidityPercent: 51.5 + index * 0.15,
-  soilMoisturePercent: 34 - index * 0.35,
-  waterLevelPercent: 80 - index,
+  waterTemperatureC: 20.1 + index * 0.03,
+  waterLevelRaw: 35000 + index * 180,
+  waterLevelState: index > 6 ? "low" : "ok",
   lightOn: index % 2 === 0,
+  lightIntensityPercent: index % 2 === 0 ? 60 : 0,
   pumpOn: false,
 })).reverse();
 
@@ -75,6 +79,13 @@ const hardwareHealth: HardwareHealth = {
     nodeRole: "master",
     displayName: "Master",
     status: "online",
+    capabilities: {
+      light_control: true,
+      light_intensity_control: true,
+      light_control_modes: ["on_off", "intensity"],
+      water_temperature_sensor: true,
+      water_level_sensor: true,
+    },
     lastSeenAt: new Date(now.getTime() - 20 * 1000).toISOString(),
   },
   cameras: [
