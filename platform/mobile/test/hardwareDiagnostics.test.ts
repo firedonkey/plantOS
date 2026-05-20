@@ -155,10 +155,31 @@ test("hardware health panel renders partial diagnostics and counters", () => {
   });
 
   assert.match(html, /Needs attention/);
+  assert.match(html, /weak wifi signal/);
+  assert.match(html, /upload failures reported/);
   assert.match(html, /1h 1m/);
   assert.match(html, /-78 dBm/);
   assert.match(html, /power on/);
   assert.match(html, /relay timeout/);
   assert.match(html, /upload failures: 2/);
   assert.match(html, /wifi reconnects: 1/);
+});
+
+test("hardware health panel explains needs attention even without backend reasons", () => {
+  const html = renderExpandedHardwareHealthPanel({
+    overallStatus: "online",
+    masterOnline: true,
+    masterStatus: "online",
+    friendlyStatus: "needs_attention",
+    attentionReasons: [],
+    primary: {
+      hardwareDeviceId: "master-01",
+      nodeRole: "master",
+      status: "online",
+    },
+    cameras: [],
+  });
+
+  assert.match(html, /Needs attention/);
+  assert.match(html, /Backend reported an issue but did not include a specific reason/);
 });

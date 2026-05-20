@@ -65,14 +65,26 @@ test("device dashboard has polished loading, setup, controls, and empty states",
     "<Text style={styles.sectionTitle}>Grow LED</Text>",
     "Capture image",
     "Sensor trends",
-    "HardwareHealthPanel",
-    "CommandActivityPanel",
   ]) {
     assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 
   assert.doesNotMatch(source, /runPump|label="Pump"|soilMoisturePercent/);
   assert.doesNotMatch(source, /FreshnessStrip|Operational controls stay disabled|>Controls<|MetricCard label="Grow LED"/);
+  assert.doesNotMatch(source, /HardwareHealthPanel|CommandActivityPanel/);
+});
+
+test("device settings owns hardware health review", async () => {
+  const source = await readText("../src/screens/DeviceSettingsScreen.tsx");
+
+  for (const requiredText of [
+    "HardwareHealthPanel",
+    "health={details?.hardwareHealth}",
+    "Operational details",
+    "Recovery",
+  ]) {
+    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("device dashboard gates grow LED intensity controls on capability support", async () => {
@@ -81,9 +93,16 @@ test("device dashboard gates grow LED intensity controls on capability support",
   for (const requiredText of [
     "const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);",
     "lightIntensitySupported ? (",
-    "LightIntensityStepper",
-    'onSubmit={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}',
-    'accessibilityLabel="Set grow LED intensity"',
+    "LightIntensitySlider",
+    'onCommit={(value) => runCommand("light_intensity", { intensityPercent: value })}',
+    "scrollEnabled={!sliderActive}",
+    "onInteractionChange={setSliderActive}",
+    "new Animated.Value(committedValue)",
+    "measureInWindow",
+    "event.nativeEvent.pageX",
+    'accessibilityLabel="Grow LED intensity"',
+    'accessibilityRole="adjustable"',
+    "Brightness",
     "capabilities.light_intensity_control === true",
     "capabilities.light_dimming === true",
     "capabilities.light_pwm === true",
@@ -91,6 +110,8 @@ test("device dashboard gates grow LED intensity controls on capability support",
   ]) {
     assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+
+  assert.doesNotMatch(source, /LightIntensityStepper|Decrease grow LED intensity|Increase grow LED intensity|Set grow LED intensity|Slide to set brightness|locationX/);
 });
 
 test("device list replaces blank loading and empty screens with reusable polished states", async () => {
@@ -120,6 +141,9 @@ test("hardware health panel starts compact and expands into scan-friendly rows",
     "Last command",
     'accessibilityRole="button"',
     "expanded ? \"Hide\" : \"Show\"",
+    "Dismiss",
+    "dismissedAttentionSignature",
+    "Reviewed",
     'case "stale":',
     'return "Stale";',
     'case "warning":',

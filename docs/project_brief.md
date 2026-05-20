@@ -40,3 +40,13 @@ PlantOS is a local-to-cloud plant monitoring and control system. It includes ESP
 - Raspberry Pi hardware tests require board-specific dependencies and should not be collected by generic macOS `pytest .` runs.
 - Device release/list cleanup remains tracked as a TODO task.
 - Cloud deployment should use the scripts under `platform/infra/cloud-run/`.
+
+<!-- pantheon-memory:20260519T235300Z:20260519_235300_fix_plantos_sensor_trends_the_wa:docs/project_brief.md -->
+## Project Brief Note: 2026-05-20T00:09:43.980964+00:00 - 20260519_235300_fix_plantos_sensor_trends_the_wa
+
+- Run: `20260519T235300Z`
+- Task: Fix PlantOS sensor trends: the water temperature chart currently shows no dat...
+- Summary: Reviewer approved the implementation.
+- Reason this file was listed: task memory_updates_expected included `docs/project_brief.md`.
+- Review source: `/Users/gary/pantheon/runs/20260519T235300Z`
+- Human review note: keep this append-only note if it remains accurate; refine surrounding context only after review.

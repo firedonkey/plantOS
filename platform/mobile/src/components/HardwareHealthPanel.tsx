@@ -13,6 +13,7 @@ type HardwareHealthPanelProps = {
 
 export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const [dismissedAttentionSignature, setDismissedAttentionSignature] = useState<string | null>(null);
   if (!health) {
     return (
       <Card>
@@ -29,12 +30,25 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
     );
   }
 
+  const attentionItems = getAttentionItems(health);
+  const attentionSignature = attentionItems.join("|");
+  const attentionDismissed = attentionSignature.length > 0 && dismissedAttentionSignature === attentionSignature;
+  const visibleAttentionItems = attentionDismissed ? [] : attentionItems;
+  const headerStatusLabel =
+    attentionDismissed && health.friendlyStatus === "needs_attention"
+      ? "Reviewed"
+      : formatFriendlyStatus(health.friendlyStatus, health.overallStatus);
+  const headerStatusTone =
+    attentionDismissed && health.friendlyStatus === "needs_attention"
+      ? "unknown"
+      : friendlyTone(health.friendlyStatus, health.overallStatus);
+
   return (
     <Card>
       <PanelHeader
         expanded={expanded}
-        statusLabel={formatFriendlyStatus(health.friendlyStatus, health.overallStatus)}
-        statusTone={friendlyTone(health.friendlyStatus, health.overallStatus)}
+        statusLabel={headerStatusLabel}
+        statusTone={headerStatusTone}
         subtitle={formatAge(health.lastHeartbeatAt ?? health.primary?.lastSeenAt, "Heartbeat")}
         title="Hardware health"
         onPress={() => setExpanded((value) => !value)}
@@ -42,6 +56,24 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
 
       {!expanded ? null : (
         <>
+          {visibleAttentionItems.length ? (
+            <View style={styles.attentionBox}>
+              <View style={styles.attentionHeader}>
+                <Text style={styles.attentionTitle}>Needs attention</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setDismissedAttentionSignature(attentionSignature)}
+                  style={styles.dismissButton}
+                >
+                  <Text style={styles.dismissButtonText}>Dismiss</Text>
+                </Pressable>
+              </View>
+              {visibleAttentionItems.map((item) => (
+                <Text key={item} style={styles.attentionText}>- {item}</Text>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.grid}>
             <HealthItem title="Master" tone={health.masterStatus ?? health.primary?.status ?? "unknown"} value={formatNodeStatus(health.primary?.displayName ?? "Master", health.masterStatus ?? health.primary?.status ?? "unknown")} detail={formatAge(health.primary?.lastSeenAt, "Last heartbeat")} />
             <HealthItem
@@ -84,7 +116,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
             <DiagnosticRow label="Last command" value={formatDiagnosticCommand(health.primary?.diagnostics, health)} />
             <DiagnosticRow label="OTA" value={formatFirmwareDetail(health)} />
             <DiagnosticRow label="Counters" value={formatCounters(health.primary?.diagnostics?.errorCounters)} />
-            {health.attentionReasons?.length ? <DiagnosticRow label="Attention" value={health.attentionReasons.map(formatCode).join(", ")} /> : null}
+            <DiagnosticRow label="Attention" value={attentionItems.length ? attentionItems.join(", ") : "No attention reasons"} />
           </View>
 
           {health.lastCommand?.message ? <Text style={styles.meta}>{health.lastCommand.message}</Text> : null}
@@ -92,6 +124,58 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
       )}
     </Card>
   );
+}
+
+function getAttentionItems(health: HardwareHealth): string[] {
+  const items = new Set<string>();
+
+  health.attentionReasons?.forEach((reason) => items.add(formatCode(reason)));
+
+  const heartbeatStatus = health.heartbeatStatus;
+  const readingStatus = health.readingStatus;
+  const cameraStatus = health.cameraStatus ?? health.imageStatus;
+  const masterStatus = health.masterStatus ?? health.primary?.status;
+
+  if (isProblemStatus(heartbeatStatus)) {
+    items.add(`Heartbeat is ${formatStatusLabel(heartbeatStatus)}`);
+  }
+  if (isProblemStatus(readingStatus)) {
+    items.add(`Sensor readings are ${formatStatusLabel(readingStatus)}`);
+  }
+  if (isProblemStatus(cameraStatus)) {
+    items.add(`Camera images are ${formatStatusLabel(cameraStatus)}`);
+  }
+  if (isProblemStatus(masterStatus)) {
+    items.add(`Master node is ${formatStatusLabel(masterStatus)}`);
+  }
+
+  health.cameras
+    .filter((camera) => isProblemStatus(camera.status))
+    .forEach((camera) => {
+      items.add(`${camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim()}: ${formatStatusLabel(camera.status)}`);
+    });
+
+  if (health.lastCommand?.status === "failed") {
+    items.add(`${formatAction(health.lastCommand.action)} failed`);
+  }
+  if (health.primary?.diagnostics?.lastErrorCode) {
+    items.add(`Last error: ${formatCode(health.primary.diagnostics.lastErrorCode)}`);
+  }
+
+  const counters = health.primary?.diagnostics?.errorCounters;
+  Object.entries(counters ?? {})
+    .filter(([, value]) => value > 0)
+    .forEach(([key, value]) => items.add(`${formatCode(key)}: ${value}`));
+
+  if (!items.size && health.friendlyStatus === "needs_attention") {
+    items.add("Backend reported an issue but did not include a specific reason. Review the health rows below.");
+  }
+
+  return Array.from(items);
+}
+
+function isProblemStatus(status: string | undefined): status is string {
+  return status === "offline" || status === "stale" || status === "warning" || status === "degraded" || status === "error";
 }
 
 function DiagnosticRow({ label, value }: { label: string; value: string }) {
@@ -381,6 +465,26 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
   expandText: { fontSize: theme.typography.meta, fontWeight: "700", color: theme.colors.accent },
   grid: { gap: theme.spacing.md },
+  attentionBox: {
+    borderWidth: 1,
+    borderColor: theme.colors.warning,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.warningSoft,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.md,
+  },
+  attentionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md },
+  attentionTitle: { fontSize: 15, fontWeight: "800", color: theme.colors.warning },
+  attentionText: { fontSize: 13, color: theme.colors.textPrimary },
+  dismissButton: {
+    borderColor: theme.colors.warning,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  dismissButtonText: { color: theme.colors.warning, fontSize: 13, fontWeight: "800" },
   supportSection: { gap: theme.spacing.sm, marginTop: theme.spacing.md },
   supportTitle: { fontSize: 15, fontWeight: "800", color: theme.colors.textPrimary },
   diagnosticRow: {

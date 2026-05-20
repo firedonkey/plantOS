@@ -924,13 +924,6 @@ def _reading_chart(readings: list, max_points: int = MAX_CHART_POINTS) -> list[d
             "min": 0,
             "max": 40,
         },
-        {
-            "key": "water_level_raw",
-            "label": "Water level raw",
-            "unit": "",
-            "min": 0,
-            "max": 60000,
-        },
     ]
     chart = []
     for metric in metrics:

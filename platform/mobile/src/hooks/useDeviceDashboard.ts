@@ -83,7 +83,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
             setCommandMessage(
               matchingCommand.status === "in_progress"
                 ? matchingCommand.detail ?? "Waiting for camera upload."
-                : "Capture request queued for the camera.",
+                : "Waiting for camera.",
             );
           }
         } else if (
@@ -171,13 +171,12 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       try {
         setError(null);
         setCommandTone(null);
+        setCommandMessage(null);
         const result = await sendDeviceCommand(deviceId, action, options, token ?? undefined);
-        setCommandTone(result.usedMock ? "success" : "info");
-        setCommandMessage(
-          result.usedMock
-            ? `Simulated ${friendlyCommandLabel(action)} in mock mode.`
-            : `${friendlyCommandLabel(action)} queued for the device.`,
-        );
+        if (result.usedMock) {
+          setCommandTone("success");
+          setCommandMessage(`Simulated ${friendlyCommandLabel(action)} in mock mode.`);
+        }
         setTrackedCommand(
           result.usedMock
             ? null

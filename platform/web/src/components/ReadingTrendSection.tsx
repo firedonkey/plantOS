@@ -72,12 +72,6 @@ export function ReadingTrendSection({
             values={history.map((reading) => reading.waterTemperatureC)}
             latest={latestReading?.waterTemperatureC}
           />
-          <TrendCard
-            label="Water level raw"
-            unit=""
-            values={history.map((reading) => reading.waterLevelRaw)}
-            latest={latestReading?.waterLevelRaw}
-          />
         </div>
       )}
     </div>

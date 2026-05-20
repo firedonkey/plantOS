@@ -6,6 +6,7 @@ import { deleteDevice, getDeviceSettingsDetails, releaseDeviceForTransfer, updat
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { Card } from "@/components/Card";
 import { FeedbackBanner } from "@/components/FeedbackBanner";
+import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SkeletonCard } from "@/components/Skeleton";
@@ -236,6 +237,8 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
           </View>
         ) : null}
       </Card>
+
+      <HardwareHealthPanel health={details?.hardwareHealth} />
 
       <Card variant="inset">
         <Text style={styles.sectionTitle}>Recovery</Text>

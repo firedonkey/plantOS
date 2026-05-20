@@ -33,15 +33,14 @@ test("reading trend cards render line charts for the approved sensor series", as
     "Air temp",
     "Humidity",
     "Water temp",
-    "Water level raw",
     "temperatureC",
     "humidityPercent",
     "waterTemperatureC",
-    "waterLevelRaw",
   ]) {
     assert.match(trendSource, new RegExp(requiredText));
   }
 
+  assert.doesNotMatch(trendSource, /Water level raw|waterLevelRaw/);
   assert.doesNotMatch(trendSource, /Soil moisture|soilMoisturePercent|Grow LED \/ water level/);
   assert.doesNotMatch(trendSource, /styles\.bars|styles\.bar\b|maxRange|barHeight/);
 });

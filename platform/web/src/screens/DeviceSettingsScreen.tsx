@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { getDeviceSettingsDetails, updateDeviceSettings } from "@/api/devices";
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { useSession } from "@/hooks/useSession";
@@ -166,6 +167,8 @@ export function DeviceSettingsScreen() {
           </>
         ) : null}
       </div>
+
+      <HardwareHealthPanel health={details?.hardwareHealth} />
 
       <div className="card stack-form">
         <h3>Recovery guidance</h3>

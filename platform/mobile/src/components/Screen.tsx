@@ -6,10 +6,11 @@ import { theme } from "@/styles/theme";
 type ScreenProps = PropsWithChildren<{
   onRefresh?: () => void;
   refreshing?: boolean;
+  scrollEnabled?: boolean;
   scrollToTopSignal?: string | number | boolean | null;
 }>;
 
-export function Screen({ children, onRefresh, refreshing = false, scrollToTopSignal }: ScreenProps) {
+export function Screen({ children, onRefresh, refreshing = false, scrollEnabled = true, scrollToTopSignal }: ScreenProps) {
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export function Screen({ children, onRefresh, refreshing = false, scrollToTopSig
         ref={scrollRef}
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={scrollEnabled}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={

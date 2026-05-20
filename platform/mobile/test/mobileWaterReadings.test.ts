@@ -21,6 +21,8 @@ test("mobile API maps backend water sensor fields into dashboard readings", asyn
     "waterTemperatureC: reading.water_temperature_c ?? undefined,",
     "waterLevelRaw: reading.water_level_raw ?? undefined,",
     "waterLevelState: reading.water_level_state ?? undefined,",
+    "function mergeLatestReadingIntoHistory",
+    "history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),",
   ]) {
     assert.match(source, escaped(requiredText));
   }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { CommandActivityPanel } from "@/components/CommandActivityPanel";
-import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
@@ -218,10 +216,6 @@ export function DeviceDashboardScreen() {
             onRangeChange={setSelectedRange}
             loading={isLoading}
           />
-
-          <HardwareHealthPanel health={dashboard.hardwareHealth} />
-
-          <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <Link className="primary-button dashboard-action-button" to={`/devices/${deviceId}/settings`}>
             Device settings

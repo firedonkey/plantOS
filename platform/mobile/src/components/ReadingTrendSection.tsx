@@ -47,13 +47,6 @@ const SENSOR_SERIES = [
     color: theme.colors.accent,
     getValue: (reading: SensorReading) => reading.waterTemperatureC,
   },
-  {
-    key: "water-level",
-    label: "Water level raw",
-    unit: "",
-    color: "#6f7d45",
-    getValue: (reading: SensorReading) => reading.waterLevelRaw,
-  },
 ];
 
 export function ReadingTrendSection({

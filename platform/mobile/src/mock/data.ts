@@ -48,7 +48,7 @@ const recentCommands: DeviceCommand[] = [
     action: "capture_image",
     createdAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
     status: "pending",
-    detail: "Capture is queued for the camera node.",
+    detail: "Capture is waiting for the camera node.",
   },
 ];
 
@@ -119,7 +119,7 @@ const hardwareHealth: HardwareHealth = {
     id: "cmd-capture",
     action: "capture_image",
     status: "pending",
-    message: "Capture is queued for the camera node.",
+    message: "Capture is waiting for the camera node.",
     timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
   },
 };

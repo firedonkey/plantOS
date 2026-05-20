@@ -1,6 +1,6 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth } from "@/types";
+import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth, SensorReading } from "@/types";
 import { ApiError } from "./client";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 
@@ -256,6 +256,26 @@ function mapReading(reading?: ApiDeviceSummary["latest_reading"] | ApiSensorRead
   };
 }
 
+function mergeLatestReadingIntoHistory(history: SensorReading[], latestReading?: SensorReading): SensorReading[] {
+  if (!latestReading || typeof latestReading.waterTemperatureC !== "number") {
+    return history;
+  }
+  if (history.some((reading) => typeof reading.waterTemperatureC === "number")) {
+    return history;
+  }
+
+  const matchingIndex = history.findIndex((reading) => reading.timestamp === latestReading.timestamp);
+  if (matchingIndex >= 0) {
+    const merged = [...history];
+    merged[matchingIndex] = { ...merged[matchingIndex], ...latestReading };
+    return merged;
+  }
+
+  return [...history, latestReading].sort(
+    (left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+  );
+}
+
 function mapCommand(command: ApiCommandRead): DeviceCommand {
   return {
     id: String(command.id),
@@ -465,6 +485,9 @@ export async function getDeviceDashboard(
         : latestImage
           ? [latestImage]
           : [];
+    const latestReading = mapReading(summary.latest_reading);
+    const mappedHistory = history.map((reading) => mapReading(reading)!);
+
     return {
       usedMock: false,
       dashboard: {
@@ -475,13 +498,13 @@ export async function getDeviceDashboard(
           plantType: summary.plant_type ?? undefined,
           status: mapStatus(summary),
           lastSeenAt: summary.hardware_health?.last_heartbeat_at ?? summary.latest_reading?.timestamp ?? undefined,
-          latestReading: mapReading(summary.latest_reading),
+          latestReading,
           latestImage,
         },
         hardwareHealth: mapHardwareHealth(summary.hardware_health),
         recentImages: galleryImages,
         recentCommands: commands.slice(0, 6).map(mapCommand),
-        history: history.map((reading) => mapReading(reading)!),
+        history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),
       },
     };
   } catch (error) {

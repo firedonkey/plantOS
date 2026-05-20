@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { HardwareHealth } from "@/types";
 
 type HardwareHealthPanelProps = {
@@ -5,6 +7,7 @@ type HardwareHealthPanelProps = {
 };
 
 export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
+  const [dismissedAttentionSignature, setDismissedAttentionSignature] = useState<string | null>(null);
   if (!health) {
     return (
       <details className="card stack-form collapsible-panel">
@@ -21,6 +24,19 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
     );
   }
 
+  const attentionItems = getAttentionItems(health);
+  const attentionSignature = attentionItems.join("|");
+  const attentionDismissed = attentionSignature.length > 0 && dismissedAttentionSignature === attentionSignature;
+  const visibleAttentionItems = attentionDismissed ? [] : attentionItems;
+  const headerStatusLabel =
+    attentionDismissed && health.friendlyStatus === "needs_attention"
+      ? "Reviewed"
+      : formatFriendlyStatus(health.friendlyStatus, health.overallStatus);
+  const headerChipTone =
+    attentionDismissed && health.friendlyStatus === "needs_attention"
+      ? "unknown"
+      : chipTone(health.friendlyStatus, health.overallStatus);
+
   return (
     <details className="card stack-form collapsible-panel">
       <summary className="collapsible-summary">
@@ -28,11 +44,27 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
           <h3>Hardware health</h3>
           <p className="subtitle">Live heartbeat, node, image, and command status from the shared backend contract.</p>
         </div>
-        <span className={`chip chip-${chipTone(health.friendlyStatus, health.overallStatus)}`}>
-          {formatFriendlyStatus(health.friendlyStatus, health.overallStatus)}
+        <span className={`chip chip-${headerChipTone}`}>
+          {headerStatusLabel}
         </span>
         <span className="collapsible-indicator" aria-hidden="true" />
       </summary>
+
+      {visibleAttentionItems.length ? (
+        <div className="attention-panel">
+          <div className="attention-panel-header">
+            <strong>Needs attention</strong>
+            <button className="attention-dismiss" type="button" onClick={() => setDismissedAttentionSignature(attentionSignature)}>
+              Dismiss
+            </button>
+          </div>
+          <ul>
+            {visibleAttentionItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="health-grid">
         <div className="health-item">
@@ -76,13 +108,65 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
         <div className="health-item">
           <strong>Counters</strong>
           <span>{formatCounters(health.primary?.diagnostics?.errorCounters)}</span>
-          <small>{health.attentionReasons?.length ? health.attentionReasons.map(formatCode).join(", ") : "No attention reasons"}</small>
+          <small>{attentionItems.length ? attentionItems.join(", ") : "No attention reasons"}</small>
         </div>
       </div>
 
       {health.lastCommand?.message ? <p className="meta-text">{health.lastCommand.message}</p> : null}
     </details>
   );
+}
+
+function getAttentionItems(health: HardwareHealth): string[] {
+  const items = new Set<string>();
+
+  health.attentionReasons?.forEach((reason) => items.add(formatCode(reason)));
+
+  const heartbeatStatus = health.heartbeatStatus;
+  const readingStatus = health.readingStatus;
+  const cameraStatus = health.cameraStatus ?? health.imageStatus;
+  const masterStatus = health.masterStatus ?? health.primary?.status;
+
+  if (isProblemStatus(heartbeatStatus)) {
+    items.add(`Heartbeat is ${formatStatusLabel(heartbeatStatus)}`);
+  }
+  if (isProblemStatus(readingStatus)) {
+    items.add(`Sensor readings are ${formatStatusLabel(readingStatus)}`);
+  }
+  if (isProblemStatus(cameraStatus)) {
+    items.add(`Camera images are ${formatStatusLabel(cameraStatus)}`);
+  }
+  if (isProblemStatus(masterStatus)) {
+    items.add(`Master node is ${formatStatusLabel(masterStatus)}`);
+  }
+
+  health.cameras
+    .filter((camera) => isProblemStatus(camera.status))
+    .forEach((camera) => {
+      items.add(`${camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim()}: ${formatStatusLabel(camera.status)}`);
+    });
+
+  if (health.lastCommand?.status === "failed") {
+    items.add(`${formatAction(health.lastCommand.action)} failed`);
+  }
+  if (health.primary?.diagnostics?.lastErrorCode) {
+    items.add(`Last error: ${formatCode(health.primary.diagnostics.lastErrorCode)}`);
+  }
+
+  const counters = health.primary?.diagnostics?.errorCounters;
+  Object.entries(counters ?? {})
+    .filter(([, value]) => value > 0)
+    .forEach(([key, value]) => items.add(`${formatCode(key)}: ${value}`));
+
+  if (!items.size && health.friendlyStatus === "needs_attention") {
+    items.add("Backend reported an issue but did not include a specific reason. Review the health rows below.");
+  }
+
+  return Array.from(items);
+}
+
+function isProblemStatus(status: string | undefined): status is string {
+  return status === "offline" || status === "stale" || status === "warning" || status === "degraded" || status === "error";
 }
 
 function chipTone(status: HardwareHealth["friendlyStatus"], fallback: string): string {

@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocalSearchParams } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
-import { CommandActivityPanel } from "@/components/CommandActivityPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { FeedbackBanner } from "@/components/FeedbackBanner";
-import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { MetricCard } from "@/components/MetricCard";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
@@ -46,7 +44,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
   const growLedIntensityPercent = dashboard?.device.currentLightIntensityPercent ?? dashboard?.device.latestReading?.lightIntensityPercent;
   const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);
   const currentLightIntensity = clampLightIntensity(growLedIntensityPercent ?? (growLedOn ? 100 : 0));
-  const [lightIntensityDraft, setLightIntensityDraft] = useState(currentLightIntensity);
+  const [sliderActive, setSliderActive] = useState(false);
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
   const pendingLightIntensity = activeCommandAction === "light_intensity" || isActionBlocked("light_intensity");
@@ -63,10 +61,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           ? "Turn off"
           : "Turn on";
 
-  useEffect(() => {
-    setLightIntensityDraft(currentLightIntensity);
-  }, [currentLightIntensity, dashboard?.device.id]);
-
   if (!deviceId) {
     return (
       <Screen>
@@ -76,7 +70,7 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
   }
 
   return (
-    <Screen onRefresh={refresh} refreshing={isLoading}>
+    <Screen onRefresh={refresh} refreshing={isLoading} scrollEnabled={!sliderActive}>
       {dashboard ? (
         <>
           <Card variant="hero">
@@ -136,13 +130,12 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
               />
             </View>
             {lightIntensitySupported ? (
-              <LightIntensityStepper
+              <LightIntensitySlider
+                committedValue={currentLightIntensity}
                 disabled={lightIntensityDisabled}
-                onChange={setLightIntensityDraft}
-                onSubmit={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}
+                onCommit={(value) => runCommand("light_intensity", { intensityPercent: value })}
+                onInteractionChange={setSliderActive}
                 pending={pendingLightIntensity}
-                unchanged={lightIntensityDraft === currentLightIntensity}
-                value={lightIntensityDraft}
               />
             ) : null}
           </Card>
@@ -169,10 +162,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
             onRangeChange={setSelectedRange}
             loading={isLoading}
           />
-
-          <HardwareHealthPanel health={dashboard.hardwareHealth} />
-
-          <CommandActivityPanel commands={dashboard.recentCommands} />
 
           <Link href={`/(app)/devices/${deviceId}/settings`} asChild>
             <Pressable accessibilityRole="button" style={styles.settingsButton}>
@@ -208,57 +197,155 @@ function ToggleButton({ disabled, label, on, onPress }: { disabled: boolean; lab
   );
 }
 
-function LightIntensityStepper({
+function LightIntensitySlider({
+  committedValue,
   disabled,
-  onChange,
-  onSubmit,
+  onCommit,
+  onInteractionChange,
   pending,
-  unchanged,
-  value,
 }: {
+  committedValue: number;
   disabled: boolean;
-  onChange: (value: number) => void;
-  onSubmit: () => void;
+  onCommit: (value: number) => void;
+  onInteractionChange: (active: boolean) => void;
   pending: boolean;
-  unchanged: boolean;
-  value: number;
 }) {
-  const decrease = () => onChange(clampLightIntensity(value - 5));
-  const increase = () => onChange(clampLightIntensity(value + 5));
+  const [trackWidth, setTrackWidth] = useState(0);
+  const sliderValue = useRef(new Animated.Value(committedValue)).current;
+  const draftRef = useRef(committedValue);
+  const interactionActiveRef = useRef(false);
+  const trackRef = useRef<View | null>(null);
+  const trackMetricsRef = useRef<{ pageX: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (interactionActiveRef.current) {
+      return;
+    }
+    draftRef.current = committedValue;
+    sliderValue.setValue(committedValue);
+  }, [committedValue, sliderValue]);
+
+  const syncTrackMetrics = (afterMeasure?: () => void) => {
+    if (!trackRef.current) {
+      afterMeasure?.();
+      return;
+    }
+    trackRef.current.measureInWindow((pageX, _pageY, width) => {
+      if (width > 0) {
+        trackMetricsRef.current = { pageX, width };
+        setTrackWidth((currentWidth) => (Math.abs(currentWidth - width) > 1 ? width : currentWidth));
+      }
+      afterMeasure?.();
+    });
+  };
+
+  const valueFromPageX = (pageX: number) => {
+    const metrics = trackMetricsRef.current;
+    if (!metrics || metrics.width <= 0) {
+      return null;
+    }
+    const ratio = Math.max(0, Math.min(1, (pageX - metrics.pageX) / metrics.width));
+    return clampLightIntensity(Math.round((ratio * 100) / 5) * 5);
+  };
+
+  const updateFromPageX = (pageX: number) => {
+    const nextValue = valueFromPageX(pageX);
+    if (nextValue === null) {
+      return;
+    }
+    draftRef.current = nextValue;
+    sliderValue.setValue(nextValue);
+  };
+
+  const updateFromTouch = (event: GestureResponderEvent) => {
+    if (!disabled) {
+      updateFromPageX(event.nativeEvent.pageX);
+    }
+  };
+
+  const startTouch = (event: GestureResponderEvent) => {
+    if (disabled) {
+      return;
+    }
+    interactionActiveRef.current = true;
+    onInteractionChange(true);
+    syncTrackMetrics(() => updateFromPageX(event.nativeEvent.pageX));
+  };
+
+  const commitTouch = () => {
+    if (!interactionActiveRef.current) {
+      return;
+    }
+    interactionActiveRef.current = false;
+    onInteractionChange(false);
+    if (disabled) {
+      return;
+    }
+    const nextValue = draftRef.current;
+    if (nextValue !== committedValue) {
+      onCommit(nextValue);
+    }
+  };
+
+  const adjustForAccessibility = (delta: number) => {
+    if (disabled) {
+      return;
+    }
+    const nextValue = clampLightIntensity(draftRef.current + delta);
+    draftRef.current = nextValue;
+    sliderValue.setValue(nextValue);
+    if (nextValue !== committedValue) {
+      onCommit(nextValue);
+    }
+  };
+
+  const fillWidth = trackWidth > 0
+    ? sliderValue.interpolate({
+        inputRange: [0, 100],
+        outputRange: [0, trackWidth],
+        extrapolate: "clamp",
+      })
+    : 0;
+  const thumbTranslateX = trackWidth > 0
+    ? sliderValue.interpolate({
+        inputRange: [0, 100],
+        outputRange: [0, trackWidth],
+        extrapolate: "clamp",
+      })
+    : 0;
+
   return (
     <View style={styles.intensityControl}>
       <View style={styles.intensityHeader}>
-        <Text style={styles.intensityLabel}>Intensity</Text>
-        <Text style={styles.intensityValue}>{value}%</Text>
+        <Text style={styles.intensityLabel}>Brightness</Text>
+        <Text style={styles.intensityValue}>{pending ? "Setting..." : `${committedValue}%`}</Text>
       </View>
-      <View style={styles.intensityActions}>
-        <Pressable
-          accessibilityLabel="Decrease grow LED intensity"
-          accessibilityRole="button"
-          disabled={disabled || value <= 0}
-          onPress={decrease}
-          style={[styles.intensityStepButton, disabled || value <= 0 ? styles.intensityDisabled : null]}
-        >
-          <Text style={styles.intensityStepLabel}>-</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Increase grow LED intensity"
-          accessibilityRole="button"
-          disabled={disabled || value >= 100}
-          onPress={increase}
-          style={[styles.intensityStepButton, disabled || value >= 100 ? styles.intensityDisabled : null]}
-        >
-          <Text style={styles.intensityStepLabel}>+</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Set grow LED intensity"
-          accessibilityRole="button"
-          disabled={disabled || unchanged}
-          onPress={onSubmit}
-          style={[styles.intensityApplyButton, disabled || unchanged ? styles.intensityDisabled : null]}
-        >
-          <Text style={styles.intensityApplyLabel}>{pending ? "Setting" : "Set"}</Text>
-        </Pressable>
+      <View
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        accessibilityLabel="Grow LED intensity"
+        accessibilityRole="adjustable"
+        accessibilityState={{ disabled }}
+        accessibilityValue={{ min: 0, max: 100, now: committedValue, text: `${committedValue}%` }}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "increment") {
+            adjustForAccessibility(5);
+          } else if (event.nativeEvent.actionName === "decrement") {
+            adjustForAccessibility(-5);
+          }
+        }}
+        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+        onMoveShouldSetResponder={() => !disabled}
+        onResponderGrant={startTouch}
+        onResponderMove={updateFromTouch}
+        onResponderRelease={commitTouch}
+        onResponderTerminate={commitTouch}
+        onStartShouldSetResponder={() => !disabled}
+        ref={trackRef}
+        style={[styles.intensitySlider, disabled ? styles.intensityDisabled : null]}
+      >
+        <View pointerEvents="none" style={styles.intensityTrack} />
+        <Animated.View pointerEvents="none" style={[styles.intensityTrackFill, { width: fillWidth }]} />
+        <Animated.View pointerEvents="none" style={[styles.intensityThumb, { transform: [{ translateX: thumbTranslateX }] }]} />
       </View>
     </View>
   );
@@ -338,27 +425,34 @@ const styles = StyleSheet.create({
   intensityHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   intensityLabel: { color: theme.colors.textSecondary, fontSize: theme.typography.body, fontWeight: "700" },
   intensityValue: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "800" },
-  intensityActions: { alignItems: "center", flexDirection: "row", gap: theme.spacing.sm },
-  intensityStepButton: {
-    alignItems: "center",
-    backgroundColor: theme.colors.surfaceInset,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    height: 44,
+  intensitySlider: {
+    height: 40,
     justifyContent: "center",
-    width: 52,
   },
-  intensityStepLabel: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "800" },
-  intensityApplyButton: {
-    alignItems: "center",
+  intensityTrack: {
+    backgroundColor: theme.colors.border,
+    borderRadius: theme.radii.pill,
+    height: 8,
+    width: "100%",
+  },
+  intensityTrackFill: {
     backgroundColor: theme.colors.accent,
-    borderRadius: theme.radii.md,
-    flex: 1,
-    height: 44,
-    justifyContent: "center",
+    borderRadius: theme.radii.pill,
+    height: 8,
+    left: 0,
+    position: "absolute",
   },
-  intensityApplyLabel: { color: theme.colors.white, fontSize: 15, fontWeight: "800" },
+  intensityThumb: {
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.accent,
+    borderRadius: 12,
+    borderWidth: 3,
+    height: 24,
+    left: 0,
+    marginLeft: -12,
+    position: "absolute",
+    width: 24,
+  },
   intensityDisabled: { opacity: 0.55 },
   toggleSwitch: {
     width: 108,

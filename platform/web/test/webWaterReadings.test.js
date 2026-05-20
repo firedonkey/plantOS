@@ -21,6 +21,8 @@ test("web API maps backend water sensor fields into dashboard readings", async (
     "waterTemperatureC: reading.water_temperature_c ?? undefined,",
     "waterLevelRaw: reading.water_level_raw ?? undefined,",
     "waterLevelState: reading.water_level_state ?? undefined,",
+    "function mergeLatestReadingIntoHistory",
+    "history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),",
   ]) {
     assert.match(source, escaped(requiredText));
   }
@@ -46,4 +48,41 @@ test("web dashboards summarize water readings instead of stale soil moisture", a
   assert.doesNotMatch(listSource, /soilMoisturePercent/);
   assert.doesNotMatch(historySource, /soilMoisturePercent/);
   assert.doesNotMatch(mockSource, /waterLevelPercent/);
+});
+
+test("web sensor trends render water temperature without a water level chart", async () => {
+  const trendSource = await readText("../src/components/ReadingTrendSection.tsx");
+
+  for (const requiredText of [
+    "Water temp",
+    "waterTemperatureC",
+    "latestReading?.waterTemperatureC",
+  ]) {
+    assert.match(trendSource, escaped(requiredText));
+  }
+
+  assert.doesNotMatch(trendSource, /Water level raw|waterLevelRaw/);
+});
+
+test("web hardware health expands needs attention into visible reasons", async () => {
+  const panelSource = await readText("../src/components/HardwareHealthPanel.tsx");
+  const styleSource = await readText("../src/styles/app.css");
+  const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
+  const settingsSource = await readText("../src/screens/DeviceSettingsScreen.tsx");
+
+  for (const requiredText of [
+    "function getAttentionItems",
+    "attention-panel",
+    "attention-dismiss",
+    "Dismiss",
+    "Reviewed",
+    "Backend reported an issue but did not include a specific reason.",
+    "attentionItems.length ? attentionItems.join",
+    "HardwareHealthPanel",
+    "health={details?.hardwareHealth}",
+  ]) {
+    assert.match(`${panelSource}\n${styleSource}\n${settingsSource}`, escaped(requiredText));
+  }
+
+  assert.doesNotMatch(dashboardSource, /HardwareHealthPanel|CommandActivityPanel/);
 });

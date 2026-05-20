@@ -1696,20 +1696,28 @@ def test_reading_chart_summarizes_available_readings():
             moisture=float(index),
             temperature=20.0 + index,
             humidity=40.0 + index,
+            water_temperature_c=18.0 + index,
+            water_level_raw=35000 + index,
             timestamp=datetime(2026, 4, 13, 19, index, tzinfo=timezone.utc),
         )
         for index in range(25)
     ]
 
     chart = _reading_chart(readings)
+    chart_keys = {metric["key"] for metric in chart}
     moisture_chart = chart[0]
+    water_temperature_chart = next(metric for metric in chart if metric["key"] == "water_temperature_c")
 
+    assert "water_level_raw" not in chart_keys
     assert len(moisture_chart["points"]) == 25
     assert moisture_chart["points"][0]["value"] == 24.0
     assert moisture_chart["points"][-1]["value"] == 0.0
     assert moisture_chart["minimum"] == 0.0
     assert moisture_chart["maximum"] == 24.0
     assert moisture_chart["average"] == 12.0
+    assert len(water_temperature_chart["points"]) == 25
+    assert water_temperature_chart["points"][0]["value"] == 42.0
+    assert water_temperature_chart["points"][-1]["value"] == 18.0
 
 
 def test_reading_chart_downsamples_large_ranges():
