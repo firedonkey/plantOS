@@ -196,7 +196,6 @@ def device_setup_finishing_page(request: Request, session: Session = Depends(get
 
 @router.get("/devices/add")
 def add_device_page(request: Request, session: Session = Depends(get_session)):
-    settings = get_settings()
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
@@ -206,26 +205,7 @@ def add_device_page(request: Request, session: Session = Depends(get_session)):
         request.session.clear()
         return RedirectResponse(url="/login", status_code=303)
 
-    devices = list_devices_for_user(session, current_user)
-    next_device_number = len(devices) + 1
-
-    return templates.TemplateResponse(
-        request,
-        "add_device.html",
-        {
-            "app_name": settings.app_name,
-            "current_user": current_user,
-            "suggested_device_name": f"Device {next_device_number}",
-            "suggested_location": f"Location {next_device_number}",
-            "local_setup_url": settings.local_setup_url,
-            "provisioning_api_url": settings.provisioning_api_url,
-            "device_platform_url": (
-                settings.device_platform_url.rstrip("/")
-                if settings.device_platform_url
-                else str(request.base_url).rstrip("/")
-            ),
-        },
-    )
+    return RedirectResponse(url="/devices", status_code=303)
 
 
 @router.get("/devices/{device_id}")

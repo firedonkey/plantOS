@@ -1789,7 +1789,7 @@ def test_devices_page_shows_latest_values_on_cards():
         teardown_overrides()
 
 
-def test_devices_page_prefills_next_device_defaults():
+def test_legacy_devices_add_page_redirects_to_device_list():
     client, _ = build_client_with_user(set_session_cookie=True)
     try:
         create_response = client.post(
@@ -1801,10 +1801,9 @@ def test_devices_page_prefills_next_device_defaults():
         )
         assert create_response.status_code == 201
 
-        response = client.get("/devices/add")
+        response = client.get("/devices/add", follow_redirects=False)
 
-        assert response.status_code == 200
-        assert 'value="Device 2"' in response.text
-        assert 'value="Location 2"' in response.text
+        assert response.status_code == 303
+        assert response.headers["location"] == "/devices"
     finally:
         teardown_overrides()

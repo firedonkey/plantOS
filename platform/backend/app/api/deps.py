@@ -47,6 +47,13 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     return user
 
 
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    settings = get_settings()
+    if (current_user.email or "").strip().lower() not in settings.effective_admin_emails:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return current_user
+
+
 def get_device_from_token(request: Request, session: Session) -> Device | None:
     api_token = request.headers.get("X-Device-Token")
     if not api_token:

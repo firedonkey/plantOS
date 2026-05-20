@@ -16,9 +16,6 @@ export function AppLayout() {
           <NavLink to="/devices" className="nav-link">
             Devices
           </NavLink>
-          <NavLink to="/devices/add" className="nav-link">
-            Add device
-          </NavLink>
           <NavLink to="/settings" className="nav-link">
             Settings
           </NavLink>

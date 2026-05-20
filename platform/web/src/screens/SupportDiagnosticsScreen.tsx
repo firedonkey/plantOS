@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { fetchCurrentUserProfile } from "@/api/auth";
 import { getDeviceDiagnostics, listDevices } from "@/api/devices";
@@ -122,10 +121,7 @@ export function SupportDiagnosticsScreen() {
       {records.length === 0 && !isLoading && !error ? (
         <div className="empty-state">
           <h3>No devices found</h3>
-          <p className="subtitle">Diagnostics will appear after a device is added to this account.</p>
-          <Link className="text-link" to="/devices/add">
-            Add a device
-          </Link>
+          <p className="subtitle">Diagnostics will appear after a device is added from the mobile app.</p>
         </div>
       ) : null}
 

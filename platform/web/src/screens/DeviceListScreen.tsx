@@ -32,9 +32,6 @@ export function DeviceListScreen() {
           </p>
         </div>
         <div className="header-actions">
-          <Link className="primary-button" to="/devices/add">
-            Add device
-          </Link>
           <button className="secondary-button" disabled={isLoading} onClick={() => void refresh()}>
             {isLoading ? "Refreshing..." : "Refresh"}
           </button>
@@ -52,10 +49,7 @@ export function DeviceListScreen() {
       {!isLoading && !error && devices.length === 0 ? (
         <div className="empty-state">
           <h3>No devices yet</h3>
-          <p className="subtitle">Start onboarding here, then come back to monitor the device once setup finishes.</p>
-          <Link className="text-link" to="/devices/add">
-            Open add-device flow
-          </Link>
+          <p className="subtitle">Add your PlantLab device from the mobile app. It will appear here after setup finishes.</p>
         </div>
       ) : null}
 

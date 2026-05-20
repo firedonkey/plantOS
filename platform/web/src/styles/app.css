@@ -3,7 +3,7 @@
   line-height: 1.5;
   font-weight: 400;
   color: #1f2a24;
-  background: #f5f7f8;
+  background: #eef3f1;
 }
 
 * {
@@ -12,7 +12,7 @@
 
 body {
   margin: 0;
-  background: #f5f7f8;
+  background: #eef3f1;
   color: #1f2a24;
 }
 
@@ -33,16 +33,19 @@ input {
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding: 24px;
+  padding: 32px 24px;
   border-right: 1px solid #d7dee3;
-  background: #ffffff;
+  background: #fbfdfc;
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
 .brand h1,
@@ -58,9 +61,13 @@ input {
 }
 
 .nav-link {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 8px;
   color: #55635d;
+}
+
+.nav-link:hover {
+  background: #edf4f0;
 }
 
 .nav-link.active {
@@ -70,13 +77,15 @@ input {
 }
 
 .main {
-  padding: 28px;
+  padding: 40px 48px;
 }
 
 .page-section {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
+  width: min(100%, 1320px);
+  margin: 0 auto;
 }
 
 .page-header {
@@ -84,6 +93,10 @@ input {
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+  padding: 22px;
+  background: #fbfdfc;
+  border: 1px solid #d7dee3;
+  border-radius: 8px;
 }
 
 .header-actions {
@@ -121,8 +134,8 @@ input {
 .card-grid,
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
 }
 
 .device-card,
@@ -132,13 +145,22 @@ input {
   background: #ffffff;
   border: 1px solid #d7dee3;
   border-radius: 8px;
-  padding: 16px;
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(31, 42, 36, 0.04);
 }
 
 .device-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 180px;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.device-card:hover {
+  border-color: #2f855a;
+  box-shadow: 0 14px 34px rgba(31, 42, 36, 0.08);
+  transform: translateY(-1px);
 }
 
 .device-card-header {
@@ -910,6 +932,18 @@ input {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid #d7dee3;
+    height: auto;
+    position: static;
+    padding: 22px;
+  }
+
+  .main {
+    padding: 24px 18px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    padding: 18px;
   }
 
   .landing-page {

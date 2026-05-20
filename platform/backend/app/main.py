@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
 from app.api.errors import api_http_exception_handler, api_validation_exception_handler
-from app.api.routes import auth, commands, device_nodes, devices, firmware, hardware, health, images, readings, setup, status
+from app.api.routes import admin, auth, commands, device_nodes, devices, firmware, hardware, health, images, readings, setup, status
 from app.core.settings import get_settings
 from app.db.session import init_db
 from app.web.routes import router as web_router
@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
         Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
         app.mount("/data/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
     app.add_event_handler("startup", init_db)
+    app.include_router(admin.router)
     app.include_router(auth.router)
     app.include_router(commands.router)
     app.include_router(device_nodes.router)

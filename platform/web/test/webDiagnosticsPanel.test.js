@@ -32,6 +32,19 @@ test("web diagnostics panel is routed from the app shell", async () => {
   }
 });
 
+test("standalone web removes add-device entry points", async () => {
+  const appSource = await readText("../src/App.tsx");
+  const layoutSource = await readText("../src/components/AppLayout.tsx");
+  const deviceListSource = await readText("../src/screens/DeviceListScreen.tsx");
+  const supportSource = await readText("../src/screens/SupportDiagnosticsScreen.tsx");
+
+  assert.match(appSource, escaped('path="devices/add" element={<Navigate to="/devices" replace />}'));
+  assert.doesNotMatch(layoutSource, /Add device/);
+  assert.doesNotMatch(deviceListSource, /to="\/devices\/add"|Open add-device flow/);
+  assert.match(deviceListSource, /mobile app/);
+  assert.doesNotMatch(supportSource, /to="\/devices\/add"|Add a device/);
+});
+
 test("web diagnostics panel uses account, device, and per-device diagnostics APIs", async () => {
   const authSource = await readText("../src/api/auth.ts");
   const devicesSource = await readText("../src/api/devices.ts");

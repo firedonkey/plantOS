@@ -51,11 +51,13 @@ def _register_google_client() -> None:
 
 
 def _auth_user_read(user: User) -> AuthUserRead:
+    settings = get_settings()
     return AuthUserRead(
         id=user.id,
         email=user.email,
         name=user.name,
         avatar_url=user.avatar_url,
+        is_admin=(user.email or "").strip().lower() in settings.effective_admin_emails,
     )
 
 

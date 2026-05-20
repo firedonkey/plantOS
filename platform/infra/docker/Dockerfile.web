@@ -1,0 +1,24 @@
+FROM node:22-alpine
+
+WORKDIR /app/platform/web
+
+COPY platform/web/package*.json ./
+RUN npm ci
+
+COPY platform/web ./
+
+ARG VITE_API_BASE_URL=http://localhost:8000
+ARG VITE_AUTH_MODE=dev
+ARG VITE_ENABLE_DEV_AUTH=true
+ARG VITE_ENABLE_MOCK_FALLBACK=false
+
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_AUTH_MODE=${VITE_AUTH_MODE}
+ENV VITE_ENABLE_DEV_AUTH=${VITE_ENABLE_DEV_AUTH}
+ENV VITE_ENABLE_MOCK_FALLBACK=${VITE_ENABLE_MOCK_FALLBACK}
+
+RUN npm run build
+
+EXPOSE 5173
+
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]

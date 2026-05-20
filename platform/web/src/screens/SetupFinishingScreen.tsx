@@ -103,9 +103,9 @@ export function SetupFinishingScreen() {
       <section className="page-section">
         <div className="empty-state">
           <h3>Setup details missing</h3>
-          <p className="subtitle">Start from the add-device flow so we know which PlantLab to watch during onboarding.</p>
-          <Link className="text-link" to="/devices/add">
-            Go to add device
+          <p className="subtitle">Use the mobile app to add devices, then return here to monitor them on the web dashboard.</p>
+          <Link className="text-link" to="/devices">
+            Back to devices
           </Link>
         </div>
       </section>

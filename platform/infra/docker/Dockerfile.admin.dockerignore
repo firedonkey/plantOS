@@ -1,0 +1,12 @@
+.git
+.venv
+.pio-core
+agent-workspace
+data
+device
+docs
+node_modules
+platform/backend
+platform/mobile
+platform/web
+provision_backend

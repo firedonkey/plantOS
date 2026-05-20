@@ -52,6 +52,7 @@ class Settings:
     standalone_refresh_cookie_samesite: str = "lax"
     standalone_refresh_cookie_secure: bool | None = None
     standalone_mobile_scheme: str | None = "plantlab"
+    admin_emails: tuple[str, ...] = ()
 
     @property
     def google_auth_configured(self) -> bool:
@@ -112,6 +113,13 @@ class Settings:
         if self.standalone_refresh_cookie_secure is not None:
             return self.standalone_refresh_cookie_secure
         return self.is_production
+
+    @property
+    def effective_admin_emails(self) -> set[str]:
+        emails = {email.strip().lower() for email in self.admin_emails if email.strip()}
+        if not self.is_production and self.dev_token_auth_enabled:
+            emails.add("dev@plantlab.local")
+        return emails
 
 
 @lru_cache
@@ -180,6 +188,7 @@ def get_settings() -> Settings:
             if os.getenv("PLANTLAB_STANDALONE_MOBILE_SCHEME") is not None
             else Settings.standalone_mobile_scheme
         ),
+        admin_emails=_env_csv("PLANTLAB_ADMIN_EMAILS"),
     )
     settings.validate()
     return settings
@@ -192,6 +201,13 @@ def _optional_env(name: str, legacy_name: str | None = None) -> str | None:
     if value is None or value.strip() == "":
         return None
     return value.strip()
+
+
+def _env_csv(name: str) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return ()
+    return tuple(item.strip().lower() for item in value.split(",") if item.strip())
 
 
 def _env_bool(name: str, *, default: bool) -> bool:

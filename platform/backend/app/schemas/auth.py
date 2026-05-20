@@ -11,6 +11,7 @@ class AuthUserRead(BaseModel):
     email: str
     name: str | None
     avatar_url: str | None
+    is_admin: bool = False
 
 
 class AuthSessionRead(BaseModel):
