@@ -13,6 +13,7 @@ class OtaUpdateManager {
   OtaUpdateManager(
       PlatformClient* client,
       const char* hardware_device_id,
+      const char* node_role,
       const char* hardware_model,
       const char* current_version,
       int current_version_code);
@@ -41,6 +42,7 @@ class OtaUpdateManager {
 
   PlatformClient* client_;
   String hardware_device_id_;
+  String node_role_;
   String hardware_model_;
   String current_version_;
   int current_version_code_;

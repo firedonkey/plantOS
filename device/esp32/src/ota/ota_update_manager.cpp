@@ -20,11 +20,13 @@ mbedtls_sha256_context g_sha_context;
 OtaUpdateManager::OtaUpdateManager(
     PlatformClient* client,
     const char* hardware_device_id,
+    const char* node_role,
     const char* hardware_model,
     const char* current_version,
     int current_version_code)
     : client_(client),
       hardware_device_id_(hardware_device_id == nullptr ? "" : hardware_device_id),
+      node_role_(node_role == nullptr ? "" : node_role),
       hardware_model_(hardware_model == nullptr ? "" : hardware_model),
       current_version_(current_version == nullptr ? "" : current_version),
       current_version_code_(current_version_code) {}
@@ -35,6 +37,9 @@ void OtaUpdateManager::begin() {
 
 void OtaUpdateManager::service(unsigned long now) {
   if (client_ == nullptr || !client_->configured() || hardware_device_id_.length() == 0) {
+    return;
+  }
+  if (node_role_.length() == 0) {
     return;
   }
   if (!checked_this_boot_ && now < kInitialOtaDelayMs) {
@@ -51,7 +56,7 @@ void OtaUpdateManager::service(unsigned long now) {
   String error;
   if (!client_->fetch_ota_manifest(
           hardware_device_id_.c_str(),
-          "master",
+          node_role_.c_str(),
           current_version_.c_str(),
           &response,
           &error)) {
@@ -62,7 +67,7 @@ void OtaUpdateManager::service(unsigned long now) {
   FirmwareManifest manifest;
   if (!parseFirmwareManifest(
           response,
-          "master",
+          node_role_.c_str(),
           hardware_model_.c_str(),
           current_version_code_,
           &manifest,

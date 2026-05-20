@@ -56,6 +56,27 @@ int main() {
   assert(manifest.artifact_size_bytes == 1024);
   assert(manifest.sha256 == kValidSha);
 
+  FirmwareManifest camera_manifest;
+  assert(parseFirmwareManifest(
+      "{"
+      "\"update_available\":true,"
+      "\"release_id\":\"camera-0.2.0\","
+      "\"node_role\":\"camera\","
+      "\"hardware_model\":\"xiao_esp32s3_camera\","
+      "\"version\":\"0.2.0\","
+      "\"version_code\":2000,"
+      "\"artifact_url\":\"/api/hardware/ota/artifacts/camera-0.2.0\","
+      "\"artifact_size_bytes\":1024,"
+      "\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\""
+      "}",
+      "camera",
+      "xiao_esp32s3_camera",
+      1000,
+      &camera_manifest,
+      &error));
+  assert(camera_manifest.node_role == "camera");
+  assert(camera_manifest.hardware_model == "xiao_esp32s3_camera");
+
   FirmwareManifest no_update_manifest;
   assert(parseFirmwareManifest(
       "{\"update_available\":false}",

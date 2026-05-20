@@ -14,6 +14,7 @@
 #include "config.h"
 #include "espnow_test_protocol.h"
 #include "firmware_version.h"
+#include "ota/ota_update_manager.h"
 #include "platform/platform_client.h"
 
 extern "C" {
@@ -32,10 +33,12 @@ constexpr char kConfigKeyPlatformUrl[] = "plat_url";
 constexpr char kConfigKeyDeviceToken[] = "dev_token";
 constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kNodeRoleCamera[] = "camera";
+constexpr char kCameraHardwareModel[] = "xiao_esp32s3_camera";
 constexpr const char* kCameraSoftwareVersion = plantlab::kCameraSoftwareVersion;
 XiaoCamera g_camera;
 Preferences g_preferences;
 std::unique_ptr<PlatformClient> g_platform_client;
+std::unique_ptr<plantlab::OtaUpdateManager> g_ota_update_manager;
 CameraNodeRuntimeConfig g_runtime_config{};
 String g_hardware_device_id;
 
@@ -184,11 +187,20 @@ String runtimeDeviceToken() {
 }
 
 void rebuildPlatformClient() {
+  g_ota_update_manager.reset();
   g_platform_client.reset();
   const String platform_url = runtimePlatformUrl();
   const String device_token = runtimeDeviceToken();
   const int device_id = runtimePlatformDeviceId();
   g_platform_client.reset(new PlatformClient(platform_url.c_str(), device_id, device_token.c_str()));
+  g_ota_update_manager.reset(new plantlab::OtaUpdateManager(
+      g_platform_client.get(),
+      stableHardwareDeviceId().c_str(),
+      kNodeRoleCamera,
+      kCameraHardwareModel,
+      kCameraSoftwareVersion,
+      plantlab::kCameraSoftwareVersionCode));
+  g_ota_update_manager->begin();
 }
 
 bool loadProvisionedConfig() {
@@ -603,7 +615,8 @@ bool registerDeviceNode() {
       "\",\"node_role\":\"camera\"" +
       ",\"node_index\":" + String(static_cast<unsigned int>(g_runtime_config.camera_node_index)) +
       ",\"display_name\":\"" + defaultCameraDisplayName() +
-      "\",\"hardware_model\":\"xiao_esp32s3_camera\"" +
+      "\",\"hardware_model\":\"" + String(kCameraHardwareModel) +
+      "\"" +
       ",\"hardware_version\":\"" + String(BOARD_NAME) +
       "\",\"software_version\":\"" + String(kCameraSoftwareVersion) +
       "\",\"capabilities\":{\"camera\":true}" +
@@ -941,6 +954,10 @@ void setup() {
 
   Serial.println();
   Serial.println("=== PlantLab ESP32 Camera Platform Test ===");
+  Serial.printf(
+      "[camera-node] firmware_version=%s version_code=%d\n",
+      kCameraSoftwareVersion,
+      plantlab::kCameraSoftwareVersionCode);
   Serial.printf("[camera-node] hardware_device_id: %s\n", stableHardwareDeviceId().c_str());
   initReliabilityBootCounter();
 
@@ -978,6 +995,16 @@ void loop() {
   if (platform_enabled() && g_wifi_ready && now - g_last_heartbeat_ms >= PLANTLAB_CAMERA_HEARTBEAT_INTERVAL_MS) {
     g_last_heartbeat_ms = now;
     sendHeartbeat();
+  }
+  if (
+      g_ota_update_manager &&
+      g_node_registered &&
+      platform_enabled() &&
+      g_wifi_ready &&
+      !g_capture_requested &&
+      !g_capture_in_progress &&
+      !g_restart_scheduled) {
+    g_ota_update_manager->service(now);
   }
 
   handleCaptureRequest();

@@ -446,6 +446,7 @@ void rebuildPlatformClient() {
   g_ota_update_manager.reset(new plantlab::OtaUpdateManager(
       g_platform_client.get(),
       stableHardwareDeviceId().c_str(),
+      "master",
       "esp32_master",
       kSoftwareVersion,
       plantlab::kMasterSoftwareVersionCode));
@@ -3285,6 +3286,10 @@ void setup() {
   Serial.println();
   Serial.println("=== PlantLab ESP32 Master Node ===");
   Serial.printf("Board: %s\n", BOARD_NAME);
+  Serial.printf(
+      "Firmware version: %s (%d)\n",
+      kSoftwareVersion,
+      plantlab::kMasterSoftwareVersionCode);
   Serial.printf("Provisioning env: %s\n", PLANTLAB_ENV_LABEL);
   Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
