@@ -27,6 +27,10 @@ Defaults:
   - prints recent readings with optional range filters
 - `image_upload_inspector.py`
   - prints recent image metadata for one device
+- `ota_release.py`
+  - builds and publishes ESP32 master and camera OTA releases to the local Docker backend
+  - verifies the requested release version matches `device/esp32/include/firmware_version.h`
+  - copies firmware artifacts into the backend container's persistent firmware volume and upserts `firmware_releases`
 
 ## Examples
 
@@ -77,6 +81,52 @@ Inspect recent image uploads:
 ```bash
 cd /Users/gary/plantOS
 .venv/bin/python platform/infra/scripts/image_upload_inspector.py --device-id 36 --limit 6
+```
+
+Publish a local OTA release for both ESP32 nodes after bumping `firmware_version.h`:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py bump-version \
+  --node both \
+  --version 0.1.2
+
+.venv/bin/python platform/infra/scripts/ota_release.py publish-local \
+  --node both \
+  --version 0.1.2 \
+  --build
+```
+
+Publish only the camera node:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py bump-version \
+  --node camera \
+  --version 0.1.2
+
+.venv/bin/python platform/infra/scripts/ota_release.py publish-local \
+  --node camera \
+  --version 0.1.2 \
+  --build
+```
+
+Check local OTA status:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py status-local
+```
+
+Firmware checks OTA once about 60 seconds after boot, then roughly every 6
+hours. For immediate OTA testing after publishing a release, reboot or reset the
+target ESP32 nodes, then watch serial logs for `[ota] installing release=...`.
+
+List recent local OTA releases:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py list-local-releases
 ```
 
 ## Recovery cookbook

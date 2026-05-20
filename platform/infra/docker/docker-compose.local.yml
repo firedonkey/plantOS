@@ -59,6 +59,7 @@ services:
       - "8000:8080"
     volumes:
       - plantlab_platform_uploads:/app/platform/backend/data/uploads
+      - plantlab_platform_firmware:/app/platform/backend/data/firmware
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)\""]
       interval: 10s
@@ -99,3 +100,4 @@ services:
 volumes:
   plantlab_postgres_data:
   plantlab_platform_uploads:
+  plantlab_platform_firmware:

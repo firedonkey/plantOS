@@ -214,6 +214,47 @@ Camera uploader firmware (`camera-platform-test`) now:
 - uploads images to the same platform device using the same device token
 - returns camera-side capture acknowledgements to the master after upload success or failure
 
+## Local OTA release helper
+
+The local OTA helper publishes firmware releases into the Docker backend for
+master and camera OTA testing. Before publishing, bump the matching constants in
+`include/firmware_version.h`; the helper refuses to publish a release whose
+requested version does not match the compiled firmware version.
+
+Start the local backend first:
+
+```bash
+cd /Users/gary/plantOS
+docker compose -f platform/infra/docker/docker-compose.local.yml up -d --build
+```
+
+Prepare and publish master and camera firmware:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py bump-version \
+  --node both \
+  --version 0.1.2
+
+.venv/bin/python platform/infra/scripts/ota_release.py publish-local \
+  --node both \
+  --version 0.1.2 \
+  --build
+```
+
+Check device OTA progress:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py status-local
+```
+
+Devices poll the OTA manifest during normal runtime. Watch serial logs for
+`[ota] installing release=...` and the boot-time firmware version line after
+the update reboots. The current firmware checks once about 60 seconds after
+boot, then roughly every 6 hours, so reboot or reset the node when you want to
+test a newly published OTA release immediately.
+
 Dedicated Wi-Fi test firmware (`wifi-test`) now:
 
 - runs on the XIAO ESP32-S3
