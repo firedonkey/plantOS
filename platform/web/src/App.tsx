@@ -11,6 +11,7 @@ import { LoginScreen } from "./screens/LoginScreen";
 import { RemoveDeviceScreen } from "./screens/RemoveDeviceScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { SetupFinishingScreen } from "./screens/SetupFinishingScreen";
+import { SupportDiagnosticsScreen } from "./screens/SupportDiagnosticsScreen";
 import { useSession } from "./hooks/useSession";
 
 function ProtectedRoutes() {
@@ -38,6 +39,7 @@ export function App() {
         <Route path="devices/:deviceId/settings" element={<DeviceSettingsScreen />} />
         <Route path="devices/:deviceId/remove" element={<RemoveDeviceScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
+        <Route path="support/diagnostics" element={<SupportDiagnosticsScreen />} />
       </Route>
     </Routes>
   );

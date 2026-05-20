@@ -1,6 +1,6 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
 import { getApiBaseUrl } from "./config";
-import { AuthSession } from "@/types";
+import { AuthSession, CurrentUserProfile } from "@/types";
 
 type LoginInput = {
   email: string;
@@ -58,6 +58,37 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
 
 export async function fetchCurrentUser(token?: string): Promise<ApiCurrentUser> {
   return apiRequest<ApiCurrentUser>("/api/me", {}, token);
+}
+
+export async function fetchCurrentUserProfile(
+  token?: string,
+  fallbackEmail?: string,
+): Promise<{ profile: CurrentUserProfile; usedMock: boolean }> {
+  try {
+    const payload = await fetchCurrentUser(token);
+    return {
+      usedMock: false,
+      profile: {
+        authenticated: payload.authenticated,
+        id: payload.user?.id !== undefined ? String(payload.user.id) : undefined,
+        email: payload.user?.email ?? fallbackEmail ?? "Unknown account",
+        name: payload.user?.name ?? undefined,
+        avatarUrl: payload.user?.avatar_url ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      profile: {
+        authenticated: Boolean(token),
+        email: fallbackEmail ?? "mock@example.com",
+        name: "Mock support user",
+      },
+    };
+  }
 }
 
 export async function refreshProductionSession(): Promise<AuthSession> {

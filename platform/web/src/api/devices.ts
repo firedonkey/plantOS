@@ -1,6 +1,18 @@
 import { apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth, SensorReading } from "@/types";
+import {
+  Device,
+  DeviceCommand,
+  DeviceDashboard,
+  DeviceDiagnosticEvent,
+  DeviceDiagnosticSnapshot,
+  DeviceDiagnostics,
+  FriendlyHardwareStatus,
+  HardwareDiagnostics,
+  HardwareHealth,
+  HardwareNodeHealth,
+  SensorReading,
+} from "@/types";
 import { ApiError } from "./client";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 
@@ -65,6 +77,8 @@ type ApiDeviceSummary = {
 };
 
 type ApiHardwareDiagnostics = {
+  schema_version?: number | null;
+  reported_status?: string | null;
   firmware_version?: string | null;
   uptime_seconds?: number | null;
   wifi_rssi_dbm?: number | null;
@@ -72,11 +86,16 @@ type ApiHardwareDiagnostics = {
   provisioning_state?: string | null;
   last_sensor_reading_at?: string | null;
   last_camera_image_upload_at?: string | null;
+  last_command_id?: number | null;
   last_command_status?: string | null;
   last_command_code?: string | null;
+  last_command_message?: string | null;
+  last_command_at?: string | null;
   error_counters?: Record<string, number> | null;
   last_error_code?: string | null;
   last_error_message?: string | null;
+  reported_at?: string | null;
+  updated_at?: string | null;
 };
 
 type ApiHealthNode = {
@@ -173,6 +192,50 @@ type ApiDeleteResponse = {
   message: string;
 };
 
+type ApiDeviceDiagnosticSnapshot = {
+  hardware_device_id: string;
+  device_id: number;
+  node_role?: string | null;
+  schema_version: number;
+  reported_status?: string | null;
+  firmware_version?: string | null;
+  uptime_seconds?: number | null;
+  wifi_rssi_dbm?: number | null;
+  reboot_reason?: string | null;
+  provisioning_state?: string | null;
+  last_sensor_reading_at?: string | null;
+  last_camera_image_upload_at?: string | null;
+  last_command_id?: number | null;
+  last_command_status?: string | null;
+  last_command_code?: string | null;
+  last_command_message?: string | null;
+  last_command_at?: string | null;
+  error_counters?: Record<string, number> | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  reported_at: string;
+  updated_at: string;
+};
+
+type ApiDeviceDiagnosticEvent = {
+  id: number;
+  device_id: number;
+  hardware_device_id?: string | null;
+  event_type: string;
+  severity: string;
+  code?: string | null;
+  message?: string | null;
+  count?: number | null;
+  metadata?: Record<string, unknown> | null;
+  occurred_at: string;
+  created_at: string;
+};
+
+type ApiDeviceDiagnostics = {
+  snapshots?: ApiDeviceDiagnosticSnapshot[] | null;
+  recent_events?: ApiDeviceDiagnosticEvent[] | null;
+};
+
 export type DeviceSetupHandoff = {
   serialNumber: string;
   setupToken?: string;
@@ -217,8 +280,8 @@ function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
 }
 
 function mapStatus(summary?: Pick<ApiDeviceSummary, "node_summary" | "latest_reading" | "latest_image">, explicitStatus?: string | null): Device["status"] {
-  const normalizedExplicit = explicitStatus?.toLowerCase();
-  if (normalizedExplicit === "online" || normalizedExplicit === "offline" || normalizedExplicit === "unknown" || normalizedExplicit === "degraded") {
+  const normalizedExplicit = normalizeFreshnessStatus(explicitStatus);
+  if (normalizedExplicit) {
     return normalizedExplicit;
   }
   const overallStatus = summary?.node_summary?.overall_status?.toLowerCase();
@@ -325,6 +388,8 @@ function mapHardwareDiagnostics(diagnostics?: ApiHardwareDiagnostics | null): Ha
     return undefined;
   }
   return {
+    schemaVersion: diagnostics.schema_version ?? undefined,
+    reportedStatus: diagnostics.reported_status ?? undefined,
     firmwareVersion: diagnostics.firmware_version ?? undefined,
     uptimeSeconds: diagnostics.uptime_seconds ?? undefined,
     wifiRssiDbm: diagnostics.wifi_rssi_dbm ?? undefined,
@@ -332,11 +397,16 @@ function mapHardwareDiagnostics(diagnostics?: ApiHardwareDiagnostics | null): Ha
     provisioningState: diagnostics.provisioning_state ?? undefined,
     lastSensorReadingAt: diagnostics.last_sensor_reading_at ?? undefined,
     lastCameraImageUploadAt: diagnostics.last_camera_image_upload_at ?? undefined,
+    lastCommandId: diagnostics.last_command_id ?? undefined,
     lastCommandStatus: diagnostics.last_command_status ?? undefined,
     lastCommandCode: diagnostics.last_command_code ?? undefined,
+    lastCommandMessage: diagnostics.last_command_message ?? undefined,
+    lastCommandAt: diagnostics.last_command_at ?? undefined,
     errorCounters: diagnostics.error_counters ?? undefined,
     lastErrorCode: diagnostics.last_error_code ?? undefined,
     lastErrorMessage: diagnostics.last_error_message ?? undefined,
+    reportedAt: diagnostics.reported_at ?? undefined,
+    updatedAt: diagnostics.updated_at ?? undefined,
   };
 }
 
@@ -448,6 +518,208 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
     }
     return { devices: mockDevices, usedMock: true };
   }
+}
+
+export async function getDeviceDiagnostics(
+  deviceId: string,
+  token?: string,
+  eventsLimit = 20,
+): Promise<{ diagnostics: DeviceDiagnostics; usedMock: boolean }> {
+  try {
+    const params = new URLSearchParams({ events_limit: String(eventsLimit) });
+    const payload = await apiRequest<ApiDeviceDiagnostics>(`/api/devices/${deviceId}/diagnostics?${params.toString()}`, {}, token);
+    return {
+      usedMock: false,
+      diagnostics: {
+        snapshots: (payload.snapshots ?? []).map(mapDiagnosticSnapshot),
+        recentEvents: (payload.recent_events ?? []).map(mapDiagnosticEvent),
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      diagnostics: buildMockDeviceDiagnostics(deviceId),
+    };
+  }
+}
+
+function mapDiagnosticSnapshot(snapshot: ApiDeviceDiagnosticSnapshot): DeviceDiagnosticSnapshot {
+  return {
+    hardwareDeviceId: snapshot.hardware_device_id,
+    deviceId: String(snapshot.device_id),
+    nodeRole: snapshot.node_role ?? undefined,
+    schemaVersion: snapshot.schema_version,
+    reportedStatus: snapshot.reported_status ?? undefined,
+    firmwareVersion: snapshot.firmware_version ?? undefined,
+    uptimeSeconds: snapshot.uptime_seconds ?? undefined,
+    wifiRssiDbm: snapshot.wifi_rssi_dbm ?? undefined,
+    rebootReason: snapshot.reboot_reason ?? undefined,
+    provisioningState: snapshot.provisioning_state ?? undefined,
+    lastSensorReadingAt: snapshot.last_sensor_reading_at ?? undefined,
+    lastCameraImageUploadAt: snapshot.last_camera_image_upload_at ?? undefined,
+    lastCommandId: snapshot.last_command_id ?? undefined,
+    lastCommandStatus: snapshot.last_command_status ?? undefined,
+    lastCommandCode: snapshot.last_command_code ?? undefined,
+    lastCommandMessage: snapshot.last_command_message ?? undefined,
+    lastCommandAt: snapshot.last_command_at ?? undefined,
+    errorCounters: snapshot.error_counters ?? {},
+    lastErrorCode: snapshot.last_error_code ?? undefined,
+    lastErrorMessage: snapshot.last_error_message ?? undefined,
+    reportedAt: snapshot.reported_at,
+    updatedAt: snapshot.updated_at,
+  };
+}
+
+function mapDiagnosticEvent(event: ApiDeviceDiagnosticEvent): DeviceDiagnosticEvent {
+  return {
+    id: String(event.id),
+    deviceId: String(event.device_id),
+    hardwareDeviceId: event.hardware_device_id ?? undefined,
+    eventType: event.event_type,
+    severity: event.severity,
+    code: event.code ?? undefined,
+    message: event.message ?? undefined,
+    count: event.count ?? undefined,
+    metadata: event.metadata ?? {},
+    occurredAt: event.occurred_at,
+    createdAt: event.created_at,
+  };
+}
+
+function buildMockDeviceDiagnostics(deviceId: string): DeviceDiagnostics {
+  const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
+  const health = mockDashboard.hardwareHealth;
+  if (!health) {
+    return { snapshots: [], recentEvents: [] };
+  }
+
+  const nodes = [health.primary, ...health.cameras].filter((node): node is HardwareNodeHealth => Boolean(node));
+  return {
+    snapshots: nodes.map((node) => buildMockSnapshot(deviceId, node)),
+    recentEvents: buildMockDiagnosticEvents(deviceId, health, nodes),
+  };
+}
+
+function buildMockSnapshot(deviceId: string, node: HardwareNodeHealth): DeviceDiagnosticSnapshot {
+  const diagnostics = node.diagnostics;
+  const fallbackTimestamp = diagnostics?.updatedAt ?? diagnostics?.reportedAt ?? node.lastSeenAt ?? new Date().toISOString();
+  return {
+    hardwareDeviceId: node.hardwareDeviceId,
+    deviceId,
+    nodeRole: node.nodeRole,
+    schemaVersion: diagnostics?.schemaVersion ?? 1,
+    reportedStatus: diagnostics?.reportedStatus ?? node.status,
+    firmwareVersion: diagnostics?.firmwareVersion,
+    uptimeSeconds: diagnostics?.uptimeSeconds,
+    wifiRssiDbm: diagnostics?.wifiRssiDbm,
+    rebootReason: diagnostics?.rebootReason,
+    provisioningState: diagnostics?.provisioningState,
+    lastSensorReadingAt: diagnostics?.lastSensorReadingAt,
+    lastCameraImageUploadAt: diagnostics?.lastCameraImageUploadAt,
+    lastCommandId: diagnostics?.lastCommandId,
+    lastCommandStatus: diagnostics?.lastCommandStatus,
+    lastCommandCode: diagnostics?.lastCommandCode,
+    lastCommandMessage: diagnostics?.lastCommandMessage,
+    lastCommandAt: diagnostics?.lastCommandAt,
+    errorCounters: diagnostics?.errorCounters ?? {},
+    lastErrorCode: diagnostics?.lastErrorCode,
+    lastErrorMessage: diagnostics?.lastErrorMessage,
+    reportedAt: diagnostics?.reportedAt ?? fallbackTimestamp,
+    updatedAt: diagnostics?.updatedAt ?? fallbackTimestamp,
+  };
+}
+
+function buildMockDiagnosticEvents(
+  deviceId: string,
+  health: HardwareHealth,
+  nodes: HardwareNodeHealth[],
+): DeviceDiagnosticEvent[] {
+  const nowIso = new Date().toISOString();
+  let nextId = 1;
+  const events: DeviceDiagnosticEvent[] = [];
+  const addEvent = (input: Omit<DeviceDiagnosticEvent, "id" | "deviceId" | "occurredAt" | "createdAt" | "metadata"> & {
+    occurredAt?: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    events.push({
+      ...input,
+      id: `mock-diagnostic-${nextId}`,
+      deviceId,
+      metadata: input.metadata ?? {},
+      occurredAt: input.occurredAt ?? nowIso,
+      createdAt: input.occurredAt ?? nowIso,
+    });
+    nextId += 1;
+  };
+
+  for (const reason of health.attentionReasons ?? []) {
+    addEvent({
+      eventType: "health",
+      severity: "warning",
+      code: reason,
+      message: formatDiagnosticCode(reason),
+    });
+  }
+
+  for (const node of nodes) {
+    if (isProblemDiagnosticStatus(node.status)) {
+      addEvent({
+        hardwareDeviceId: node.hardwareDeviceId,
+        eventType: "node_status",
+        severity: node.status === "offline" || node.status === "error" ? "error" : "warning",
+        code: node.status,
+        message: `${node.displayName ?? node.hardwareDeviceId} is ${formatDiagnosticCode(node.status)}`,
+        occurredAt: node.lastSeenAt ?? nowIso,
+      });
+    }
+
+    const diagnostics = node.diagnostics;
+    if (diagnostics?.lastErrorCode) {
+      addEvent({
+        hardwareDeviceId: node.hardwareDeviceId,
+        eventType: "last_error",
+        severity: "error",
+        code: diagnostics.lastErrorCode,
+        message: diagnostics.lastErrorMessage ?? formatDiagnosticCode(diagnostics.lastErrorCode),
+        occurredAt: diagnostics.updatedAt ?? nowIso,
+      });
+    }
+    for (const [code, count] of Object.entries(diagnostics?.errorCounters ?? {})) {
+      if (count > 0) {
+        addEvent({
+          hardwareDeviceId: node.hardwareDeviceId,
+          eventType: "counter",
+          severity: "warning",
+          code,
+          count,
+          message: `${formatDiagnosticCode(code)}: ${count}`,
+          occurredAt: diagnostics?.updatedAt ?? nowIso,
+        });
+      }
+    }
+  }
+
+  if (!events.length && isProblemDiagnosticStatus(health.overallStatus)) {
+    addEvent({
+      eventType: "health",
+      severity: "warning",
+      code: health.overallStatus,
+      message: `Device health is ${formatDiagnosticCode(health.overallStatus)}`,
+    });
+  }
+
+  return events;
+}
+
+function isProblemDiagnosticStatus(status: string | undefined): boolean {
+  return status === "offline" || status === "stale" || status === "warning" || status === "degraded" || status === "error";
+}
+
+function formatDiagnosticCode(value: string): string {
+  return value.replace(/_/g, " ");
 }
 
 export async function getDeviceDashboard(

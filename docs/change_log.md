@@ -114,3 +114,33 @@ This is an append-only record of completed tasks and runs.
 - docs/change_log.md
 - docs/project_brief.md
 - Risks or follow-ups: Planner, Coder, Tester, and Reviewer must not expand this scope. If scope needs to change, stop and request a new Architect task.
+
+<!-- pantheon-memory:20260520T055255Z:20260520_055255_create_a_support_admin_diagnosti:change-log -->
+## 2026-05-20T06:27:55.670842+00:00 - 20260520_055255_create_a_support_admin_diagnosti
+
+- Task: Create a support/admin diagnostics panel so I can quickly understand device/u...
+- Run: `20260520T055255Z`
+- Execution mode: `target_project`
+- Summary: Reviewer approved the implementation.
+- Scope decision: `target_project`
+- Risk level: `medium`
+- Protected area touched: `false`
+- Project mode: `existing_project_with_context`
+- Context quality: `outdated`
+- Files likely affected:
+- (none)
+- Current changed files:
+-  M platform/web/src/App.tsx
+-  M platform/web/src/api/auth.ts
+-  M platform/web/src/api/devices.ts
+-  M platform/web/src/components/AppLayout.tsx
+-  M platform/web/src/mock/data.ts
+-  M platform/web/src/styles/app.css
+-  M platform/web/src/types/api.ts
+- ?? platform/web/src/screens/SupportDiagnosticsScreen.tsx
+- ?? platform/web/test/webDiagnosticsPanel.test.js
+- Tests/checks: see `agent-workspace/outputs/20260520_055255_create_a_support_admin_diagnosti/test_report.md` and `runs/20260520T055255Z/events.jsonl`
+- Memory updates expected:
+- docs/change_log.md
+- docs/project_brief.md
+- Risks or follow-ups: Planner, Coder, Tester, and Reviewer must not expand this scope. If scope needs to change, stop and request a new Architect task.

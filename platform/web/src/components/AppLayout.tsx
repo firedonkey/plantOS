@@ -22,6 +22,9 @@ export function AppLayout() {
           <NavLink to="/settings" className="nav-link">
             Settings
           </NavLink>
+          <NavLink to="/support/diagnostics" className="nav-link">
+            Support
+          </NavLink>
         </nav>
         <button className="secondary-button" onClick={signOut}>
           Log out

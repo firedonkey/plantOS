@@ -2,6 +2,8 @@ export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded
 export type FriendlyHardwareStatus = "online" | "recently_seen" | "offline" | "needs_attention";
 
 export type HardwareDiagnostics = {
+  schemaVersion?: number;
+  reportedStatus?: string;
   firmwareVersion?: string;
   uptimeSeconds?: number;
   wifiRssiDbm?: number;
@@ -9,11 +11,16 @@ export type HardwareDiagnostics = {
   provisioningState?: string;
   lastSensorReadingAt?: string;
   lastCameraImageUploadAt?: string;
+  lastCommandId?: number;
   lastCommandStatus?: string;
   lastCommandCode?: string;
+  lastCommandMessage?: string;
+  lastCommandAt?: string;
   errorCounters?: Record<string, number>;
   lastErrorCode?: string;
   lastErrorMessage?: string;
+  reportedAt?: string;
+  updatedAt?: string;
 };
 
 export type SensorReading = {
@@ -108,4 +115,56 @@ export type AuthSession = {
   email: string;
   mode: "mock" | "api" | "production";
   expiresAt?: string;
+};
+
+export type CurrentUserProfile = {
+  authenticated: boolean;
+  id?: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+};
+
+export type DeviceDiagnosticSnapshot = {
+  hardwareDeviceId: string;
+  deviceId: string;
+  nodeRole?: string;
+  schemaVersion: number;
+  reportedStatus?: string;
+  firmwareVersion?: string;
+  uptimeSeconds?: number;
+  wifiRssiDbm?: number;
+  rebootReason?: string;
+  provisioningState?: string;
+  lastSensorReadingAt?: string;
+  lastCameraImageUploadAt?: string;
+  lastCommandId?: number;
+  lastCommandStatus?: string;
+  lastCommandCode?: string;
+  lastCommandMessage?: string;
+  lastCommandAt?: string;
+  errorCounters: Record<string, number>;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  reportedAt: string;
+  updatedAt: string;
+};
+
+export type DeviceDiagnosticEvent = {
+  id: string;
+  deviceId: string;
+  hardwareDeviceId?: string;
+  eventType: string;
+  severity: string;
+  code?: string;
+  message?: string;
+  count?: number;
+  metadata: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+};
+
+export type DeviceDiagnostics = {
+  snapshots: DeviceDiagnosticSnapshot[];
+  recentEvents: DeviceDiagnosticEvent[];
 };
