@@ -26,6 +26,7 @@ constexpr int kPclkGpio = 13;
 }  // namespace
 
 bool XiaoCamera::begin(const XiaoCameraOptions& options) {
+  options_ = options;
   camera_config_t config{};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -61,11 +62,37 @@ bool XiaoCamera::begin(const XiaoCameraOptions& options) {
 
   sensor_t* sensor = esp_camera_sensor_get();
   if (sensor != nullptr) {
+    sensor->set_whitebal(sensor, 1);
+    sensor->set_awb_gain(sensor, 1);
+    sensor->set_wb_mode(sensor, 0);
+    sensor->set_gain_ctrl(sensor, 1);
+    sensor->set_exposure_ctrl(sensor, 1);
+    sensor->set_aec2(sensor, 1);
+    sensor->set_bpc(sensor, 1);
+    sensor->set_wpc(sensor, 1);
+    sensor->set_lenc(sensor, 1);
     sensor->set_brightness(sensor, 0);
+    sensor->set_contrast(sensor, 0);
     sensor->set_saturation(sensor, 0);
   }
 
   return true;
+}
+
+bool XiaoCamera::warmup() {
+  bool captured_any = false;
+  for (uint8_t index = 0; index < options_.warmup_frames; ++index) {
+    camera_fb_t* frame = esp_camera_fb_get();
+    if (frame == nullptr) {
+      Serial.printf("[camera] warmup frame %u failed\n", static_cast<unsigned int>(index + 1));
+      delay(options_.warmup_delay_ms);
+      continue;
+    }
+    captured_any = true;
+    esp_camera_fb_return(frame);
+    delay(options_.warmup_delay_ms);
+  }
+  return captured_any || options_.warmup_frames == 0;
 }
 
 CameraFrameInfo XiaoCamera::capture_once() {

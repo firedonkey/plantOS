@@ -3,6 +3,11 @@
 #include <Arduino.h>
 #include <math.h>
 
+namespace {
+constexpr float kDs18b20PowerOnDefaultC = 85.0f;
+constexpr float kDs18b20DefaultToleranceC = 0.01f;
+}  // namespace
+
 WaterTemperatureSensor::WaterTemperatureSensor(int data_pin)
     : one_wire_(data_pin),
       dallas_(&one_wire_) {}
@@ -17,6 +22,8 @@ WaterTemperatureReading WaterTemperatureSensor::read() {
 
   dallas_.requestTemperatures();
   result.temperature_c = dallas_.getTempCByIndex(0);
-  result.valid = !isnan(result.temperature_c) && result.temperature_c != DEVICE_DISCONNECTED_C;
+  result.valid = !isnan(result.temperature_c) &&
+                 result.temperature_c != DEVICE_DISCONNECTED_C &&
+                 fabs(result.temperature_c - kDs18b20PowerOnDefaultC) > kDs18b20DefaultToleranceC;
   return result;
 }

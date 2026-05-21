@@ -12,6 +12,7 @@ type SensorLineChartProps = {
   points: SensorChartPoint[];
   color: string;
   height?: number;
+  minDomainSpan?: number;
 };
 
 type RenderPoint = {
@@ -35,15 +36,15 @@ const PADDING = {
   left: 36,
 };
 
-export function SensorLineChart({ points, color, height = DEFAULT_HEIGHT }: SensorLineChartProps) {
+export function SensorLineChart({ points, color, height = DEFAULT_HEIGHT, minDomainSpan = 1 }: SensorLineChartProps) {
   const [width, setWidth] = useState(0);
 
   const chart = useMemo(() => {
     if (width <= 0) {
       return null;
     }
-    return buildChart(points, width, height);
-  }, [height, points, width]);
+    return buildChart(points, width, height, minDomainSpan);
+  }, [height, minDomainSpan, points, width]);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
@@ -179,7 +180,7 @@ function LineSegment({ from, to, color }: { from: ScaledPoint; to: ScaledPoint; 
   );
 }
 
-function buildChart(points: SensorChartPoint[], width: number, height: number) {
+function buildChart(points: SensorChartPoint[], width: number, height: number, minDomainSpan: number) {
   const sanitized = downsamplePoints(
     points.map((point, index) => ({
       index,
@@ -193,13 +194,14 @@ function buildChart(points: SensorChartPoint[], width: number, height: number) {
   const validTimestamps = sanitized.map((point) => point.timestamp).filter((timestamp): timestamp is number => timestamp !== undefined);
   const xMin = validTimestamps.length >= 2 ? Math.min(...validTimestamps) : undefined;
   const xMax = validTimestamps.length >= 2 ? Math.max(...validTimestamps) : undefined;
-  const yDomain = getYDomain(validValues);
+  const yDomain = getYDomain(validValues, minDomainSpan);
   const plotWidth = Math.max(width - PADDING.left - PADDING.right, 1);
   const plotHeight = Math.max(height - PADDING.top - PADDING.bottom, 1);
 
   const scaled = sanitized.map((point, position) => {
     const xRatio = getXRatio(point, position, sanitized.length, xMin, xMax);
-    const yRatio = point.value === undefined ? 0.5 : (point.value - yDomain.min) / (yDomain.max - yDomain.min);
+    const rawYRatio = point.value === undefined ? 0.5 : (point.value - yDomain.min) / (yDomain.max - yDomain.min);
+    const yRatio = Math.min(Math.max(rawYRatio, 0), 1);
 
     return {
       ...point,
@@ -260,21 +262,19 @@ function formatTimeLabel(timestamp: number, spanMs: number) {
   return `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function getYDomain(values: number[]) {
+function getYDomain(values: number[], minDomainSpan: number) {
   if (!values.length) {
     return { min: 0, max: 1 };
   }
 
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
-
-  if (minimum === maximum) {
-    const padding = Math.max(Math.abs(minimum) * 0.01, 0.5);
-    return { min: minimum - padding, max: maximum + padding };
-  }
-
-  const padding = Math.max((maximum - minimum) * 0.18, 0.05);
-  return { min: minimum - padding, max: maximum + padding };
+  const range = maximum - minimum;
+  const domainSpan = Math.max(range, minDomainSpan);
+  const midpoint = (minimum + maximum) / 2;
+  const halfSpan = domainSpan / 2;
+  const padding = Math.max(domainSpan * 0.08, 0.05);
+  return { min: midpoint - halfSpan - padding, max: midpoint + halfSpan + padding };
 }
 
 function getXRatio(point: RenderPoint, position: number, pointCount: number, xMin: number | undefined, xMax: number | undefined) {

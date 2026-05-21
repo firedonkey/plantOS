@@ -18,6 +18,33 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
   { key: "all", label: "All" },
 ];
 
+const SENSOR_SERIES = [
+  {
+    key: "air-temperature",
+    label: "Air temp",
+    unit: "C",
+    minDomainSpan: 5,
+    isValidValue: (value: number) => value >= -20 && value <= 60,
+    getValue: (reading: SensorReading) => reading.temperatureC,
+  },
+  {
+    key: "humidity",
+    label: "Humidity",
+    unit: "%",
+    minDomainSpan: 10,
+    isValidValue: (value: number) => value >= 0 && value <= 100,
+    getValue: (reading: SensorReading) => reading.humidityPercent,
+  },
+  {
+    key: "water-temperature",
+    label: "Water temp",
+    unit: "C",
+    minDomainSpan: 5,
+    isValidValue: (value: number) => value >= 0 && value <= 50 && Math.abs(value - 85) > 0.01,
+    getValue: (reading: SensorReading) => reading.waterTemperatureC,
+  },
+];
+
 export function ReadingTrendSection({
   history,
   title = "Trends",
@@ -52,24 +79,17 @@ export function ReadingTrendSection({
         <p className="subtitle">No readings are available in this range yet.</p>
       ) : (
         <div className="trend-grid">
-          <TrendCard
-            label="Air temp"
-            unit="C"
-            history={history}
-            getValue={(reading) => reading.temperatureC}
-          />
-          <TrendCard
-            label="Humidity"
-            unit="%"
-            history={history}
-            getValue={(reading) => reading.humidityPercent}
-          />
-          <TrendCard
-            label="Water temp"
-            unit="C"
-            history={history}
-            getValue={(reading) => reading.waterTemperatureC}
-          />
+          {SENSOR_SERIES.map((series) => (
+            <TrendCard
+              key={series.key}
+              label={series.label}
+              unit={series.unit}
+              history={history}
+              minDomainSpan={series.minDomainSpan}
+              getValue={series.getValue}
+              isValidValue={series.isValidValue}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -80,24 +100,30 @@ function TrendCard({
   label,
   unit,
   history,
+  minDomainSpan,
   getValue,
+  isValidValue,
 }: {
   label: string;
   unit: string;
   history: SensorReading[];
+  minDomainSpan: number;
   getValue: (reading: SensorReading) => number | undefined;
+  isValidValue: (value: number) => boolean;
 }) {
-  const points = history
+  const rawPoints = history
     .map((reading) => ({
       timestamp: reading.timestamp,
       value: getValue(reading),
     }))
-    .filter((point): point is { timestamp: string; value: number } => typeof point.value === "number");
+    .filter((point): point is { timestamp: string; value: number } => typeof point.value === "number" && Number.isFinite(point.value));
+  const points = rawPoints.filter((point) => isValidValue(point.value));
+  const ignoredCount = rawPoints.length - points.length;
   const numericValues = points.map((point) => point.value);
   const latestPoint = points.length ? points[points.length - 1] : undefined;
   const minimum = numericValues.length ? Math.min(...numericValues) : undefined;
   const maximum = numericValues.length ? Math.max(...numericValues) : undefined;
-  const domain = buildValueDomain(numericValues);
+  const domain = buildValueDomain(numericValues, minDomainSpan);
   const yTicks = domain ? buildYTicks(domain) : [];
   const xLabels = buildXLabels(points);
   const linePoints = domain ? buildLinePoints(points, domain) : "";
@@ -144,6 +170,7 @@ function TrendCard({
       <p className="meta-text">
         {points.length} readings • Min {minimum !== undefined ? `${formatAxisValue(minimum, minimum, maximum)} ${unit}` : "--"} • Max{" "}
         {maximum !== undefined ? `${formatAxisValue(maximum, minimum, maximum)} ${unit}` : "--"}
+        {ignoredCount > 0 ? ` • ${ignoredCount} outlier${ignoredCount === 1 ? "" : "s"} ignored` : ""}
       </p>
     </div>
   );
@@ -154,17 +181,20 @@ type ValueDomain = {
   max: number;
 };
 
-function buildValueDomain(values: number[]): ValueDomain | undefined {
+function buildValueDomain(values: number[], minDomainSpan: number): ValueDomain | undefined {
   if (!values.length) {
     return undefined;
   }
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
   const range = maximum - minimum;
-  const padding = range === 0 ? Math.max(Math.abs(maximum) * 0.01, 0.5) : Math.max(range * 0.18, 0.05);
+  const domainSpan = Math.max(range, minDomainSpan);
+  const midpoint = (minimum + maximum) / 2;
+  const halfSpan = domainSpan / 2;
+  const padding = Math.max(domainSpan * 0.08, 0.05);
   return {
-    min: minimum - padding,
-    max: maximum + padding,
+    min: midpoint - halfSpan - padding,
+    max: midpoint + halfSpan + padding,
   };
 }
 

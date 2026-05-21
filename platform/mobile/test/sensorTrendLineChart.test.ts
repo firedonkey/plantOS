@@ -22,7 +22,7 @@ test("reading trend cards render line charts for the approved sensor series", as
   const trendSource = await readText("../src/components/ReadingTrendSection.tsx");
 
   assert.match(trendSource, /import \{ SensorLineChart \}/);
-  assert.match(trendSource, /<SensorLineChart points=\{chartPoints\} color=\{color\} \/>/);
+  assert.match(trendSource, /<SensorLineChart points=\{chartPoints\} color=\{color\} minDomainSpan=\{minDomainSpan\} \/>/);
   assert.match(trendSource, /Current \$\{latest\.toFixed\(1\)\}/);
   assert.match(trendSource, /<EmptyState title="No readings in range"/);
   assert.match(trendSource, /disabled=\{loading\}/);
@@ -36,6 +36,11 @@ test("reading trend cards render line charts for the approved sensor series", as
     "temperatureC",
     "humidityPercent",
     "waterTemperatureC",
+    "minDomainSpan: 5",
+    "isValidValue",
+    "Math.abs",
+    "0.01",
+    "outlier",
   ]) {
     assert.match(trendSource, new RegExp(requiredText));
   }
@@ -82,8 +87,9 @@ test("sensor line chart keeps safeguards for empty, sparse, missing, and dense h
     "getYDomain",
     "parseTimestamp",
     "Number.isFinite",
-    "range < 1 ? 2 : 1",
-    "Math.max((maximum - minimum) * 0.18, 0.05)",
+    "minDomainSpan",
+    "Math.min(Math.max(rawYRatio, 0), 1)",
+    "const domainSpan = Math.max(range, minDomainSpan)",
   ]) {
     assert.match(chartSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

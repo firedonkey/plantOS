@@ -655,6 +655,11 @@ bool initCamera() {
 
   g_camera_initialized = true;
   Serial.println("[camera-node] camera init succeeded");
+  if (g_camera.warmup()) {
+    Serial.println("[camera-node] camera warm-up complete");
+  } else {
+    Serial.println("[camera-node] camera warm-up skipped: no frames captured");
+  }
   return true;
 }
 

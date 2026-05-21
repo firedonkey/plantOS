@@ -31,6 +31,8 @@ const SENSOR_SERIES = [
     label: "Air temp",
     unit: "C",
     color: "#b76a35",
+    minDomainSpan: 5,
+    isValidValue: (value: number) => value >= -20 && value <= 60,
     getValue: (reading: SensorReading) => reading.temperatureC,
   },
   {
@@ -38,6 +40,8 @@ const SENSOR_SERIES = [
     label: "Humidity",
     unit: "%",
     color: "#2f75b5",
+    minDomainSpan: 10,
+    isValidValue: (value: number) => value >= 0 && value <= 100,
     getValue: (reading: SensorReading) => reading.humidityPercent,
   },
   {
@@ -45,6 +49,8 @@ const SENSOR_SERIES = [
     label: "Water temp",
     unit: "C",
     color: theme.colors.accent,
+    minDomainSpan: 5,
+    isValidValue: (value: number) => value >= 0 && value <= 50 && Math.abs(value - 85) > 0.01,
     getValue: (reading: SensorReading) => reading.waterTemperatureC,
   },
 ];
@@ -88,6 +94,8 @@ export function ReadingTrendSection({
               readings={history}
               unit={series.unit}
               getValue={series.getValue}
+              isValidValue={series.isValidValue}
+              minDomainSpan={series.minDomainSpan}
             />
           ))}
         </View>
@@ -102,22 +110,33 @@ function TrendCard({
   color,
   readings,
   getValue,
+  isValidValue,
+  minDomainSpan,
 }: {
   label: string;
   unit: string;
   color: string;
   readings: SensorReading[];
   getValue: (reading: SensorReading) => number | undefined;
+  isValidValue: (value: number) => boolean;
+  minDomainSpan: number;
 }) {
-  const values = readings.map(getValue);
+  const values = readings.map(getValue).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && isValidValue(value));
   const numericValues = values.filter((value): value is number => typeof value === "number");
   const minimum = numericValues.length ? Math.min(...numericValues) : undefined;
   const maximum = numericValues.length ? Math.max(...numericValues) : undefined;
   const latestReading = readings.at(-1);
-  const latest = latestReading ? getValue(latestReading) : undefined;
+  const latestValue = latestReading ? getValue(latestReading) : undefined;
+  const latest = typeof latestValue === "number" && Number.isFinite(latestValue) && isValidValue(latestValue) ? latestValue : undefined;
+  const ignoredCount = readings
+    .map(getValue)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && !isValidValue(value)).length;
   const chartPoints = readings.map((reading) => ({
     timestamp: reading.timestamp,
-    value: getValue(reading),
+    value: (() => {
+      const value = getValue(reading);
+      return typeof value === "number" && Number.isFinite(value) && isValidValue(value) ? value : undefined;
+    })(),
   }));
 
   return (
@@ -127,11 +146,16 @@ function TrendCard({
         <Text style={styles.cardLabel}>{label}</Text>
       </View>
       <Text style={styles.cardValue}>{latest !== undefined ? `Current ${latest.toFixed(1)} ${unit}` : "Current --"}</Text>
-      <SensorLineChart points={chartPoints} color={color} />
+      <SensorLineChart points={chartPoints} color={color} minDomainSpan={minDomainSpan} />
       <View style={styles.metaRow}>
         <Text style={styles.meta}>Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"}</Text>
         <Text style={styles.meta}>Max {maximum !== undefined ? `${maximum.toFixed(1)} ${unit}` : "--"}</Text>
       </View>
+      {ignoredCount > 0 ? (
+        <Text style={styles.meta}>
+          {ignoredCount} outlier{ignoredCount === 1 ? "" : "s"} ignored
+        </Text>
+      ) : null}
     </View>
   );
 }

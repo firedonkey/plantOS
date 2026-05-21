@@ -63,6 +63,9 @@ test("web sensor trends render water temperature without a water level chart", a
     "buildValueDomain",
     "formatAxisValue",
     "readings • Min",
+    "minDomainSpan: 5",
+    "outlier",
+    "Math.abs(value - 85) > 0.01",
   ]) {
     assert.match(trendSource, escaped(requiredText));
   }
