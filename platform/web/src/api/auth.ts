@@ -14,6 +14,7 @@ type ApiCurrentUser = {
     email: string;
     name?: string | null;
     avatar_url?: string | null;
+    is_admin?: boolean;
   } | null;
 };
 
@@ -21,6 +22,9 @@ type ApiLoginResponse = {
   token: string;
   email: string;
   mode: "api";
+  user?: {
+    is_admin?: boolean;
+  };
 };
 
 type ApiRefreshResponse = {
@@ -34,15 +38,22 @@ type ApiRefreshResponse = {
     email: string;
     name?: string | null;
     avatar_url?: string | null;
+    is_admin?: boolean;
   };
 };
 
 export async function loginWithBackendFallback({ email, password }: LoginInput): Promise<AuthSession> {
   try {
-    return await apiRequest<ApiLoginResponse>("/api/auth/login", {
+    const payload = await apiRequest<ApiLoginResponse>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
+    return {
+      token: payload.token,
+      email: payload.email,
+      mode: payload.mode,
+      isAdmin: payload.user?.is_admin ?? false,
+    };
   } catch (error) {
     if (!shouldUseMockFallback(error)) {
       throw error;
@@ -74,6 +85,7 @@ export async function fetchCurrentUserProfile(
         email: payload.user?.email ?? fallbackEmail ?? "Unknown account",
         name: payload.user?.name ?? undefined,
         avatarUrl: payload.user?.avatar_url ?? undefined,
+        isAdmin: payload.user?.is_admin ?? false,
       },
     };
   } catch (error) {
@@ -86,6 +98,7 @@ export async function fetchCurrentUserProfile(
         authenticated: Boolean(token),
         email: fallbackEmail ?? "mock@example.com",
         name: "Mock support user",
+        isAdmin: true,
       },
     };
   }
@@ -101,6 +114,7 @@ export async function refreshProductionSession(): Promise<AuthSession> {
     email: payload.user.email,
     mode: "production",
     expiresAt: payload.expires_at,
+    isAdmin: payload.user.is_admin,
   };
 }
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_admin_user
 from app.db.session import get_session
 from app.models import (
+    Command,
     Device,
     DeviceDiagnosticEvent,
     DeviceDiagnosticSnapshot,
@@ -17,6 +18,7 @@ from app.models import (
     User,
 )
 from app.schemas.admin import (
+    AdminCommandRead,
     AdminDeviceRead,
     AdminDiagnosticsRead,
     AdminEventRead,
@@ -47,6 +49,7 @@ def get_admin_diagnostics(
         requested_by=AdminRequesterRead(id=admin_user.id, email=admin_user.email),
         summary=AdminSummaryRead(
             users=_count(session, User.id),
+            active_users=_count_active_users(session),
             devices=_count(session, Device.id),
             active_devices=_count_active_devices(session),
             released_devices=_count(session, Device.id, Device.released_at.is_not(None)),
@@ -68,6 +71,7 @@ def get_admin_diagnostics(
         users=_admin_users(session),
         devices=_admin_devices(session, now=now),
         recent_events=_admin_events(session),
+        recent_commands=_admin_commands(session),
         firmware_releases=_admin_firmware_releases(session),
     )
 
@@ -88,8 +92,19 @@ def _count_active_devices(session: Session) -> int:
     )
 
 
+def _count_active_users(session: Session) -> int:
+    statement = (
+        select(func.count(func.distinct(Device.user_id)))
+        .where(Device.released_at.is_(None))
+        .where(Device.archived_at.is_(None))
+    )
+    return int(session.scalar(statement) or 0)
+
+
 def _admin_users(session: Session) -> list[AdminUserRead]:
     users = session.scalars(select(User).order_by(User.created_at.desc()).limit(50)).all()
+    event_cutoff = datetime.now(timezone.utc) - RECENT_EVENT_WINDOW
+    command_cutoff = datetime.now(timezone.utc) - RECENT_EVENT_WINDOW
     rows: list[AdminUserRead] = []
     for user in users:
         rows.append(
@@ -111,9 +126,37 @@ def _admin_users(session: Session) -> list[AdminUserRead]:
                     .join(Device, Device.id == DeviceNode.device_id)
                     .where(Device.user_id == user.id)
                 ),
+                recent_warning_event_count=_count_user_warning_events(session, user.id, event_cutoff),
+                recent_command_count=_count_user_commands(session, user.id, command_cutoff),
+                last_command_at=session.scalar(
+                    select(func.max(Command.created_at))
+                    .join(Device, Device.id == Command.device_id)
+                    .where(Device.user_id == user.id)
+                ),
             )
         )
     return rows
+
+
+def _count_user_warning_events(session: Session, user_id: int, cutoff: datetime) -> int:
+    statement = (
+        select(func.count(DeviceDiagnosticEvent.id))
+        .join(Device, Device.id == DeviceDiagnosticEvent.device_id)
+        .where(Device.user_id == user_id)
+        .where(DeviceDiagnosticEvent.occurred_at >= cutoff)
+        .where(DeviceDiagnosticEvent.severity.in_(("warning", "error", "critical")))
+    )
+    return int(session.scalar(statement) or 0)
+
+
+def _count_user_commands(session: Session, user_id: int, cutoff: datetime) -> int:
+    statement = (
+        select(func.count(Command.id))
+        .join(Device, Device.id == Command.device_id)
+        .where(Device.user_id == user_id)
+        .where(Command.created_at >= cutoff)
+    )
+    return int(session.scalar(statement) or 0)
 
 
 def _admin_devices(session: Session, *, now: datetime) -> list[AdminDeviceRead]:
@@ -210,6 +253,34 @@ def _admin_events(session: Session) -> list[AdminEventRead]:
             occurred_at=event.occurred_at,
         )
         for event, device, owner in rows
+    ]
+
+
+def _admin_commands(session: Session) -> list[AdminCommandRead]:
+    rows = session.execute(
+        select(Command, Device, User)
+        .join(Device, Device.id == Command.device_id)
+        .join(User, User.id == Device.user_id)
+        .order_by(Command.created_at.desc())
+        .limit(50)
+    ).all()
+    return [
+        AdminCommandRead(
+            id=command.id,
+            device_id=device.id,
+            device_name=device.name,
+            owner_email=owner.email,
+            target=command.target.value if hasattr(command.target, "value") else str(command.target),
+            action=command.action.value if hasattr(command.action, "value") else str(command.action),
+            value=command.value,
+            status=command.status.value if hasattr(command.status, "value") else str(command.status),
+            message=command.message,
+            created_at=command.created_at,
+            sent_at=command.sent_at,
+            completed_at=command.completed_at,
+        )
+        for command, device, owner in rows
+        if command.id is not None
     ]
 
 

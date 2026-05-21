@@ -82,6 +82,8 @@ test("sensor line chart keeps safeguards for empty, sparse, missing, and dense h
     "getYDomain",
     "parseTimestamp",
     "Number.isFinite",
+    "range < 1 ? 2 : 1",
+    "Math.max((maximum - minimum) * 0.18, 0.05)",
   ]) {
     assert.match(chartSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

@@ -224,7 +224,7 @@ function buildChart(points: SensorChartPoint[], width: number, height: number) {
 
 function getYAxisLabels(yDomain: { min: number; max: number }, plotHeight: number) {
   return [0, 0.5, 1].map((ratio) => ({
-    text: formatAxisNumber(yDomain.max - ratio * (yDomain.max - yDomain.min)),
+    text: formatAxisNumber(yDomain.max - ratio * (yDomain.max - yDomain.min), yDomain),
     y: PADDING.top + ratio * plotHeight,
   }));
 }
@@ -241,12 +241,13 @@ function getXAxisLabels(xMin: number | undefined, xMax: number | undefined, plot
   }));
 }
 
-function formatAxisNumber(value: number) {
+function formatAxisNumber(value: number, yDomain?: { min: number; max: number }) {
   if (Math.abs(value) >= 100) {
     return value.toFixed(0);
   }
 
-  return value.toFixed(1);
+  const range = yDomain ? Math.abs(yDomain.max - yDomain.min) : undefined;
+  return value.toFixed(range !== undefined && range < 1 ? 2 : 1);
 }
 
 function formatTimeLabel(timestamp: number, spanMs: number) {
@@ -268,11 +269,11 @@ function getYDomain(values: number[]) {
   const maximum = Math.max(...values);
 
   if (minimum === maximum) {
-    const padding = Math.max(Math.abs(minimum) * 0.02, 1);
+    const padding = Math.max(Math.abs(minimum) * 0.01, 0.5);
     return { min: minimum - padding, max: maximum + padding };
   }
 
-  const padding = (maximum - minimum) * 0.1;
+  const padding = Math.max((maximum - minimum) * 0.18, 0.05);
   return { min: minimum - padding, max: maximum + padding };
 }
 

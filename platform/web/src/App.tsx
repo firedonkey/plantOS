@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
+import { AdminDiagnosticsScreen } from "./screens/AdminDiagnosticsScreen";
 import { DeviceDashboardScreen } from "./screens/DeviceDashboardScreen";
 import { DeviceSettingsScreen } from "./screens/DeviceSettingsScreen";
 import { DeviceListScreen } from "./screens/DeviceListScreen";
@@ -39,6 +40,7 @@ export function App() {
         <Route path="devices/:deviceId/remove" element={<RemoveDeviceScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
         <Route path="support/diagnostics" element={<SupportDiagnosticsScreen />} />
+        <Route path="admin/diagnostics" element={<AdminDiagnosticsScreen />} />
       </Route>
     </Routes>
   );

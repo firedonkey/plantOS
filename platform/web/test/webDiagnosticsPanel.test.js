@@ -32,6 +32,34 @@ test("web diagnostics panel is routed from the app shell", async () => {
   }
 });
 
+test("web admin diagnostics separates system integration from per-user operations", async () => {
+  const appSource = await readText("../src/App.tsx");
+  const layoutSource = await readText("../src/components/AppLayout.tsx");
+  const apiSource = await readText("../src/api/admin.ts");
+  const authSource = await readText("../src/api/auth.ts");
+  const screenSource = await readText("../src/screens/AdminDiagnosticsScreen.tsx");
+  const typeSource = await readText("../src/types/api.ts");
+
+  for (const requiredText of [
+    "AdminDiagnosticsScreen",
+    'path="admin/diagnostics"',
+    'to="/admin/diagnostics"',
+    "profile.isAdmin",
+    "is_admin",
+    'apiRequest<ApiAdminDiagnostics>("/api/admin/diagnostics", {}, token)',
+    "Overall data integration",
+    "Active users",
+    "Per-user data",
+    "Last online",
+    "Hardware issues",
+    "Command log",
+    "recentCommands",
+    "AdminDiagnostics",
+  ]) {
+    assert.match(`${appSource}\n${layoutSource}\n${apiSource}\n${authSource}\n${screenSource}\n${typeSource}`, escaped(requiredText));
+  }
+});
+
 test("standalone web removes add-device entry points", async () => {
   const appSource = await readText("../src/App.tsx");
   const layoutSource = await readText("../src/components/AppLayout.tsx");

@@ -10,6 +10,7 @@ from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
 from app.models import (
+    Command,
     Device,
     DeviceDiagnosticEvent,
     DeviceDiagnosticSnapshot,
@@ -64,6 +65,16 @@ def build_admin_client(current_email: str) -> TestClient:
                 ),
                 SensorReading(device_id=device.id, timestamp=now - timedelta(minutes=1), temperature=23.5, humidity=45.0),
                 Image(device_id=device.id, path="device/image.jpg", timestamp=now - timedelta(minutes=2)),
+                Command(
+                    device_id=device.id,
+                    target="light",
+                    action="set_intensity",
+                    value="80",
+                    status="completed",
+                    message="Brightness set",
+                    created_at=now - timedelta(seconds=30),
+                    completed_at=now - timedelta(seconds=25),
+                ),
                 DeviceDiagnosticSnapshot(
                     hardware_device_id="pl-esp32-test",
                     device_id=device.id,
@@ -139,13 +150,19 @@ def test_admin_diagnostics_summarizes_all_users_without_tokens(monkeypatch):
         payload = response.json()
         assert payload["requested_by"]["email"] == "admin@example.com"
         assert payload["summary"]["users"] == 2
+        assert payload["summary"]["active_users"] == 1
         assert payload["summary"]["devices"] == 1
         assert payload["summary"]["hardware_nodes"] == 1
         assert payload["summary"]["recent_warning_events"] == 1
+        grower = next(user for user in payload["users"] if user["email"] == "grower@example.com")
+        assert grower["recent_command_count"] == 1
+        assert grower["recent_warning_event_count"] == 1
         assert payload["devices"][0]["owner_email"] == "grower@example.com"
         assert payload["devices"][0]["status"] == "online"
         assert payload["devices"][0]["last_error_code"] == "wifi_reconnects"
         assert payload["recent_events"][0]["code"] == "wifi_reconnects"
+        assert payload["recent_commands"][0]["action"] == "set_intensity"
+        assert payload["recent_commands"][0]["owner_email"] == "grower@example.com"
         assert "secret-device-token" not in response.text
     finally:
         app.dependency_overrides.clear()

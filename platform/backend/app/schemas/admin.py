@@ -10,6 +10,7 @@ class AdminRequesterRead(BaseModel):
 
 class AdminSummaryRead(BaseModel):
     users: int
+    active_users: int
     devices: int
     active_devices: int
     released_devices: int
@@ -28,6 +29,24 @@ class AdminUserRead(BaseModel):
     device_count: int
     active_device_count: int
     last_seen_at: datetime | None = None
+    recent_warning_event_count: int
+    recent_command_count: int
+    last_command_at: datetime | None = None
+
+
+class AdminCommandRead(BaseModel):
+    id: int
+    device_id: int
+    device_name: str
+    owner_email: str
+    target: str
+    action: str
+    value: str | None = None
+    status: str
+    message: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class AdminNodeRead(BaseModel):
@@ -91,4 +110,5 @@ class AdminDiagnosticsRead(BaseModel):
     users: list[AdminUserRead] = Field(default_factory=list)
     devices: list[AdminDeviceRead] = Field(default_factory=list)
     recent_events: list[AdminEventRead] = Field(default_factory=list)
+    recent_commands: list[AdminCommandRead] = Field(default_factory=list)
     firmware_releases: list[AdminFirmwareReleaseRead] = Field(default_factory=list)

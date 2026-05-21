@@ -594,7 +594,9 @@ export async function getDeviceDashboard(
           ? [latestImage]
           : [];
     const latestReading = mapReading(summary.latest_reading);
-    const mappedHistory = history.map((reading) => mapReading(reading)!);
+    const mappedHistory = history
+      .map((reading) => mapReading(reading)!)
+      .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
 
     return {
       usedMock: false,
@@ -634,7 +636,7 @@ export async function getDeviceDashboard(
 }
 
 function buildReadingsQuery(range: RangeKey): string {
-  const params = new URLSearchParams({ limit: "500", order: "oldest" });
+  const params = new URLSearchParams({ limit: "500", order: "newest" });
   const end = new Date();
   params.set("end", end.toISOString());
   const start = rangeStart(range, end);

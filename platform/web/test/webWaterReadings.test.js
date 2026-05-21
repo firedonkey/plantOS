@@ -22,6 +22,8 @@ test("web API maps backend water sensor fields into dashboard readings", async (
     "waterLevelRaw: reading.water_level_raw ?? undefined,",
     "waterLevelState: reading.water_level_state ?? undefined,",
     "function mergeLatestReadingIntoHistory",
+    'new URLSearchParams({ limit: "500", order: "newest" })',
+    ".sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime())",
     "history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),",
   ]) {
     assert.match(source, escaped(requiredText));
@@ -56,12 +58,17 @@ test("web sensor trends render water temperature without a water level chart", a
   for (const requiredText of [
     "Water temp",
     "waterTemperatureC",
-    "latestReading?.waterTemperatureC",
+    "trend-line-chart",
+    "trend-y-axis",
+    "buildValueDomain",
+    "formatAxisValue",
+    "readings • Min",
   ]) {
     assert.match(trendSource, escaped(requiredText));
   }
 
   assert.doesNotMatch(trendSource, /Water level raw|waterLevelRaw/);
+  assert.doesNotMatch(trendSource, /trend-bars|trend-bar/);
 });
 
 test("web hardware health expands needs attention into visible reasons", async () => {

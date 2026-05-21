@@ -115,6 +115,7 @@ export type AuthSession = {
   email: string;
   mode: "mock" | "api" | "production";
   expiresAt?: string;
+  isAdmin?: boolean;
 };
 
 export type CurrentUserProfile = {
@@ -123,6 +124,116 @@ export type CurrentUserProfile = {
   email: string;
   name?: string;
   avatarUrl?: string;
+  isAdmin?: boolean;
+};
+
+export type AdminSummary = {
+  users: number;
+  activeUsers: number;
+  devices: number;
+  activeDevices: number;
+  releasedDevices: number;
+  archivedDevices: number;
+  hardwareNodes: number;
+  staleNodes: number;
+  recentWarningEvents: number;
+  firmwareReleases: number;
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name?: string;
+  createdAt: string;
+  deviceCount: number;
+  activeDeviceCount: number;
+  lastSeenAt?: string;
+  recentWarningEventCount: number;
+  recentCommandCount: number;
+  lastCommandAt?: string;
+};
+
+export type AdminNode = {
+  hardwareDeviceId: string;
+  nodeRole?: string;
+  displayName?: string;
+  hardwareModel?: string;
+  softwareVersion?: string;
+  status: string;
+  lastSeenAt?: string;
+  otaStatus?: string;
+  otaTargetVersion?: string;
+  otaError?: string;
+};
+
+export type AdminDevice = {
+  id: string;
+  name: string;
+  ownerEmail: string;
+  location?: string;
+  plantType?: string;
+  status: string;
+  createdAt: string;
+  releasedAt?: string;
+  archivedAt?: string;
+  latestReadingAt?: string;
+  latestImageAt?: string;
+  nodeCount: number;
+  nodes: AdminNode[];
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  recentEventCount: number;
+};
+
+export type AdminEvent = {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  ownerEmail: string;
+  hardwareDeviceId?: string;
+  eventType: string;
+  severity: string;
+  code?: string;
+  message?: string;
+  occurredAt: string;
+};
+
+export type AdminCommand = {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  ownerEmail: string;
+  target: string;
+  action: string;
+  value?: string;
+  status: string;
+  message?: string;
+  createdAt: string;
+  sentAt?: string;
+  completedAt?: string;
+};
+
+export type AdminFirmwareRelease = {
+  releaseId: string;
+  nodeRole: string;
+  hardwareModel?: string;
+  version: string;
+  status: string;
+  publishedAt?: string;
+};
+
+export type AdminDiagnostics = {
+  generatedAt: string;
+  requestedBy: {
+    id: string;
+    email: string;
+  };
+  summary: AdminSummary;
+  users: AdminUser[];
+  devices: AdminDevice[];
+  recentEvents: AdminEvent[];
+  recentCommands: AdminCommand[];
+  firmwareReleases: AdminFirmwareRelease[];
 };
 
 export type DeviceDiagnosticSnapshot = {
