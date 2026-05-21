@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -16,12 +19,24 @@ ESP32_DIR = ROOT_DIR / "device" / "esp32"
 FIRMWARE_VERSION_HEADER = ESP32_DIR / "include" / "firmware_version.h"
 PIO_BIN = ROOT_DIR / ".venv" / "bin" / "pio"
 PIO_CORE_DIR = ROOT_DIR / ".pio-core"
+INFRA_ENV_FILE = ROOT_DIR / "platform" / "infra" / "env" / ".env"
 
 PLATFORM_CONTAINER = "plantlab-local-platform"
 POSTGRES_CONTAINER = "plantlab-local-postgres"
 POSTGRES_USER = "plantlab_user"
 POSTGRES_DB = "plantlab"
 CONTAINER_FIRMWARE_DIR = "/app/platform/backend/data/firmware"
+
+DEFAULT_PROJECT_ID = "plantlab-493805"
+DEFAULT_REGION = "us-central1"
+DEFAULT_SERVICE_NAME = "plantlab-api"
+DEFAULT_AR_REPO = "plantlab-repo"
+DEFAULT_BUCKET_NAME = "plantlab-images-garylu"
+DEFAULT_DB_NAME = "plantlab"
+DEFAULT_DB_USER = "plantlab_user"
+DEFAULT_CLOUD_SQL_CONNECTION_NAME = "plantlab-493805:us-central1:plantlab"
+DEFAULT_FIRMWARE_PREFIX = "firmware"
+DEFAULT_GCP_JOB_NAME = "plantlab-firmware-release-publish"
 
 
 @dataclass(frozen=True)
@@ -66,7 +81,7 @@ TARGETS = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Build and publish ESP32 OTA releases to the local PlantLab backend.",
+        description="Build and publish ESP32 OTA releases to local or GCP PlantLab backends.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -115,6 +130,111 @@ def main() -> int:
         help="Allow publishing when --version or --version-code does not match firmware_version.h.",
     )
 
+    publish_gcp = subparsers.add_parser(
+        "publish-gcp",
+        help="Build or reuse firmware artifacts, upload them to GCS, and publish releases through a Cloud Run job.",
+    )
+    publish_gcp.add_argument(
+        "--node",
+        choices=("master", "camera", "both"),
+        required=True,
+        help="Firmware target to publish.",
+    )
+    publish_gcp.add_argument("--version", required=True, help="Release version, for example 0.1.5.")
+    publish_gcp.add_argument(
+        "--version-code",
+        type=int,
+        default=None,
+        help="Release version code. Defaults to the value in firmware_version.h for each node.",
+    )
+    publish_gcp.add_argument(
+        "--min-current-version",
+        default=None,
+        help="Optional minimum installed version required for this OTA release.",
+    )
+    publish_gcp.add_argument(
+        "--release-suffix",
+        default="gcp",
+        help="Suffix for generated release IDs. Default: gcp.",
+    )
+    publish_gcp.add_argument(
+        "--release-id",
+        default=None,
+        help="Explicit release ID. Only valid when --node is master or camera.",
+    )
+    publish_gcp.add_argument(
+        "--artifact",
+        type=Path,
+        default=None,
+        help="Use an existing firmware.bin instead of the PlatformIO build output. Only valid for one node.",
+    )
+    publish_gcp.add_argument("--build", action="store_true", help="Run PlatformIO build before publishing.")
+    publish_gcp.add_argument(
+        "--allow-version-mismatch",
+        action="store_true",
+        help="Allow publishing when --version or --version-code does not match firmware_version.h.",
+    )
+    publish_gcp.add_argument(
+        "--project-id",
+        default=env_default("PROJECT_ID", DEFAULT_PROJECT_ID),
+        help="GCP project ID.",
+    )
+    publish_gcp.add_argument(
+        "--region",
+        default=env_default("REGION", DEFAULT_REGION),
+        help="Cloud Run region.",
+    )
+    publish_gcp.add_argument(
+        "--service-name",
+        default=env_default("SERVICE_NAME", DEFAULT_SERVICE_NAME),
+        help="Cloud Run backend service whose image should run the publish job.",
+    )
+    publish_gcp.add_argument(
+        "--job-name",
+        default=env_default("OTA_PUBLISH_JOB", DEFAULT_GCP_JOB_NAME),
+        help="Cloud Run job used to upsert firmware release metadata.",
+    )
+    publish_gcp.add_argument(
+        "--bucket-name",
+        default=env_default("PLANTLAB_FIRMWARE_BUCKET_NAME", env_default("GCS_BUCKET_NAME", env_default("BUCKET_NAME", DEFAULT_BUCKET_NAME))),
+        help="GCS bucket for firmware artifacts.",
+    )
+    publish_gcp.add_argument(
+        "--firmware-prefix",
+        default=env_default("PLANTLAB_FIRMWARE_PREFIX", DEFAULT_FIRMWARE_PREFIX),
+        help="GCS object prefix for firmware artifacts.",
+    )
+    publish_gcp.add_argument(
+        "--cloud-sql-connection-name",
+        default=env_default("CLOUD_SQL_CONNECTION_NAME", DEFAULT_CLOUD_SQL_CONNECTION_NAME),
+        help="Cloud SQL connection name used by the Cloud Run job.",
+    )
+    publish_gcp.add_argument(
+        "--db-name",
+        default=env_default("DB_NAME", DEFAULT_DB_NAME),
+        help="Cloud SQL database name.",
+    )
+    publish_gcp.add_argument(
+        "--db-user",
+        default=env_default("DB_USER", DEFAULT_DB_USER),
+        help="Cloud SQL database user.",
+    )
+    publish_gcp.add_argument(
+        "--service-account",
+        default=None,
+        help="Cloud Run job service account. Defaults to plantlab-run-sa@<project-id>.iam.gserviceaccount.com.",
+    )
+    publish_gcp.add_argument(
+        "--image",
+        default=None,
+        help="Backend container image for the Cloud Run job. Defaults to the current deployed service image.",
+    )
+    publish_gcp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned GCS upload and Cloud Run job commands without changing GCP.",
+    )
+
     bump = subparsers.add_parser(
         "bump-version",
         help="Update ESP32 firmware version constants before building an OTA release.",
@@ -137,6 +257,8 @@ def main() -> int:
         return bump_version(args)
     if args.command == "publish-local":
         return publish_local(args)
+    if args.command == "publish-gcp":
+        return publish_gcp_release(args)
     if args.command == "status-local":
         return status_local()
     if args.command == "list-local-releases":
@@ -205,6 +327,108 @@ def publish_local(args: argparse.Namespace) -> int:
     print("[ota] done. Devices will pick up the release on their next OTA manifest poll.")
     print("[ota] For immediate testing, reboot/reset devices that already checked OTA this boot.")
     print("[ota] Check progress with: .venv/bin/python platform/infra/scripts/ota_release.py status-local")
+    return 0
+
+
+def publish_gcp_release(args: argparse.Namespace) -> int:
+    selected = selected_targets(args.node)
+    if args.release_id and len(selected) != 1:
+        fail("--release-id can only be used with one node.")
+    if args.artifact and len(selected) != 1:
+        fail("--artifact can only be used with one node.")
+
+    require_file(FIRMWARE_VERSION_HEADER)
+    require_command_available("gcloud")
+
+    project_id = args.project_id
+    region = args.region
+    service_name = args.service_name
+    service_account = args.service_account or f"plantlab-run-sa@{project_id}.iam.gserviceaccount.com"
+    backend_image = args.image or current_cloud_run_image(
+        service_name=service_name,
+        project_id=project_id,
+        region=region,
+    )
+    if not backend_image:
+        fail(
+            "Could not determine backend image. Deploy the backend that contains "
+            "app.ops.publish_firmware_release first, or pass --image."
+        )
+
+    for target in selected:
+        declared = read_firmware_info(target)
+        version_code = args.version_code if args.version_code is not None else declared.version_code
+        if not args.allow_version_mismatch:
+            validate_declared_version(target, declared, args.version, version_code, args.node)
+
+        firmware_path = args.artifact or target.firmware_path
+        if args.build and args.artifact is None:
+            build_firmware(target)
+        require_file(firmware_path)
+
+        release_id = args.release_id or generated_release_id(target, args.version, args.release_suffix)
+        artifact_name = f"{release_id}.bin"
+        artifact_uri = gcs_artifact_uri(args.bucket_name, args.firmware_prefix, artifact_name)
+        artifact_size = firmware_path.stat().st_size
+        checksum = sha256_file(firmware_path)
+
+        print(f"[ota] publishing GCP {target.name} release {release_id}")
+        print(f"[ota] version={args.version} version_code={version_code}")
+        print(f"[ota] artifact={firmware_path}")
+        print(f"[ota] gcs={artifact_uri}")
+        print(f"[ota] size={artifact_size} sha256={checksum}")
+
+        upload_cmd = ["gcloud", "storage", "cp", str(firmware_path), artifact_uri]
+        job_cmd = gcp_publish_job_command(
+            job_name=args.job_name,
+            image=backend_image,
+            project_id=project_id,
+            region=region,
+            service_account=service_account,
+            cloud_sql_connection_name=args.cloud_sql_connection_name,
+            db_name=args.db_name,
+            db_user=args.db_user,
+            release_id=release_id,
+            target=target,
+            version=args.version,
+            version_code=version_code,
+            min_current_version=args.min_current_version,
+            artifact_path=artifact_uri,
+            artifact_size=artifact_size,
+            checksum=checksum,
+        )
+        execute_cmd = [
+            "gcloud",
+            "run",
+            "jobs",
+            "execute",
+            args.job_name,
+            "--project",
+            project_id,
+            "--region",
+            region,
+            "--wait",
+        ]
+
+        if args.dry_run:
+            print("[ota] dry-run upload command:")
+            print(shell_join(upload_cmd))
+            print("[ota] dry-run Cloud Run job create/update command:")
+            print(shell_join([part if part != "REPLACE_ACTION" else "create" for part in job_cmd]))
+            print("[ota] dry-run Cloud Run job execute command:")
+            print(shell_join(execute_cmd))
+            continue
+
+        run(upload_cmd)
+        create_or_update_cloud_run_job(args.job_name, project_id, region, job_cmd)
+        run(execute_cmd)
+        print(f"[ota] GCP release published: {release_id}")
+
+    if args.dry_run:
+        print("[ota] dry-run complete. No GCP changes were made.")
+    else:
+        print("[ota] done. Production devices will pick up the release on their next OTA manifest poll.")
+        print("[ota] For immediate testing, reboot/reset devices that already checked OTA this boot.")
     return 0
 
 
@@ -290,6 +514,148 @@ def build_firmware(target: OtaTarget) -> None:
     env = {"PLATFORMIO_CORE_DIR": str(PIO_CORE_DIR)}
     print(f"[ota] building PlatformIO env {target.pio_env}")
     run([str(PIO_BIN), "run", "-e", target.pio_env], cwd=ESP32_DIR, env=env)
+
+
+def validate_declared_version(
+    target: OtaTarget,
+    declared: FirmwareInfo,
+    version: str,
+    version_code: int,
+    node_arg: str,
+) -> None:
+    if declared.version != version:
+        fail(
+            f"{target.name} firmware declares version {declared.version}, "
+            f"but --version is {version}. "
+            f"Run: .venv/bin/python platform/infra/scripts/ota_release.py "
+            f"bump-version --node {node_arg} --version {version}"
+        )
+    if declared.version_code != version_code:
+        fail(
+            f"{target.name} firmware declares version code {declared.version_code}, "
+            f"but release version code is {version_code}."
+        )
+
+
+def current_cloud_run_image(*, service_name: str, project_id: str, region: str) -> str:
+    return run(
+        [
+            "gcloud",
+            "run",
+            "services",
+            "describe",
+            service_name,
+            "--project",
+            project_id,
+            "--region",
+            region,
+            "--format=value(spec.template.spec.containers[0].image)",
+        ],
+        capture=True,
+    ).strip()
+
+
+def gcs_artifact_uri(bucket_name: str, prefix: str, artifact_name: str) -> str:
+    bucket = bucket_name.strip().removeprefix("gs://").strip("/")
+    if not bucket:
+        fail("GCS bucket name is empty.")
+    clean_prefix = prefix.strip().strip("/")
+    clean_artifact = artifact_name.strip().lstrip("/")
+    if not clean_artifact:
+        fail("Firmware artifact name is empty.")
+    if clean_prefix:
+        return f"gs://{bucket}/{clean_prefix}/{clean_artifact}"
+    return f"gs://{bucket}/{clean_artifact}"
+
+
+def gcp_publish_job_command(
+    *,
+    job_name: str,
+    image: str,
+    project_id: str,
+    region: str,
+    service_account: str,
+    cloud_sql_connection_name: str,
+    db_name: str,
+    db_user: str,
+    release_id: str,
+    target: OtaTarget,
+    version: str,
+    version_code: int,
+    min_current_version: str | None,
+    artifact_path: str,
+    artifact_size: int,
+    checksum: str,
+) -> list[str]:
+    args = [
+        "-m",
+        "app.ops.publish_firmware_release",
+        "--release-id",
+        release_id,
+        "--node-role",
+        target.node_role,
+        "--hardware-model",
+        target.hardware_model,
+        "--version",
+        version,
+        "--version-code",
+        str(version_code),
+        "--artifact-path",
+        artifact_path,
+        "--artifact-size-bytes",
+        str(artifact_size),
+        "--sha256",
+        checksum,
+    ]
+    if min_current_version:
+        args.extend(["--min-current-version", min_current_version])
+
+    return [
+        "gcloud",
+        "run",
+        "jobs",
+        "REPLACE_ACTION",
+        job_name,
+        "--image",
+        image,
+        "--project",
+        project_id,
+        "--region",
+        region,
+        "--service-account",
+        service_account,
+        "--set-cloudsql-instances",
+        cloud_sql_connection_name,
+        "--tasks",
+        "1",
+        "--max-retries",
+        "0",
+        "--command=python",
+        f"--args={','.join(args)}",
+        "--set-env-vars="
+        + gcp_publish_env_vars(db_name=db_name, db_user=db_user, cloud_sql_connection_name=cloud_sql_connection_name),
+        "--set-secrets=APP_SECRET_KEY=app-secret-key:latest,DB_PASSWORD=db-password:latest,PLANTLAB_PROVISIONING_SHARED_SECRET=provisioning-shared-secret:latest",
+    ]
+
+
+def gcp_publish_env_vars(*, db_name: str, db_user: str, cloud_sql_connection_name: str) -> str:
+    return (
+        "^~^APP_ENV=production"
+        f"~DB_NAME={db_name}"
+        f"~DB_USER={db_user}"
+        f"~CLOUD_SQL_CONNECTION_NAME={cloud_sql_connection_name}"
+        "~PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false"
+    )
+
+
+def create_or_update_cloud_run_job(job_name: str, project_id: str, region: str, command: list[str]) -> None:
+    if command_succeeds(["gcloud", "run", "jobs", "describe", job_name, "--project", project_id, "--region", region]):
+        action = "update"
+    else:
+        action = "create"
+    job_command = [part if part != "REPLACE_ACTION" else action for part in command]
+    print(f"[ota] {action} Cloud Run job {job_name}")
+    run(job_command)
 
 
 def upsert_release(
@@ -450,6 +816,54 @@ def run(
         fail(f"Command failed: {' '.join(cmd)}")
         raise exc
     return completed.stdout.strip() if capture and completed.stdout else ""
+
+
+def command_succeeds(cmd: list[str]) -> bool:
+    completed = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    return completed.returncode == 0
+
+
+def require_command_available(command: str) -> None:
+    if shutil.which(command) is None:
+        fail(f"Command not found: {command}")
+
+
+def shell_join(cmd: list[str]) -> str:
+    return shlex.join(cmd)
+
+
+def env_default(name: str, fallback: str) -> str:
+    value = os.getenv(name)
+    if value is not None and value.strip():
+        return value.strip()
+    env_values = read_infra_env_file()
+    return env_values.get(name, fallback)
+
+
+def read_infra_env_file() -> dict[str, str]:
+    if not INFRA_ENV_FILE.is_file():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in INFRA_ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = raw_value.strip()
+        try:
+            parsed = shlex.split(value, comments=False, posix=True)
+        except ValueError:
+            parsed = []
+        values[key] = parsed[0] if len(parsed) == 1 else value.strip("\"'")
+    return values
 
 
 def generated_release_id(target: OtaTarget, version: str, suffix: str) -> str:

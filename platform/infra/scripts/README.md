@@ -29,6 +29,7 @@ Defaults:
   - prints recent image metadata for one device
 - `ota_release.py`
   - builds and publishes ESP32 master and camera OTA releases to the local Docker backend
+  - can publish production OTA releases to GCP by uploading firmware to GCS and upserting release metadata through a Cloud Run job
   - verifies the requested release version matches `device/esp32/include/firmware_version.h`
   - copies firmware artifacts into the backend container's persistent firmware volume and upserts `firmware_releases`
 
@@ -116,6 +117,55 @@ Check local OTA status:
 ```bash
 cd /Users/gary/plantOS
 .venv/bin/python platform/infra/scripts/ota_release.py status-local
+```
+
+Publish a production OTA release after the GCP backend containing
+`app.ops.publish_firmware_release` has been deployed:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py bump-version \
+  --node both \
+  --version 0.1.5
+
+.venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
+  --node both \
+  --version 0.1.5 \
+  --build
+```
+
+For a staged rollout, publish one node role at a time:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
+  --node camera \
+  --version 0.1.5 \
+  --build
+
+.venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
+  --node master \
+  --version 0.1.5 \
+  --build
+```
+
+Production OTA publishing does three things:
+
+1. builds or reuses the PlatformIO firmware artifact
+2. uploads it to `gs://plantlab-images-garylu/firmware/`
+3. creates or updates a `plantlab-firmware-release-publish` Cloud Run job that
+   runs `python -m app.ops.publish_firmware_release` against production Cloud
+   SQL
+
+Use `--dry-run` to inspect the GCS upload and Cloud Run job commands without
+changing GCP:
+
+```bash
+.venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
+  --node camera \
+  --version 0.1.5 \
+  --image "<deployed-backend-image>" \
+  --dry-run
 ```
 
 Firmware checks OTA once about 60 seconds after boot, then roughly every 6

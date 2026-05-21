@@ -255,6 +255,9 @@ APP_ENV=production
 GOOGLE_CLOUD_PROJECT=plantlab-493805
 PLANTLAB_STORAGE_BACKEND=gcs
 GCS_BUCKET_NAME=plantlab-images-garylu
+PLANTLAB_FIRMWARE_STORAGE_BACKEND=gcs
+PLANTLAB_FIRMWARE_BUCKET_NAME=plantlab-images-garylu
+PLANTLAB_FIRMWARE_PREFIX=firmware
 DB_NAME=plantlab
 DB_USER=plantlab_user
 CLOUD_SQL_CONNECTION_NAME=plantlab-493805:us-central1:plantlab
@@ -327,6 +330,41 @@ EXPO_PUBLIC_AUTH_MODE=production
 EXPO_PUBLIC_ENABLE_DEV_AUTH=false
 EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false
 ```
+
+## Production OTA Publishing
+
+Production OTA firmware artifacts are backend-owned files in GCS. The platform
+API serves them through `/api/hardware/ota/artifacts/{release_id}` after the
+device authenticates with its device token.
+
+The production path is:
+
+1. build the firmware image
+2. upload the `.bin` file to `gs://plantlab-images-garylu/firmware/`
+3. run a Cloud Run job using the deployed backend image
+4. upsert one row in `firmware_releases` with a `gs://...` artifact path,
+   SHA256, size, node role, hardware model, and version code
+
+Use the helper script instead of manually editing production SQL:
+
+```bash
+cd /Users/gary/plantOS
+.venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
+  --node camera \
+  --version 0.1.5 \
+  --build
+```
+
+The helper creates or updates the Cloud Run job
+`plantlab-firmware-release-publish`. That job runs:
+
+```bash
+python -m app.ops.publish_firmware_release
+```
+
+Important: deploy the backend image that contains this module before running
+`publish-gcp`. Use `--dry-run` to inspect the upload and job commands before
+changing GCP.
 
 ## Build Image
 
