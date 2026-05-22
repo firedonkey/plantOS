@@ -155,7 +155,7 @@ function TrendCard({
           <span className="series-dot" style={{ backgroundColor: color }} />
           <span>{label}</span>
         </div>
-        <strong>{latestPoint ? `Current ${formatAxisValue(latestPoint.value, minimum, maximum)} ${unit}` : "Current --"}</strong>
+        <strong>{latestPoint ? `${formatAxisValue(latestPoint.value, minimum, maximum)} ${unit}` : "--"}</strong>
       </div>
       {points.length ? (
         <div className="trend-chart-frame">

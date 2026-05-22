@@ -580,7 +580,8 @@ input {
 
 .trend-card-header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
 }
 
@@ -604,6 +605,8 @@ input {
 
 .trend-card-header strong {
   font-size: 24px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .trend-chart-frame {

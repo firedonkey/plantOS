@@ -142,10 +142,12 @@ function TrendCard({
   return (
     <View style={styles.trendCard}>
       <View style={styles.trendHeader}>
-        <View style={[styles.seriesDot, { backgroundColor: color }]} />
-        <Text style={styles.cardLabel}>{label}</Text>
+        <View style={styles.trendTitle}>
+          <View style={[styles.seriesDot, { backgroundColor: color }]} />
+          <Text style={styles.cardLabel}>{label}</Text>
+        </View>
+        <Text style={styles.cardValue}>{latest !== undefined ? `${latest.toFixed(1)} ${unit}` : "--"}</Text>
       </View>
-      <Text style={styles.cardValue}>{latest !== undefined ? `Current ${latest.toFixed(1)} ${unit}` : "Current --"}</Text>
       <SensorLineChart points={chartPoints} color={color} minDomainSpan={minDomainSpan} />
       <View style={styles.metaRow}>
         <Text style={styles.meta}>Min {minimum !== undefined ? `${minimum.toFixed(1)} ${unit}` : "--"}</Text>
@@ -186,10 +188,11 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.md,
   },
-  trendHeader: { flexDirection: "row", alignItems: "center", gap: theme.spacing.sm },
+  trendHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.spacing.md },
+  trendTitle: { flexDirection: "row", alignItems: "center", gap: theme.spacing.sm, flexShrink: 1 },
   seriesDot: { width: 8, height: 8, borderRadius: theme.radii.pill },
   cardLabel: { color: theme.colors.textSecondary, fontSize: theme.typography.meta, fontWeight: "700" },
-  cardValue: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary },
+  cardValue: { fontSize: 22, fontWeight: "800", color: theme.colors.textPrimary, flexShrink: 0, textAlign: "right" },
   metaRow: { flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md },
   meta: { fontSize: theme.typography.meta, color: theme.colors.textSecondary },
 });
