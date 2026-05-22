@@ -36,6 +36,16 @@ test("register schema still requires claim token and device id", () => {
   assert.match(source, /attach_to_platform_device_id: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
 });
 
+test("register schema accepts typed hardware capability metadata", () => {
+  const source = readSource("src/models/provisioningSchemas.js");
+
+  assert.match(source, /const capabilityValueSchema = z\.union/);
+  assert.match(source, /z\.boolean\(\)/);
+  assert.match(source, /z\.number\(\)\.finite\(\)/);
+  assert.match(source, /z\.array\(z\.string\(\)\.trim\(\)\.max\(120\)\)\.max\(20\)/);
+  assert.match(source, /capabilities: z\.record\(z\.string\(\), capabilityValueSchema\)\.default\(\{\}\)/);
+});
+
 test("provision service persists expected identity and rejects mismatched registration", () => {
   const source = readSource("src/services/deviceProvisioningService.js");
 

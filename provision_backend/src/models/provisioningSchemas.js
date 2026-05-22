@@ -29,6 +29,13 @@ const bleDeviceIdentitySchema = z
   })
   .strict();
 
+const capabilityValueSchema = z.union([
+  z.boolean(),
+  z.number().finite(),
+  z.string().trim().max(120),
+  z.array(z.string().trim().max(120)).max(20)
+]);
+
 export const claimTokenPayloadSchema = z
   .object({
     device_name: z.string().trim().max(120, "device_name is too long.").optional().nullable(),
@@ -80,7 +87,7 @@ export const registerDeviceSchema = z.object({
     .trim()
     .min(1, "software_version is required.")
     .max(60, "software_version is too long."),
-  capabilities: z.record(z.string(), z.boolean()).default({}),
+  capabilities: z.record(z.string(), capabilityValueSchema).default({}),
   node_role: z.enum(["single_board", "master", "camera"]).default("single_board"),
   node_index: z.number().int().positive().optional(),
   display_name: z.string().trim().max(120, "display_name is too long.").optional(),
