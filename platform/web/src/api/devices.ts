@@ -23,6 +23,9 @@ type ApiDevice = {
   plant_type?: string | null;
   api_token?: string | null;
   status?: string | null;
+  current_light_on?: boolean | null;
+  current_light_intensity_percent?: number | null;
+  current_pump_on?: boolean | null;
   latest_reading?: ApiDeviceSummary["latest_reading"] | null;
   latest_image?: ApiDeviceSummary["latest_image"] | null;
   node_summary?: ApiDeviceSummary["node_summary"] | null;
@@ -34,6 +37,9 @@ type ApiDeviceSummary = {
   name: string;
   location?: string | null;
   plant_type?: string | null;
+  current_light_on?: boolean | null;
+  current_light_intensity_percent?: number | null;
+  current_pump_on?: boolean | null;
   latest_reading?: {
     timestamp: string;
     moisture?: number | null;
@@ -501,6 +507,9 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
           plantType: device.plant_type ?? undefined,
           status: mapStatus(summary, device.status),
           lastSeenAt: device.hardware_health?.last_heartbeat_at ?? device.latest_reading?.timestamp ?? undefined,
+          currentLightOn: device.current_light_on ?? undefined,
+          currentLightIntensityPercent: device.current_light_intensity_percent ?? undefined,
+          currentPumpOn: device.current_pump_on ?? undefined,
           latestReading: mapReading(device.latest_reading),
           latestImage: device.latest_image
             ? {
@@ -772,12 +781,15 @@ export async function getDeviceDashboard(
           plantType: summary.plant_type ?? undefined,
           status: mapStatus(summary),
           lastSeenAt: summary.hardware_health?.last_heartbeat_at ?? summary.latest_reading?.timestamp ?? undefined,
+          currentLightOn: summary.current_light_on ?? undefined,
+          currentLightIntensityPercent: summary.current_light_intensity_percent ?? undefined,
+          currentPumpOn: summary.current_pump_on ?? undefined,
           latestReading,
           latestImage,
         },
         hardwareHealth: mapHardwareHealth(summary.hardware_health),
         recentImages: galleryImages,
-        recentCommands: commands.slice(0, 6).map(mapCommand),
+        recentCommands: commands.map(mapCommand).filter((command) => command.action !== "pump_run").slice(0, 6),
         history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),
       },
     };

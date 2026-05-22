@@ -31,17 +31,16 @@ const latestReading: SensorReading = {
   waterLevelState: "ok",
   lightOn: false,
   lightIntensityPercent: 0,
-  pumpOn: false,
 };
 
 const recentCommands: DeviceCommand[] = [
   {
     id: "web-cmd-1",
     deviceId: "1",
-    action: "pump_run",
+    action: "capture_image",
     createdAt: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
-    status: "in_progress",
-    detail: "Pump is currently running for 5 seconds.",
+    status: "completed",
+    detail: "Image captured and uploaded.",
   },
 ];
 
@@ -54,7 +53,6 @@ const history: SensorReading[] = Array.from({ length: 12 }, (_, index) => ({
   waterLevelState: index > 6 ? "low" : "ok",
   lightOn: index % 2 === 0,
   lightIntensityPercent: index % 2 === 0 ? 60 : 0,
-  pumpOn: false,
 })).reverse();
 
 export const mockDevices: Device[] = [
@@ -65,6 +63,8 @@ export const mockDevices: Device[] = [
     plantType: "Basil",
     status: "online",
     lastSeenAt: now.toISOString(),
+    currentLightOn: latestReading.lightOn,
+    currentLightIntensityPercent: latestReading.lightIntensityPercent,
     latestReading,
     latestImage,
   },
@@ -98,7 +98,7 @@ const hardwareHealth: HardwareHealth = {
       lastCommandId: 12,
       lastCommandStatus: "completed",
       lastCommandCode: "ok",
-      lastCommandMessage: "Pump run completed.",
+      lastCommandMessage: "Image captured and uploaded.",
       lastCommandAt: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
       errorCounters: {
         wifi_reconnects: 1,
@@ -140,9 +140,9 @@ const hardwareHealth: HardwareHealth = {
   lastImageAt: latestImage.capturedAt,
   lastCommand: {
     id: "web-cmd-1",
-    action: "pump_run",
-    status: "in_progress",
-    message: "Pump is currently running for 5 seconds.",
+    action: "capture_image",
+    status: "completed",
+    message: "Image captured and uploaded.",
     timestamp: new Date(now.getTime() - 3 * 60 * 1000).toISOString(),
   },
   friendlyStatus: "needs_attention",

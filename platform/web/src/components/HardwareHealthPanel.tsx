@@ -276,7 +276,7 @@ function formatAction(action: string): string {
     case "light_intensity":
       return "Grow LED intensity";
     case "pump_run":
-      return "Pump run";
+      return "Legacy command";
     case "capture_image":
       return "Capture image";
     default:

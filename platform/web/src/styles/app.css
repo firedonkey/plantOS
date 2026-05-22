@@ -194,15 +194,20 @@ input {
   font-size: 28px;
 }
 
-.metric-card-control {
-  justify-content: space-between;
+.metric-card small {
+  color: #708078;
+  font-size: 13px;
 }
 
-.metric-control-row {
+.grow-led-card {
+  background: #f8fafb;
+}
+
+.grow-led-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 18px;
 }
 
 .toggle-switch {
@@ -265,8 +270,9 @@ input {
 
 .light-intensity-control {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
+  border-top: 1px solid #d7dee3;
+  padding-top: 14px;
 }
 
 .light-intensity-control label {
@@ -286,15 +292,12 @@ input {
 
 .light-intensity-control input[type="range"] {
   width: 100%;
+  cursor: pointer;
   accent-color: #2f855a;
 }
 
 .light-intensity-control input[type="range"]:disabled {
   opacity: 0.6;
-}
-
-.light-intensity-button {
-  width: 100%;
 }
 
 .dashboard-action-button {
@@ -581,7 +584,21 @@ input {
   gap: 6px;
 }
 
-.trend-card-header span {
+.trend-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.series-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.trend-card-header span,
+.trend-card-title span {
   color: #55635d;
 }
 
@@ -630,7 +647,6 @@ input {
 
 .trend-line {
   fill: none;
-  stroke: #2f855a;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.4;
@@ -639,8 +655,13 @@ input {
 
 .trend-point {
   fill: #ffffff;
-  stroke: #2f855a;
   stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-latest-point {
+  fill: #ffffff;
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
@@ -687,6 +708,11 @@ input {
   gap: 16px;
 }
 
+.image-gallery-stack {
+  display: grid;
+  gap: 14px;
+}
+
 .image-gallery-card {
   margin: 0;
   display: flex;
@@ -694,9 +720,22 @@ input {
   gap: 10px;
 }
 
+.image-gallery-card-primary {
+  max-width: 760px;
+}
+
 .gallery-image {
   height: 220px;
   object-fit: cover;
+}
+
+.gallery-image-primary {
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+.gallery-capture-button {
+  min-width: 160px;
 }
 
 .activity-list {

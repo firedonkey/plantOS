@@ -49,6 +49,9 @@ export type Device = {
   plantType?: string;
   status: DeviceConnectionState;
   lastSeenAt?: string;
+  currentLightOn?: boolean;
+  currentLightIntensityPercent?: number;
+  currentPumpOn?: boolean;
   latestReading?: SensorReading;
   latestImage?: LatestImage;
 };

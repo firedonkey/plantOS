@@ -17,9 +17,13 @@ test("web dashboard gates grow LED intensity controls on hardware capability sup
   for (const requiredText of [
     "const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);",
     "lightIntensitySupported ? (",
-    'aria-label="Grow LED intensity"',
+    'aria-label="Grow LED brightness"',
     'type="range"',
-    'onClick={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}',
+    "function formatAge",
+    "const commitLightIntensity = () => {",
+    'runCommand("light_intensity", { intensityPercent: nextValue })',
+    "dashboard?.device.currentLightOn ?? latestReading?.lightOn",
+    "dashboard?.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent",
     "capabilities.light_intensity_control === true",
     "capabilities.light_dimming === true",
     "capabilities.light_pwm === true",
@@ -27,6 +31,16 @@ test("web dashboard gates grow LED intensity controls on hardware capability sup
   ]) {
     assert.match(source, escaped(requiredText));
   }
+});
+
+test("web dashboard hides legacy pump actions from user-facing dashboard controls", async () => {
+  const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
+  const hookSource = await readText("../src/hooks/useDeviceDashboard.ts");
+  const apiSource = await readText("../src/api/devices.ts");
+
+  assert.doesNotMatch(dashboardSource, /pump|Pump/);
+  assert.match(apiSource, escaped('.filter((command) => command.action !== "pump_run").slice(0, 6)'));
+  assert.match(hookSource, escaped('return "Legacy command";'));
 });
 
 test("web device API sends grow LED intensity as backend light command payload", async () => {

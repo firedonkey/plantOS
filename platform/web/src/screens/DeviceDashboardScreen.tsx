@@ -27,11 +27,13 @@ export function DeviceDashboardScreen() {
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
-  const growLedOn = dashboard?.device.latestReading?.lightOn === true;
-  const growLedIntensityPercent = dashboard?.device.latestReading?.lightIntensityPercent;
+  const latestReading = dashboard?.device.latestReading;
+  const growLedOn = (dashboard?.device.currentLightOn ?? latestReading?.lightOn) === true;
+  const growLedIntensityPercent = dashboard?.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent;
   const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);
   const currentLightIntensity = clampLightIntensity(growLedIntensityPercent ?? (growLedOn ? 100 : 0));
   const [lightIntensityDraft, setLightIntensityDraft] = useState(currentLightIntensity);
+  const [lightIntensityActive, setLightIntensityActive] = useState(false);
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
   const pendingLightIntensity = activeCommandAction === "light_intensity" || isActionBlocked("light_intensity");
@@ -47,11 +49,23 @@ export function DeviceDashboardScreen() {
         : growLedOn
           ? "Turn off"
           : "Turn on";
-  const lightIntensityApplyLabel = pendingLightIntensity ? "Setting..." : isCommandRunning ? "Working..." : "Set";
 
   useEffect(() => {
-    setLightIntensityDraft(currentLightIntensity);
-  }, [currentLightIntensity, dashboard?.device.id]);
+    if (!lightIntensityActive) {
+      setLightIntensityDraft(currentLightIntensity);
+    }
+  }, [currentLightIntensity, dashboard?.device.id, lightIntensityActive]);
+
+  const commitLightIntensity = () => {
+    if (!lightIntensityActive) {
+      return;
+    }
+    setLightIntensityActive(false);
+    const nextValue = clampLightIntensity(lightIntensityDraft);
+    if (!lightIntensityDisabled && nextValue !== currentLightIntensity) {
+      runCommand("light_intensity", { intensityPercent: nextValue });
+    }
+  };
 
   useEffect(() => {
     if (!dashboard?.recentImages.length) {
@@ -141,55 +155,64 @@ export function DeviceDashboardScreen() {
             </p>
           ) : null}
 
-          <div className="metrics-grid">
-            <div className="metric-card"><span>Air temp</span><strong>{dashboard.device.latestReading?.temperatureC?.toFixed(1) ?? "--"} C</strong></div>
-            <div className="metric-card"><span>Humidity</span><strong>{dashboard.device.latestReading?.humidityPercent?.toFixed(1) ?? "--"}%</strong></div>
-            <div className="metric-card"><span>Water temp</span><strong>{dashboard.device.latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C</strong></div>
-            <div className="metric-card"><span>Water level</span><strong>{formatWaterLevel(dashboard.device.latestReading?.waterLevelState, dashboard.device.latestReading?.waterLevelRaw)}</strong></div>
-            <div className="metric-card metric-card-control">
-              <span>Grow LED</span>
-              <div className="metric-control-row">
-                <strong>{growLedOn ? (lightIntensitySupported ? `${currentLightIntensity}%` : "On") : "Off"}</strong>
-                <button
-                  aria-label={lightToggleLabel}
-                  aria-pressed={growLedOn}
-                  className={`toggle-switch ${growLedOn ? "toggle-switch-on" : "toggle-switch-off"}`}
-                  disabled={lightToggleDisabled}
-                  onClick={() => runCommand(nextLightAction)}
-                  type="button"
-                >
-                  <span className="toggle-switch-label">{growLedOn ? "ON" : "OFF"}</span>
-                  <span className="toggle-switch-knob" aria-hidden="true" />
-                </button>
-              </div>
-              {lightIntensitySupported ? (
-                <div className="light-intensity-control">
-                  <label htmlFor="grow-led-intensity">
-                    <span>Intensity</span>
-                    <strong>{lightIntensityDraft}%</strong>
-                  </label>
-                  <input
-                    id="grow-led-intensity"
-                    aria-label="Grow LED intensity"
-                    disabled={lightIntensityDisabled}
-                    max={100}
-                    min={0}
-                    onChange={(event) => setLightIntensityDraft(clampLightIntensity(Number(event.currentTarget.value)))}
-                    step={5}
-                    type="range"
-                    value={lightIntensityDraft}
-                  />
-                  <button
-                    className="secondary-button light-intensity-button"
-                    disabled={lightIntensityDisabled || lightIntensityDraft === currentLightIntensity}
-                    onClick={() => runCommand("light_intensity", { intensityPercent: lightIntensityDraft })}
-                    type="button"
-                  >
-                    {lightIntensityApplyLabel}
-                  </button>
-                </div>
-              ) : null}
+          <div className="card stack-form">
+            <div>
+              <h3>Primary readings</h3>
+              <p className="subtitle">Latest air and water sensor state.</p>
             </div>
+            <div className="metrics-grid">
+              <div className="metric-card"><span>Air temp</span><strong>{latestReading?.temperatureC?.toFixed(1) ?? "--"} C</strong><small>{formatAge(latestReading?.timestamp)}</small></div>
+              <div className="metric-card"><span>Humidity</span><strong>{latestReading?.humidityPercent?.toFixed(1) ?? "--"}%</strong><small>{formatAge(latestReading?.timestamp)}</small></div>
+              <div className="metric-card"><span>Water temp</span><strong>{latestReading?.waterTemperatureC?.toFixed(1) ?? "--"} C</strong><small>{formatAge(latestReading?.timestamp)}</small></div>
+              <div className="metric-card"><span>Water level</span><strong>{formatWaterLevel(latestReading?.waterLevelState, latestReading?.waterLevelRaw)}</strong><small>{latestReading?.waterLevelRaw !== undefined ? `Raw ${latestReading.waterLevelRaw}` : "Waiting"}</small></div>
+            </div>
+            {!latestReading ? <p className="subtitle">Primary metrics will populate after the device posts its next sensor sample.</p> : null}
+          </div>
+
+          <div className="card stack-form grow-led-card">
+            <div className="grow-led-row">
+              <div>
+                <h3>Grow LED</h3>
+                <p className="subtitle">{growLedOn ? (lightIntensitySupported ? `On | ${currentLightIntensity}%` : "On") : "Off"}</p>
+              </div>
+              <button
+                aria-label={lightToggleLabel}
+                aria-pressed={growLedOn}
+                className={`toggle-switch ${growLedOn ? "toggle-switch-on" : "toggle-switch-off"}`}
+                disabled={lightToggleDisabled}
+                onClick={() => runCommand(nextLightAction)}
+                type="button"
+              >
+                <span className="toggle-switch-label">{growLedOn ? "ON" : "OFF"}</span>
+                <span className="toggle-switch-knob" aria-hidden="true" />
+              </button>
+            </div>
+            {lightIntensitySupported ? (
+              <div className="light-intensity-control">
+                <label htmlFor="grow-led-intensity">
+                  <span>Brightness</span>
+                  <strong>{pendingLightIntensity ? "Setting..." : `${lightIntensityDraft}%`}</strong>
+                </label>
+                <input
+                  id="grow-led-intensity"
+                  aria-label="Grow LED brightness"
+                  disabled={lightIntensityDisabled}
+                  max={100}
+                  min={0}
+                  onBlur={commitLightIntensity}
+                  onChange={(event) => {
+                    setLightIntensityActive(true);
+                    setLightIntensityDraft(clampLightIntensity(Number(event.currentTarget.value)));
+                  }}
+                  onKeyUp={commitLightIntensity}
+                  onPointerDown={() => setLightIntensityActive(true)}
+                  onPointerUp={commitLightIntensity}
+                  step={5}
+                  type="range"
+                  value={lightIntensityDraft}
+                />
+              </div>
+            ) : null}
           </div>
 
           <RecentImageGallery
@@ -220,9 +243,6 @@ export function DeviceDashboardScreen() {
           <Link className="primary-button dashboard-action-button" to={`/devices/${deviceId}/settings`}>
             Device settings
           </Link>
-          <Link className="text-link" to={`/devices/${deviceId}/remove`}>
-            Remove device
-          </Link>
         </>
       ) : error ? (
         <p className="status-banner status-banner-error">{error}</p>
@@ -241,6 +261,26 @@ function shouldUseImageAuthHeaders(url: string): boolean {
 function formatWaterLevel(state?: string, raw?: number) {
   const label = state ? state.charAt(0).toUpperCase() + state.slice(1) : "--";
   return raw !== undefined ? `${label} (${raw})` : label;
+}
+
+function formatAge(timestamp?: string) {
+  if (!timestamp) {
+    return "Waiting";
+  }
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(timestamp).getTime()) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 function clampLightIntensity(value: number): number {
