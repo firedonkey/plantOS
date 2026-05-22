@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 const defaultPreviewAllowedHosts = [
+  "marspotatolab.com",
   "app.marspotatolab.com",
   "plantlab-web-418533861080.us-central1.run.app",
   "plantlab-web-efvri7f4ma-uc.a.run.app",
