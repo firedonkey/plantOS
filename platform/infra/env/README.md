@@ -23,8 +23,12 @@ Minimum non-secret backend deployment values:
 GOOGLE_OAUTH_CLIENT_ID="<oauth-client-id>"
 PLANTLAB_LOCAL_SETUP_URL="http://10.42.0.1:8080/"
 PLANTLAB_DEVICE_PLATFORM_URL="<production-api-url-or-custom-domain>"
-PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="<exact-production-web-origin-regex>"
+PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="^https://(marspotatolab\.com|app\.marspotatolab\.com)$"
 ```
+
+Include every production web origin that may start browser auth. For the current
+custom domains, both `https://marspotatolab.com` and
+`https://app.marspotatolab.com` are allowed.
 
 Secret values should stay in Secret Manager for Cloud Run deployment. The
 backend deployment script references Secret Manager names instead of passing

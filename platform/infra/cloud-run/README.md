@@ -97,8 +97,13 @@ Minimum non-secret values for `platform/infra/env/.env`:
 GOOGLE_OAUTH_CLIENT_ID="<oauth-client-id>"
 PLANTLAB_LOCAL_SETUP_URL="http://10.42.0.1:8080/"
 PLANTLAB_DEVICE_PLATFORM_URL="<production-api-url-or-custom-domain>"
-PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="<exact-production-web-origin-regex>"
+PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="^https://(marspotatolab\.com|app\.marspotatolab\.com)$"
 ```
+
+The standalone web origin regex must include every production web origin that
+can initiate browser auth. If root web traffic is served from
+`https://marspotatolab.com`, the backend must allow that origin or Google login
+will fail with `invalid_return_to`.
 
 After copying the candidate URL from `candidate-url`:
 
