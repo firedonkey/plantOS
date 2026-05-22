@@ -5,8 +5,10 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models import Command, Device, Event, Image, SensorReading, User
+from app.core.settings import get_settings
+from app.models import Command, Device, DeviceDiagnosticEvent, DeviceDiagnosticSnapshot, Event, Image, SensorReading, User
 from app.schemas.devices import DeviceCreate, DeviceUpdate
+from app.services.storage import delete_image_path
 
 
 def generate_device_token() -> str:
@@ -123,7 +125,13 @@ def _release_device_record(session: Session, device: Device, *, reason: str) -> 
 
 def _delete_device_record(session: Session, device: Device) -> None:
     _clear_provisioning_references(session, device.id)
+    image_paths = list(session.scalars(select(Image.path).where(Image.device_id == device.id)))
+    settings = get_settings()
+    for path in image_paths:
+        delete_image_path(path, settings)
     session.execute(delete(Command).where(Command.device_id == device.id))
+    session.execute(delete(DeviceDiagnosticEvent).where(DeviceDiagnosticEvent.device_id == device.id))
+    session.execute(delete(DeviceDiagnosticSnapshot).where(DeviceDiagnosticSnapshot.device_id == device.id))
     session.execute(delete(Event).where(Event.device_id == device.id))
     session.execute(delete(Image).where(Image.device_id == device.id))
     session.execute(delete(SensorReading).where(SensorReading.device_id == device.id))

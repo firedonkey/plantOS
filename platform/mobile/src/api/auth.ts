@@ -28,6 +28,12 @@ type ApiRefreshResponse = {
   };
 };
 
+type AppleLoginInput = {
+  identityToken: string;
+  email?: string | null;
+  fullName?: string | null;
+};
+
 export async function loginWithBackendFallback({ email, password }: LoginInput): Promise<AuthSession> {
   try {
     const session = await apiRequest<ApiLoginResponse>("/api/auth/login", {
@@ -46,6 +52,27 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
       mode: "mock",
     };
   }
+}
+
+export async function loginWithAppleIdentityToken(input: AppleLoginInput): Promise<{ session: AuthSession; refreshToken?: string | null }> {
+  const payload = await apiRequest<ApiRefreshResponse>("/api/auth/apple/mobile", {
+    method: "POST",
+    body: JSON.stringify({
+      identity_token: input.identityToken,
+      email: input.email,
+      full_name: input.fullName,
+    }),
+  });
+  return {
+    session: {
+      token: payload.access_token,
+      email: payload.user.email,
+      mode: "production",
+      expiresAt: payload.expires_at,
+      refreshToken: payload.refresh_token ?? undefined,
+    },
+    refreshToken: payload.refresh_token,
+  };
 }
 
 export async function refreshProductionSession(input: {
@@ -76,6 +103,10 @@ export async function logoutProductionSession(refreshToken?: string): Promise<vo
     method: "POST",
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
+}
+
+export async function deleteAccount(token?: string | null): Promise<void> {
+  await apiRequest<{ ok: boolean }>("/api/me", { method: "DELETE" }, token ?? undefined);
 }
 
 export function getMobileGoogleAuthStartUrl(returnTo = "plantlab://auth/callback"): string {

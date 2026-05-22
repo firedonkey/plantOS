@@ -112,6 +112,27 @@ def image_response(path: str, settings: Settings) -> Response:
     return FileResponse(path, media_type=media_type or "application/octet-stream")
 
 
+def delete_image_path(path: str, settings: Settings) -> None:
+    try:
+        if settings.storage_backend == "gcs" or _is_gcs_url(path):
+            bucket_name, object_name = _gcs_object_from_path(path, settings)
+            _delete_gcs_image(bucket_name, object_name)
+            return
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Image file cleanup failed during account/device deletion.", exc_info=True)
+
+
+def _delete_gcs_image(bucket_name: str, object_name: str) -> None:
+    try:
+        from google.cloud import storage
+    except ImportError as exc:
+        raise RuntimeError("google-cloud-storage is required for GCS image deletes.") from exc
+
+    client = storage.Client()
+    client.bucket(bucket_name).blob(object_name).delete()
+
+
 def _gcs_image_response(bucket_name: str, object_name: str) -> Response:
     try:
         from google.cloud import storage

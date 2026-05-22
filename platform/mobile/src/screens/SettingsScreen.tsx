@@ -1,16 +1,40 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 
+import { deleteAccount } from "@/api/auth";
+import { getApiBaseUrl } from "@/api/config";
 import { Card } from "@/components/Card";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useSession } from "@/hooks/useSession";
-import { getApiBaseUrl } from "@/api/config";
 import { theme } from "@/styles/theme";
 
 export function SettingsScreen() {
-  const { authMode, session, signOut } = useSession();
+  const { authMode, session, signOut, token } = useSession();
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      "Delete account?",
+      "This permanently deletes your PlantLab account, devices, sessions, and stored device history. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete account",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAccount(token);
+              await signOut();
+              router.replace("/login");
+            } catch (error) {
+              Alert.alert("Could not delete account", error instanceof Error ? error.message : "Unknown error.");
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <Screen>
@@ -31,7 +55,7 @@ export function SettingsScreen() {
 
       <Card variant="inset">
         <Text style={styles.label}>Auth note</Text>
-        <Text style={styles.note}>Production mobile auth uses backend Google handoff. Refresh-token persistence will remain disabled until secure storage is enabled.</Text>
+        <Text style={styles.note}>Production mobile auth supports Sign in with Apple and backend Google handoff. Refresh-token persistence will remain disabled until secure storage is enabled.</Text>
       </Card>
 
       <Card>
@@ -51,6 +75,12 @@ export function SettingsScreen() {
           router.replace("/login");
         }}
       />
+
+      <Card variant="inset">
+        <Text style={styles.label}>Account deletion</Text>
+        <Text style={styles.note}>Delete your PlantLab account and remove associated devices and history from the backend.</Text>
+        <PrimaryButton label="Delete account" tone="danger" disabled={!token} onPress={confirmDeleteAccount} />
+      </Card>
 
       <Text style={styles.note}>Push notifications require an Expo development build or native capability work.</Text>
     </Screen>

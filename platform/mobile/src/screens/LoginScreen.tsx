@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { getMobileGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
+import { getMobileGoogleAuthStartUrl, loginWithAppleIdentityToken, loginWithBackendFallback } from "@/api/auth";
 import { isDevAuthEnabled } from "@/api/config";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -15,7 +16,18 @@ export function LoginScreen() {
   const [loginName, setLoginName] = useState("dev");
   const [password, setPassword] = useState("password");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const showLocalLogin = authMode === "dev" && isDevAuthEnabled();
+
+  useEffect(() => {
+    if (showLocalLogin) {
+      setIsAppleAvailable(false);
+      return;
+    }
+    AppleAuthentication.isAvailableAsync()
+      .then(setIsAppleAvailable)
+      .catch(() => setIsAppleAvailable(false));
+  }, [showLocalLogin]);
 
   const onSubmit = async () => {
     try {
@@ -40,6 +52,38 @@ export function LoginScreen() {
       await Linking.openURL(startUrl);
     } catch (error) {
       Alert.alert("Production auth unavailable", error instanceof Error ? error.message : "Unknown error.");
+    }
+  };
+
+  const onAppleAuth = async () => {
+    if (isSubmitting) {
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        throw new Error("Apple did not return an identity token.");
+      }
+      const { session } = await loginWithAppleIdentityToken({
+        identityToken: credential.identityToken,
+        email: credential.email,
+        fullName: formatAppleFullName(credential.fullName),
+      });
+      await signIn(session);
+      router.replace("/(app)/devices");
+    } catch (error) {
+      if (isAppleCancelError(error)) {
+        return;
+      }
+      Alert.alert("Apple sign-in failed", error instanceof Error ? error.message : "Unknown error.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -76,7 +120,18 @@ export function LoginScreen() {
             <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} disabled={isSubmitting} />
           </>
         ) : (
-          <PrimaryButton label="Continue with Google" onPress={onProductionAuth} />
+          <>
+            {isAppleAvailable ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={8}
+                style={styles.appleButton}
+                onPress={onAppleAuth}
+              />
+            ) : null}
+            <PrimaryButton label="Continue with Google" tone="secondary" onPress={onProductionAuth} disabled={isSubmitting} />
+          </>
         )}
       </View>
     </Screen>
@@ -92,6 +147,20 @@ function normalizeLocalLoginEmail(loginName: string): string {
     return normalized;
   }
   return `${normalized}@plantlab.local`;
+}
+
+function formatAppleFullName(fullName: AppleAuthentication.AppleAuthenticationFullName | null): string | null {
+  if (!fullName) {
+    return null;
+  }
+  const parts = [fullName.givenName, fullName.middleName, fullName.familyName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return parts.join(" ") || null;
+}
+
+function isAppleCancelError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ERR_REQUEST_CANCELED";
 }
 
 const styles = StyleSheet.create({
@@ -116,6 +185,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
+  },
+  appleButton: {
+    width: "100%",
+    height: 48,
   },
   input: {
     backgroundColor: theme.colors.surface,

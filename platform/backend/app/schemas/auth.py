@@ -30,6 +30,12 @@ class AuthLogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
+class AppleMobileLoginRequest(BaseModel):
+    identity_token: str = Field(min_length=20)
+    email: str | None = Field(default=None, max_length=255)
+    full_name: str | None = Field(default=None, max_length=255)
+
+
 class AuthRefreshRead(BaseModel):
     access_token: str
     token_type: str = "bearer"

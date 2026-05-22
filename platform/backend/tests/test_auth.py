@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -8,7 +10,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import User
+from app.models import Device, SensorReading, User
 from app.models.base import Base
 from app.services.standalone_auth import create_handoff_code, create_refresh_session, issue_access_token
 from app.services.users import get_user_by_id, upsert_google_user
@@ -247,6 +249,68 @@ def test_upsert_google_user_creates_and_updates_user():
         assert updated.avatar_url == "https://example.com/rose.jpg"
 
 
+def test_mobile_apple_login_returns_standalone_session(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_APPLE_CLIENT_ID", "com.plantlab.mobile")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    def fake_verify_apple_identity_token(identity_token: str, *, audience: str):
+        assert identity_token == "apple.identity.token"
+        assert audience == "com.plantlab.mobile"
+        return SimpleNamespace(sub="apple-sub-123", email="apple@example.com", email_verified=True)
+
+    monkeypatch.setattr(auth_routes, "verify_apple_identity_token", fake_verify_apple_identity_token)
+    client, override_session = make_test_client()
+    try:
+        response = client.post(
+            "/api/auth/apple/mobile",
+            json={
+                "identity_token": "apple.identity.token",
+                "full_name": "Apple Grower",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["access_token"]
+        assert payload["refresh_token"]
+        assert payload["user"]["email"] == "apple@example.com"
+        assert payload["user"]["name"] == "Apple Grower"
+
+        with next(override_session()) as session:
+            user = session.query(User).filter(User.email == "apple@example.com").one()
+            assert user.apple_sub == "apple-sub-123"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_mobile_apple_login_requires_email_for_first_login(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    def fake_verify_apple_identity_token(identity_token: str, *, audience: str):
+        return SimpleNamespace(sub="apple-no-email", email=None, email_verified=False)
+
+    monkeypatch.setattr(auth_routes, "verify_apple_identity_token", fake_verify_apple_identity_token)
+    client, _override_session = make_test_client()
+    try:
+        response = client.post(
+            "/api/auth/apple/mobile",
+            json={"identity_token": "apple.identity.token"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "apple_email_required"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
 def test_standalone_refresh_rotates_cookie_and_old_token_fails(monkeypatch):
     monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
     monkeypatch.setenv("PLANTLAB_STANDALONE_REFRESH_COOKIE_SECURE", "false")
@@ -454,6 +518,47 @@ def test_me_accepts_standalone_access_token(monkeypatch):
         assert response.status_code == 200
         assert response.json()["authenticated"] is True
         assert response.json()["user"]["email"] == "token@example.com"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_delete_me_removes_user_devices_and_revokes_refresh_sessions(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            user = User(email="delete-me@example.com", name="Delete Me")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            device = Device(user_id=user.id, name="Delete Test", api_token="delete-token")
+            session.add(device)
+            session.commit()
+            session.refresh(device)
+            session.add(SensorReading(device_id=device.id, temperature=22.0))
+            refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+            access = issue_access_token(get_settings(), user.id)
+            session.commit()
+            user_id = user.id
+            device_id = device.id
+
+        response = client.delete("/api/me", headers={"Authorization": f"Bearer {access.token}"})
+
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+
+        refresh_response = client.post("/api/auth/refresh", json={"refresh_token": refresh_bundle.token})
+        assert refresh_response.status_code == 401
+
+        with next(override_session()) as session:
+            assert session.get(User, user_id) is None
+            assert session.get(Device, device_id) is None
+            assert session.query(SensorReading).filter(SensorReading.device_id == device_id).count() == 0
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

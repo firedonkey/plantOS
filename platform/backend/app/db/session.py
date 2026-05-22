@@ -32,6 +32,9 @@ def _apply_lightweight_migrations(selected_engine) -> None:
     inspector = inspect(selected_engine)
     table_names = inspector.get_table_names()
     with selected_engine.begin() as connection:
+        if "users" in table_names:
+            user_columns = {column["name"] for column in inspector.get_columns("users")}
+            _add_column_if_missing(connection, selected_engine, "users", user_columns, Column("apple_sub", String(255)))
         if "devices" in table_names:
             device_columns = {column["name"] for column in inspector.get_columns("devices")}
             _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("api_token", String(80)))

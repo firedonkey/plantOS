@@ -17,6 +17,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), default=None)
     google_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
+    apple_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
     name: Mapped[Optional[str]] = mapped_column(String(255), default=None)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), default=None)
     created_at: Mapped[datetime] = mapped_column(

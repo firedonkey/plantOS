@@ -3,7 +3,7 @@
     "name": "PlantLab",
     "slug": "plantlab-mobile",
     "scheme": "plantlab",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/app-icon-1024.png",
     "userInterfaceStyle": "automatic",
@@ -14,8 +14,9 @@
     },
     "ios": {
       "bundleIdentifier": "com.plantlab.mobile",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "icon": "./assets/app-icon-1024.png",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "PlantLab uses Bluetooth to find and provision PlantLab devices during setup.",
         "NSLocalNetworkUsageDescription": "PlantLab can connect to the device setup network for the compatibility SoftAP setup flow.",
@@ -24,6 +25,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       [
         "react-native-ble-plx",
         {

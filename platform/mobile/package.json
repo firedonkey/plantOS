@@ -1,6 +1,6 @@
 {
   "name": "plantlab-mobile",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -10,6 +10,8 @@
     "android": "expo start --android",
     "build:ios:dev": "bash scripts/mobile/build_ios_dev.sh",
     "build:ios:sim": "bash scripts/mobile/build_ios_dev.sh --profile development-simulator",
+    "build:ios:prod": "eas build --platform ios --profile production",
+    "submit:ios:prod": "eas submit --platform ios --profile production --latest",
     "clean:metro": "bash scripts/mobile/clean_metro_cache.sh",
     "register:ios": "bash scripts/mobile/register_ios_device.sh",
     "typecheck": "tsc --noEmit",
@@ -20,6 +22,7 @@
     "@react-native-async-storage/async-storage": "^2.1.0",
     "base-64": "^1.0.0",
     "expo": "~54.0.0",
+    "expo-apple-authentication": "~8.0.8",
     "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.21",
     "expo-router": "~6.0.0",

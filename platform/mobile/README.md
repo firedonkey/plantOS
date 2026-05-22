@@ -19,9 +19,11 @@ Local dev:
 - Keep `EXPO_PUBLIC_AUTH_MODE=dev` for local dev bearer login.
 - Local dev builds use the username/password form when `EXPO_PUBLIC_AUTH_MODE=dev` and `EXPO_PUBLIC_ENABLE_DEV_AUTH=true`.
 - For local username login, `dev` becomes `dev@plantlab.local`; an email address is used as-is. The password must be non-empty and is only for dev-token login against a local backend.
-- Do not point dev-token login at the production backend. Production Cloud Run has `PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false`, so production builds should use `EXPO_PUBLIC_AUTH_MODE=production` and Google sign-in.
-- Google sign-in is available from the mobile login screen and uses the backend-owned `/api/auth/google/start` handoff.
+- Do not point dev-token login at the production backend. Production Cloud Run has `PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false`, so production builds should use `EXPO_PUBLIC_AUTH_MODE=production`.
+- Sign in with Apple is available on iOS production builds and sends the native Apple identity token to the backend-owned `/api/auth/apple/mobile` endpoint.
+- Google sign-in is also available from the mobile login screen and uses the backend-owned `/api/auth/google/start` handoff.
 - The mobile callback uses the app scheme `plantlab://auth/callback`. Expo Go may not claim custom app schemes reliably; use a dev build or installed app build when validating the full callback loop.
+- Account deletion is available from Settings and calls `DELETE /api/me`.
 - Leave `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false` for real hardware QA. Set it to `true` only when you explicitly want bundled mock data.
 - Optional: set `EXPO_PUBLIC_WIFI_SSID_OPTIONS=HomeWiFi,LabWiFi` to seed the add-device Wi-Fi dropdown.
 - During BLE device setup, tap `Load nearby Wi-Fi over BLE` to populate the mobile dropdown from the ESP32 BLE scan cache. This requires a native development build because Expo Go cannot load the BLE native module.
@@ -134,7 +136,8 @@ Native capability validation checklist:
 
 - App startup: installed development build launches to the expected login/navigation flow.
 - API config: physical iPhone points at the intended LAN backend URL.
-- Auth/session: dev login works; Google handoff returns through `plantlab://auth/callback`; logout clears the session.
+- Auth/session: dev login works; Sign in with Apple returns an Apple identity token; Google handoff returns through `plantlab://auth/callback`; logout clears the session.
+- Account deletion: Settings can delete the signed-in account and return to the sign-in screen.
 - Storage: AsyncStorage-backed dev sessions behave as before; production refresh-token persistence remains disabled until secure storage is added.
 - BLE provisioning: native build loads `react-native-ble-plx`, requests Bluetooth permission, scans for `PlantLab-Setup`, reads nearby Wi-Fi names, sends credentials, and waits for the ESP32 to validate Wi-Fi before backend polling starts. Wrong passwords should stay on the Wi-Fi screen with an immediate BLE error.
 - Camera/QR: camera permission prompt appears and the QR scanner can populate the device serial number.
@@ -168,11 +171,34 @@ npx expo start --clear --host lan
 
 - Do not use Node v25 for Expo local QA.
 
+Production iOS App Store build:
+
+```bash
+cd platform/mobile
+npm run typecheck
+npm run test:unit
+npm run build:ios:prod
+```
+
+Submit the latest production build to App Store Connect:
+
+```bash
+cd platform/mobile
+npm run submit:ios:prod
+```
+
+The production EAS profile sets:
+
+- `EXPO_PUBLIC_API_BASE_URL=https://api.marspotatolab.com`
+- `EXPO_PUBLIC_AUTH_MODE=production`
+- `EXPO_PUBLIC_ENABLE_DEV_AUTH=false`
+- `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false`
+
 Status:
 
 - Expo app scaffold is in place
 - tries the local backend first
-- includes API helpers for backend Google start URL, handoff refresh exchange, production refresh, and logout
+- includes API helpers for Sign in with Apple, backend Google start URL, handoff refresh exchange, production refresh, account deletion, and logout
 - handles backend Google handoff callbacks at `plantlab://auth/callback`
 - does not persist production refresh credentials because `expo-secure-store` is not installed yet
 - does not silently switch to mock data by default when the backend is unavailable

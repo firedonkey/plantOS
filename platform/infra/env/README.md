@@ -21,6 +21,7 @@ Minimum non-secret backend deployment values:
 
 ```bash
 GOOGLE_OAUTH_CLIENT_ID="<oauth-client-id>"
+PLANTLAB_APPLE_CLIENT_ID="com.plantlab.mobile"
 PLANTLAB_LOCAL_SETUP_URL="http://10.42.0.1:8080/"
 PLANTLAB_DEVICE_PLATFORM_URL="<production-api-url-or-custom-domain>"
 PLANTLAB_STANDALONE_WEB_ORIGIN_REGEX="^https://(marspotatolab\.com|app\.marspotatolab\.com)$"

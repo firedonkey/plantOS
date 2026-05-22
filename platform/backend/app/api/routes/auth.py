@@ -11,6 +11,7 @@ from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import User
 from app.schemas.auth import (
+    AppleMobileLoginRequest,
     AuthLogoutRequest,
     AuthRefreshRead,
     AuthRefreshRequest,
@@ -19,6 +20,7 @@ from app.schemas.auth import (
     CurrentUserRead,
     DevLoginRequest,
 )
+from app.services.apple_auth import verify_apple_identity_token
 from app.services.dev_auth import issue_dev_token
 from app.services.standalone_auth import (
     consume_handoff_code,
@@ -28,7 +30,7 @@ from app.services.standalone_auth import (
     revoke_refresh_token,
     rotate_refresh_session,
 )
-from app.services.users import get_or_create_local_dev_user, get_user_by_id, upsert_google_user
+from app.services.users import delete_user_account, get_or_create_local_dev_user, get_user_by_id, upsert_apple_user, upsert_google_user
 
 
 router = APIRouter(tags=["auth"])
@@ -302,6 +304,42 @@ def standalone_logout(
     return {"ok": True}
 
 
+@router.post("/api/auth/apple/mobile", response_model=AuthRefreshRead)
+def standalone_apple_mobile_login(
+    payload: AppleMobileLoginRequest,
+    session: Session = Depends(get_session),
+) -> AuthRefreshRead:
+    settings = get_settings()
+    try:
+        identity = verify_apple_identity_token(payload.identity_token, audience=settings.apple_client_id)
+    except Exception:
+        raise api_error(401, "invalid_apple_identity", "Apple sign-in did not return a valid identity token.")
+
+    email = (identity.email or payload.email or "").strip().lower() or None
+    user = upsert_apple_user(
+        session,
+        apple_sub=identity.sub,
+        email=email,
+        name=(payload.full_name or "").strip() or None,
+    )
+    if user is None:
+        raise api_error(
+            400,
+            "apple_email_required",
+            "Apple did not return an email address for this first sign-in. Try again and share your email, or use Google sign-in once before linking Apple.",
+        )
+
+    refresh_bundle = create_refresh_session(settings, session, user.id)
+    access = issue_access_token(settings, user.id)
+    return _refresh_read(
+        user=user,
+        access_token=access.token,
+        expires_in=access.expires_in,
+        expires_at=access.expires_at.isoformat(),
+        refresh_token=refresh_bundle.token,
+    )
+
+
 @router.get("/api/me")
 def me(request: Request, session: Session = Depends(get_session)) -> CurrentUserRead:
     from app.api.deps import get_optional_current_user
@@ -314,6 +352,16 @@ def me(request: Request, session: Session = Depends(get_session)) -> CurrentUser
         authenticated=True,
         user=_auth_user_read(user),
     )
+
+
+@router.delete("/api/me")
+def delete_me(request: Request, response: Response, session: Session = Depends(get_session)):
+    from app.api.deps import get_current_user
+
+    user = get_current_user(request, session)
+    delete_user_account(session, user)
+    _clear_refresh_cookie(response)
+    return {"ok": True}
 
 
 @router.post("/api/auth/login", response_model=AuthSessionRead)

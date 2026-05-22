@@ -13,6 +13,20 @@
       "ios": {
         "simulator": true
       }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.marspotatolab.com",
+        "EXPO_PUBLIC_AUTH_MODE": "production",
+        "EXPO_PUBLIC_ENABLE_DEV_AUTH": "false",
+        "EXPO_PUBLIC_ENABLE_MOCK_FALLBACK": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {}
     }
   }
 }
