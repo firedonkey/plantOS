@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { getMobileGoogleAuthStartUrl, loginWithAppleIdentityToken, loginWithBackendFallback } from "@/api/auth";
 import { isDevAuthEnabled } from "@/api/config";
@@ -95,7 +95,7 @@ export function LoginScreen() {
         <Text style={styles.subtitle}>
           {showLocalLogin
             ? "Use a local test account for this development build. Google sign-in stays off while AUTH_MODE is dev."
-            : "Use backend-owned Google sign-in for the production backend."}
+            : "Sign in to monitor your smart planter from anywhere."}
         </Text>
       </View>
 
@@ -130,7 +130,20 @@ export function LoginScreen() {
                 onPress={onAppleAuth}
               />
             ) : null}
-            <PrimaryButton label="Continue with Google" tone="secondary" onPress={onProductionAuth} disabled={isSubmitting} />
+            <Pressable
+              disabled={isSubmitting}
+              onPress={onProductionAuth}
+              style={({ pressed }) => [
+                styles.googleButton,
+                isSubmitting && styles.disabledButton,
+                pressed && !isSubmitting && styles.pressedButton,
+              ]}
+            >
+              <View style={styles.googleIcon}>
+                <Text style={styles.googleIconText}>G</Text>
+              </View>
+              <Text style={styles.googleButtonLabel}>Continue with Google</Text>
+            </Pressable>
           </>
         )}
       </View>
@@ -189,6 +202,44 @@ const styles = StyleSheet.create({
   appleButton: {
     width: "100%",
     height: 48,
+  },
+  googleButton: {
+    minHeight: 50,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  googleIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.white,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  googleIconText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#4285F4",
+  },
+  googleButtonLabel: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: theme.colors.textPrimary,
+  },
+  pressedButton: {
+    opacity: 0.84,
+  },
+  disabledButton: {
+    opacity: 0.55,
   },
   input: {
     backgroundColor: theme.colors.surface,

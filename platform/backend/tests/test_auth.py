@@ -287,7 +287,7 @@ def test_mobile_apple_login_returns_standalone_session(monkeypatch):
         auth_routes.get_settings.cache_clear()
 
 
-def test_mobile_apple_login_requires_email_for_first_login(monkeypatch):
+def test_mobile_apple_login_without_email_creates_isolated_account(monkeypatch):
     monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
@@ -296,15 +296,77 @@ def test_mobile_apple_login_requires_email_for_first_login(monkeypatch):
         return SimpleNamespace(sub="apple-no-email", email=None, email_verified=False)
 
     monkeypatch.setattr(auth_routes, "verify_apple_identity_token", fake_verify_apple_identity_token)
-    client, _override_session = make_test_client()
+    client, override_session = make_test_client()
     try:
         response = client.post(
             "/api/auth/apple/mobile",
             json={"identity_token": "apple.identity.token"},
         )
 
-        assert response.status_code == 400
-        assert response.json()["error"]["code"] == "apple_email_required"
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["user"]["email"].startswith("apple-")
+        assert payload["user"]["email"].endswith("@auth.plantlab.local")
+
+        with next(override_session()) as session:
+            user = session.query(User).filter(User.apple_sub == "apple-no-email").one()
+            assert user.google_sub is None
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_mobile_apple_login_does_not_reuse_google_account_with_same_email(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_APPLE_CLIENT_ID", "com.plantlab.mobile")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    def fake_verify_apple_identity_token(identity_token: str, *, audience: str):
+        assert audience == "com.plantlab.mobile"
+        return SimpleNamespace(sub="apple-sub-conflict", email="grower@example.com", email_verified=True)
+
+    monkeypatch.setattr(auth_routes, "verify_apple_identity_token", fake_verify_apple_identity_token)
+    client, override_session = make_test_client()
+    try:
+        with next(override_session()) as session:
+            google_user = User(
+                email="grower@example.com",
+                google_sub="google-sub-123",
+                apple_sub="apple-sub-conflict",
+                name="Google Grower",
+            )
+            session.add(google_user)
+            session.flush()
+            session.add(Device(user_id=google_user.id, name="Google Device", api_token="google-device-token"))
+            session.commit()
+            google_user_id = google_user.id
+
+        response = client.post(
+            "/api/auth/apple/mobile",
+            json={
+                "identity_token": "apple.identity.token",
+                "full_name": "Apple Grower",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["user"]["id"] != google_user_id
+        assert payload["user"]["email"].startswith("apple-")
+
+        with next(override_session()) as session:
+            google_user = session.get(User, google_user_id)
+            apple_user = session.query(User).filter(User.apple_sub == "apple-sub-conflict").one()
+
+            assert google_user is not None
+            assert google_user.apple_sub is None
+            assert google_user.google_sub == "google-sub-123"
+            assert len(google_user.devices) == 1
+            assert apple_user.google_sub is None
+            assert apple_user.name == "Apple Grower"
+            assert apple_user.devices == []
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

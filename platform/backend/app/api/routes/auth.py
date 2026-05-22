@@ -322,12 +322,6 @@ def standalone_apple_mobile_login(
         email=email,
         name=(payload.full_name or "").strip() or None,
     )
-    if user is None:
-        raise api_error(
-            400,
-            "apple_email_required",
-            "Apple did not return an email address for this first sign-in. Try again and share your email, or use Google sign-in once before linking Apple.",
-        )
 
     refresh_bundle = create_refresh_session(settings, session, user.id)
     access = issue_access_token(settings, user.id)
