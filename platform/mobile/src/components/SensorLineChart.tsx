@@ -181,22 +181,19 @@ function LineSegment({ from, to, color }: { from: ScaledPoint; to: ScaledPoint; 
 }
 
 function buildChart(points: SensorChartPoint[], width: number, height: number, minDomainSpan: number) {
-  const sanitized = downsamplePoints(
-    points.map((point, index) => ({
-      index,
-      timestamp: parseTimestamp(point.timestamp),
-      value: typeof point.value === "number" && Number.isFinite(point.value) ? point.value : undefined,
-    })),
-    MAX_RENDER_POINTS,
-  );
-
-  const validValues = sanitized.map((point) => point.value).filter((value): value is number => value !== undefined);
-  const validTimestamps = sanitized.map((point) => point.timestamp).filter((timestamp): timestamp is number => timestamp !== undefined);
+  const rawPoints = points.map((point, index) => ({
+    index,
+    timestamp: parseTimestamp(point.timestamp),
+    value: typeof point.value === "number" && Number.isFinite(point.value) ? point.value : undefined,
+  }));
+  const validValues = rawPoints.map((point) => point.value).filter((value): value is number => value !== undefined);
+  const validTimestamps = rawPoints.map((point) => point.timestamp).filter((timestamp): timestamp is number => timestamp !== undefined);
   const xMin = validTimestamps.length >= 2 ? Math.min(...validTimestamps) : undefined;
   const xMax = validTimestamps.length >= 2 ? Math.max(...validTimestamps) : undefined;
   const yDomain = getYDomain(validValues, minDomainSpan);
   const plotWidth = Math.max(width - PADDING.left - PADDING.right, 1);
   const plotHeight = Math.max(height - PADDING.top - PADDING.bottom, 1);
+  const sanitized = downsamplePoints(rawPoints, MAX_RENDER_POINTS);
 
   const scaled = sanitized.map((point, position) => {
     const xRatio = getXRatio(point, position, sanitized.length, xMin, xMax);

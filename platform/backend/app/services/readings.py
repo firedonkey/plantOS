@@ -7,6 +7,9 @@ from app.models import SensorReading
 from app.schemas.readings import SensorReadingCreate
 
 
+MAX_READING_QUERY_LIMIT = 50_000
+
+
 def create_sensor_reading(session: Session, payload: SensorReadingCreate) -> SensorReading:
     reading = SensorReading(
         device_id=payload.device_id,
@@ -38,6 +41,7 @@ def list_recent_readings_for_device(
     until: datetime | None = None,
     order: str = "newest",
 ) -> list[SensorReading]:
+    safe_limit = min(max(limit, 1), MAX_READING_QUERY_LIMIT)
     filters = [SensorReading.device_id == device_id]
     if since is not None:
         filters.append(SensorReading.timestamp >= since)
@@ -55,7 +59,7 @@ def list_recent_readings_for_device(
             select(SensorReading)
             .where(*filters)
             .order_by(*ordering)
-            .limit(limit)
+            .limit(safe_limit)
         )
     )
 

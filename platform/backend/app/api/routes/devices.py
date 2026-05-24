@@ -48,7 +48,7 @@ from app.services.devices import (
     update_device_for_user,
 )
 from app.services.images import list_recent_images_for_device
-from app.services.readings import get_latest_reading_for_device, list_recent_readings_for_device
+from app.services.readings import MAX_READING_QUERY_LIMIT, get_latest_reading_for_device, list_recent_readings_for_device
 from app.services.storage import image_client_url
 
 
@@ -381,7 +381,7 @@ def get_device_diagnostics(
 @router.get("/{device_id}/readings", response_model=list[SensorReadingRead])
 def get_device_readings(
     device_id: int,
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=MAX_READING_QUERY_LIMIT),
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     order: str = Query(default="newest", pattern="^(newest|oldest)$"),

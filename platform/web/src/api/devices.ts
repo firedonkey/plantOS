@@ -242,6 +242,13 @@ type ApiDeviceDiagnostics = {
   recent_events?: ApiDeviceDiagnosticEvent[] | null;
 };
 
+const READING_LIMIT_BY_RANGE: Record<RangeKey, number> = {
+  "24h": 5000,
+  "7d": 25000,
+  "30d": 50000,
+  all: 50000,
+};
+
 export type DeviceSetupHandoff = {
   serialNumber: string;
   setupToken?: string;
@@ -809,7 +816,7 @@ export async function getDeviceDashboard(
 }
 
 function buildReadingsQuery(range: RangeKey): string {
-  const params = new URLSearchParams({ limit: "500", order: "newest" });
+  const params = new URLSearchParams({ limit: String(READING_LIMIT_BY_RANGE[range]), order: "newest" });
   const end = new Date();
   params.set("end", end.toISOString());
   const start = rangeStart(range, end);

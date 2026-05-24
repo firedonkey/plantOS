@@ -22,7 +22,11 @@ test("mobile API maps backend water sensor fields into dashboard readings", asyn
     "waterLevelRaw: reading.water_level_raw ?? undefined,",
     "waterLevelState: reading.water_level_state ?? undefined,",
     "function mergeLatestReadingIntoHistory",
-    'new URLSearchParams({ limit: "500", order: "newest" })',
+    "READING_LIMIT_BY_RANGE",
+    '"24h": 5000',
+    '"7d": 25000',
+    '"30d": 50000',
+    'new URLSearchParams({ limit: String(READING_LIMIT_BY_RANGE[range]), order: "newest" })',
     ".sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime())",
     "history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),",
   ]) {

@@ -119,30 +119,28 @@ function TrendCard({
   getValue: (reading: SensorReading) => number | undefined;
   isValidValue: (value: number) => boolean;
 }) {
-  const chartPoints = downsamplePoints(
-    history.map((reading, index) => {
-      const value = getValue(reading);
-      const hasNumericValue = typeof value === "number" && Number.isFinite(value);
-      return {
-        index,
-        timestamp: reading.timestamp,
-        timestampMs: parseTimestamp(reading.timestamp),
-        value: hasNumericValue && isValidValue(value) ? value : undefined,
-        ignored: hasNumericValue && !isValidValue(value),
-      };
-    }),
-    MAX_RENDER_POINTS,
-  );
-  const points = chartPoints.filter((point): point is TrendPoint & { value: number } => point.value !== undefined);
-  const ignoredCount = chartPoints.filter((point) => point.ignored).length;
-  const numericValues = points.map((point) => point.value);
-  const latestPoint = points.length ? points[points.length - 1] : undefined;
+  const rawPoints = history.map((reading, index) => {
+    const value = getValue(reading);
+    const hasNumericValue = typeof value === "number" && Number.isFinite(value);
+    return {
+      index,
+      timestamp: reading.timestamp,
+      timestampMs: parseTimestamp(reading.timestamp),
+      value: hasNumericValue && isValidValue(value) ? value : undefined,
+      ignored: hasNumericValue && !isValidValue(value),
+    };
+  });
+  const validRawPoints = rawPoints.filter((point): point is TrendPoint & { value: number } => point.value !== undefined);
+  const ignoredCount = rawPoints.filter((point) => point.ignored).length;
+  const numericValues = validRawPoints.map((point) => point.value);
+  const latestPoint = validRawPoints.length ? validRawPoints[validRawPoints.length - 1] : undefined;
   const minimum = numericValues.length ? Math.min(...numericValues) : undefined;
   const maximum = numericValues.length ? Math.max(...numericValues) : undefined;
   const domain = buildValueDomain(numericValues, minDomainSpan);
   const yTicks = domain ? buildYTicks(domain) : [];
-  const xDomain = buildXDomain(points);
+  const xDomain = buildXDomain(validRawPoints);
   const xLabels = buildXLabels(xDomain);
+  const chartPoints = downsamplePoints(rawPoints, MAX_RENDER_POINTS);
   const scaledPoints = domain ? scalePoints(chartPoints, domain, xDomain) : [];
   const segments = splitSegments(scaledPoints);
   const scaledValidPoints = scaledPoints.filter((point) => point.value !== undefined);
@@ -157,7 +155,7 @@ function TrendCard({
         </div>
         <strong>{latestPoint ? `${formatAxisValue(latestPoint.value, minimum, maximum)} ${unit}` : "--"}</strong>
       </div>
-      {points.length ? (
+      {validRawPoints.length ? (
         <div className="trend-chart-frame">
           <div className="trend-y-axis" aria-hidden="true">
             {yTicks.map((tick, index) => (
@@ -174,7 +172,7 @@ function TrendCard({
               {segments.map((segment, index) => (
                 <polyline key={`${label}-segment-${index}`} className="trend-line" points={formatPolyline(segment)} stroke={color} />
               ))}
-              {points.length <= 80
+              {validRawPoints.length <= 80
                 ? scaledPoints
                     .filter((point) => point.value !== undefined)
                     .map((point) => <circle key={`${label}-point-${point.index}`} className="trend-point" cx={point.x} cy={point.y} r="1.4" stroke={color} />)
@@ -200,7 +198,7 @@ function TrendCard({
         <p className="subtitle">No sensor readings for this metric yet.</p>
       )}
       <p className="meta-text">
-        {points.length} readings • Min {minimum !== undefined ? `${formatAxisValue(minimum, minimum, maximum)} ${unit}` : "--"} • Max{" "}
+        {validRawPoints.length} readings • Min {minimum !== undefined ? `${formatAxisValue(minimum, minimum, maximum)} ${unit}` : "--"} • Max{" "}
         {maximum !== undefined ? `${formatAxisValue(maximum, minimum, maximum)} ${unit}` : "--"}
         {ignoredCount > 0 ? ` • ${ignoredCount} outlier${ignoredCount === 1 ? "" : "s"} ignored` : ""}
       </p>

@@ -471,6 +471,21 @@ def test_device_readings_api_supports_limit_date_range_and_oldest_order():
         teardown_overrides()
 
 
+def test_device_readings_api_accepts_extended_history_limit():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+
+        response = client.get(f"/api/devices/{device_id}/readings", params={"limit": 50000})
+        too_large_response = client.get(f"/api/devices/{device_id}/readings", params={"limit": 50001})
+
+        assert response.status_code == 200
+        assert too_large_response.status_code == 422
+    finally:
+        teardown_overrides()
+
+
 def test_device_readings_api_returns_404_when_device_missing():
     client, _ = build_client_with_user()
     try:
