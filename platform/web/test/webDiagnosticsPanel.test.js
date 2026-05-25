@@ -73,6 +73,16 @@ test("standalone web removes add-device entry points", async () => {
   assert.doesNotMatch(supportSource, /to="\/devices\/add"|Add a device/);
 });
 
+test("web landing page remains visible for signed-in users", async () => {
+  const landingSource = await readText("../src/screens/LandingScreen.tsx");
+  const appSource = await readText("../src/App.tsx");
+
+  assert.match(appSource, escaped('<Route path="/" element={<LandingScreen />} />'));
+  assert.match(landingSource, escaped('const dashboardHref = token ? "/devices" : "/login";'));
+  assert.match(landingSource, escaped('const dashboardLabel = token ? "Open dashboard" : "Sign in";'));
+  assert.doesNotMatch(landingSource, /Navigate to="\/devices"|return <Navigate/);
+});
+
 test("web diagnostics panel uses account, device, and per-device diagnostics APIs", async () => {
   const authSource = await readText("../src/api/auth.ts");
   const devicesSource = await readText("../src/api/devices.ts");
