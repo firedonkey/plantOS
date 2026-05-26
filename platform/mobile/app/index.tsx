@@ -1,6 +1,7 @@
 import { Redirect } from "expo-router";
 
 import { useSession } from "@/hooks/useSession";
+import { LandingScreen } from "@/screens/LandingScreen";
 
 export default function IndexRoute() {
   const { isHydrated, token } = useSession();
@@ -9,9 +10,9 @@ export default function IndexRoute() {
     return null;
   }
 
-  if (!token) {
-    return <Redirect href="/login" />;
+  if (token) {
+    return <Redirect href="/(app)/devices" />;
   }
 
-  return <Redirect href="/(app)/devices" />;
+  return <LandingScreen />;
 }

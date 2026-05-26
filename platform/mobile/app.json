@@ -14,7 +14,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.plantlab.mobile",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "icon": "./assets/app-icon-1024.png",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -45,7 +45,15 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/app-icon-512.png",
         "backgroundColor": "#000000"
-      }
+      },
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.plantlab.mobile"
     },
     "experiments": {
       "typedRoutes": true

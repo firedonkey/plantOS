@@ -95,9 +95,22 @@ export function LoginScreen() {
         <Text style={styles.subtitle}>
           {showLocalLogin
             ? "Use a local test account for this development build. Google sign-in stays off while AUTH_MODE is dev."
-            : "Sign in to monitor your smart planter from anywhere."}
+            : "Sign in to sync and manage your PlantLab devices."}
         </Text>
       </View>
+
+      {!showLocalLogin ? (
+        <View style={styles.productVisual} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={styles.growLight} />
+          <View style={styles.lightBeam} />
+          <View style={styles.plantScene}>
+            <View style={styles.leftLeaf} />
+            <View style={styles.stem} />
+            <View style={styles.rightLeaf} />
+          </View>
+          <View style={styles.planter} />
+        </View>
+      ) : null}
 
       <View style={styles.form}>
         {showLocalLogin ? (
@@ -121,15 +134,6 @@ export function LoginScreen() {
           </>
         ) : (
           <>
-            {isAppleAvailable ? (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={8}
-                style={styles.appleButton}
-                onPress={onAppleAuth}
-              />
-            ) : null}
             <Pressable
               disabled={isSubmitting}
               onPress={onProductionAuth}
@@ -144,6 +148,15 @@ export function LoginScreen() {
               </View>
               <Text style={styles.googleButtonLabel}>Continue with Google</Text>
             </Pressable>
+            {isAppleAvailable ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={8}
+                style={styles.appleButton}
+                onPress={onAppleAuth}
+              />
+            ) : null}
           </>
         )}
       </View>
@@ -179,7 +192,7 @@ function isAppleCancelError(error: unknown): boolean {
 const styles = StyleSheet.create({
   header: {
     gap: 10,
-    marginTop: 24,
+    marginTop: 42,
   },
   eyebrow: {
     fontSize: 13,
@@ -199,21 +212,100 @@ const styles = StyleSheet.create({
   form: {
     gap: 12,
   },
+  productVisual: {
+    height: 132,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginTop: 2,
+  },
+  growLight: {
+    position: "absolute",
+    top: 22,
+    width: 86,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: theme.colors.textPrimary,
+    opacity: 0.86,
+  },
+  lightBeam: {
+    position: "absolute",
+    top: 31,
+    width: 124,
+    height: 66,
+    borderRadius: 8,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: "rgba(47, 133, 90, 0.14)",
+    backgroundColor: "rgba(47, 133, 90, 0.04)",
+  },
+  plantScene: {
+    width: 82,
+    height: 58,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: 24,
+  },
+  stem: {
+    width: 4,
+    height: 42,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accent,
+  },
+  leftLeaf: {
+    position: "absolute",
+    bottom: 24,
+    left: 22,
+    width: 28,
+    height: 14,
+    borderTopLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    backgroundColor: theme.colors.accent,
+    transform: [{ rotate: "-18deg" }],
+  },
+  rightLeaf: {
+    position: "absolute",
+    bottom: 32,
+    right: 22,
+    width: 30,
+    height: 15,
+    borderTopRightRadius: 15,
+    borderBottomLeftRadius: 15,
+    backgroundColor: "#44a16d",
+    transform: [{ rotate: "18deg" }],
+  },
+  planter: {
+    width: 88,
+    height: 18,
+    borderRadius: 6,
+    backgroundColor: theme.colors.textPrimary,
+    opacity: 0.9,
+    marginTop: -1,
+  },
   appleButton: {
     width: "100%",
-    height: 48,
+    height: 50,
   },
   googleButton: {
     minHeight: 50,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderWidth: 1.5,
+    borderColor: "#c2ced6",
+    backgroundColor: "#fbfdfc",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 10,
     paddingHorizontal: 16,
+    shadowColor: "#10251a",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   googleIcon: {
     width: 22,
