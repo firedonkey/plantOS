@@ -38,7 +38,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authMode !== "production") {
+    const authCompleted = new URLSearchParams(window.location.search).get("auth") === "complete";
+    if (authMode !== "production" && !authCompleted) {
       setIsHydrated(true);
       return;
     }
@@ -51,13 +52,18 @@ export function SessionProvider({ children }: PropsWithChildren) {
         }
         setSession(nextSession);
         setAuthError(null);
+        if (authCompleted) {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete("auth");
+          window.history.replaceState({}, "", cleanUrl.toString());
+        }
       })
       .catch((error) => {
         if (cancelled) {
           return;
         }
         setSession(null);
-        if (new URLSearchParams(window.location.search).get("auth") === "complete") {
+        if (authCompleted) {
           setAuthError(error instanceof Error ? error.message : "Unable to restore Google session.");
         } else {
           setAuthError(null);

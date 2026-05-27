@@ -119,10 +119,23 @@ export type LatestImage = {
   capturedAt: string;
 };
 
+export type TimelapseFrame = LatestImage;
+
+export type DeviceTimelapse = {
+  frames: TimelapseFrame[];
+  frameCount: number;
+  totalImageCount: number;
+  intervalMinutes: number;
+  playbackFrameMs: number;
+  windowStart: string;
+  windowEnd: string;
+};
+
 export type DeviceDashboard = {
   device: Device;
   hardwareHealth?: HardwareHealth;
   recentImages: LatestImage[];
+  timelapse?: DeviceTimelapse;
   recentCommands: DeviceCommand[];
   history: SensorReading[];
 };

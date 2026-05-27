@@ -5,11 +5,30 @@
 venv
 __pycache__
 *.pyc
+node_modules
+**/node_modules
+.expo
+dist
+build
+.pio-core
+.pio
 .env
 .env.*
 
+agent-workspace
+data
+device/
 device/data
+provision_backend/
 platform/data
+platform/admin/
+platform/mobile/
+platform/web/
+platform/shared/
+platform/backend/.pytest_cache/
+platform/backend/__pycache__/
+platform/backend/data/
+platform/backend/tests/__pycache__/
 
 Dockerfile*
 README.md

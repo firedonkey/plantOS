@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
+import { TimelapsePlayer } from "@/components/TimelapsePlayer";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 
@@ -68,24 +69,29 @@ export function DeviceDashboardScreen() {
   };
 
   useEffect(() => {
-    if (!dashboard?.recentImages.length) {
+    const imageCandidates = [
+      ...(dashboard?.recentImages ?? []),
+      ...(dashboard?.timelapse?.frames ?? []),
+    ];
+
+    if (!imageCandidates.length) {
       setProtectedImageUrls({});
       return;
     }
 
     if (session?.mode !== "api" || !imageAuthHeaders) {
       setProtectedImageUrls(
-        Object.fromEntries(dashboard.recentImages.map((image) => [image.id, image.url])),
+        Object.fromEntries(imageCandidates.map((image) => [image.id, image.url])),
       );
       return;
     }
 
     let cancelled = false;
     const objectUrls: string[] = [];
-    const directEntries = dashboard.recentImages
+    const directEntries = imageCandidates
       .filter((image) => !shouldUseImageAuthHeaders(image.url))
       .map((image) => [image.id, image.url] as const);
-    const protectedImages = dashboard.recentImages.filter((image) => shouldUseImageAuthHeaders(image.url));
+    const protectedImages = imageCandidates.filter((image) => shouldUseImageAuthHeaders(image.url));
 
     if (!protectedImages.length) {
       setProtectedImageUrls(Object.fromEntries(directEntries));
@@ -119,7 +125,7 @@ export function DeviceDashboardScreen() {
       cancelled = true;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [dashboard?.recentImages, imageAuthHeaders, session?.mode]);
+  }, [dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders, session?.mode]);
 
   if (!deviceId) {
     return <p className="error-text">Missing device id.</p>;
@@ -229,6 +235,20 @@ export function DeviceDashboardScreen() {
                   : "Capture image"
             }
             onCapture={() => runCommand("capture_image")}
+          />
+
+          <TimelapsePlayer
+            timelapse={
+              dashboard.timelapse
+                ? {
+                    ...dashboard.timelapse,
+                    frames: dashboard.timelapse.frames.map((frame) => ({
+                      ...frame,
+                      url: protectedImageUrls[frame.id] ?? frame.url,
+                    })),
+                  }
+                : undefined
+            }
           />
 
           <ReadingTrendSection

@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import sys
 from types import ModuleType, SimpleNamespace
@@ -233,6 +234,63 @@ def test_image_content_rejects_other_users_image(tmp_path, monkeypatch):
             image_id = image.id
 
         response = client.get(f"/api/images/{image_id}/content")
+
+        assert response.status_code == 404
+    finally:
+        teardown_overrides()
+
+
+def test_device_timelapse_returns_sampled_owned_frames(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    try:
+        now = datetime.now(timezone.utc)
+        timestamps = [
+            now - timedelta(hours=3) + timedelta(minutes=10),
+            now - timedelta(hours=3) + timedelta(minutes=20),
+            now - timedelta(hours=2) + timedelta(minutes=10),
+            now - timedelta(hours=2) + timedelta(minutes=20),
+            now - timedelta(hours=1) + timedelta(minutes=10),
+            now - timedelta(hours=1) + timedelta(minutes=20),
+        ]
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add_all(
+                [
+                    Image(
+                        device_id=device_id,
+                        path=f"data/uploads/device-{device_id}/timelapse-{index}.jpg",
+                        timestamp=timestamp,
+                        source_hardware_device_id="cam-01",
+                    )
+                    for index, timestamp in enumerate(timestamps, start=1)
+                ]
+            )
+            session.commit()
+
+        response = client.get(f"/api/devices/{device_id}/timelapse?days=1&interval_minutes=60&max_frames=10")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["device_id"] == device_id
+        assert payload["interval_minutes"] == 60
+        assert payload["total_image_count"] == 6
+        assert payload["frame_count"] == 3
+        assert [frame["timestamp"] for frame in payload["frames"]] == sorted(
+            frame["timestamp"] for frame in payload["frames"]
+        )
+        assert all(frame["content_url"].endswith("/content") for frame in payload["frames"])
+        assert all(frame["source_hardware_device_id"] == "cam-01" for frame in payload["frames"])
+    finally:
+        teardown_overrides()
+
+
+def test_device_timelapse_rejects_other_users_device(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, _, other_device_id = build_client_with_device(str(tmp_path))
+    try:
+        response = client.get(f"/api/devices/{other_device_id}/timelapse")
 
         assert response.status_code == 404
     finally:

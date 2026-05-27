@@ -1,6 +1,6 @@
 import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth, SensorReading } from "@/types";
+import { Device, DeviceCommand, DeviceDashboard, DeviceTimelapse, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth, SensorReading } from "@/types";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 import type { BleDeviceIdentity } from "@/ble/bleProvisioning";
 
@@ -167,6 +167,17 @@ type ApiDeviceImage = {
   id: number;
   content_url: string;
   timestamp: string;
+};
+
+type ApiDeviceTimelapse = {
+  device_id: number;
+  window_start: string;
+  window_end: string;
+  interval_minutes: number;
+  playback_frame_ms: number;
+  total_image_count: number;
+  frame_count: number;
+  frames: ApiDeviceImage[];
 };
 
 type ApiSetupCodeResponse = {
@@ -572,13 +583,19 @@ export async function getDeviceDashboard(
 ): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
   try {
     const readingsQuery = buildReadingsQuery(range);
-    const [summary, history, commands, recentImages] = await Promise.all([
+    const [summary, history, commands, recentImages, timelapse] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
       apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?${readingsQuery}`, {}, token),
       apiRequest<ApiCommandRead[]>(`/api/devices/${deviceId}/commands`, {}, token),
       apiRequest<ApiDeviceImage[]>(`/api/devices/${deviceId}/images?limit=6`, {}, token).catch((error) => {
         if (error instanceof ApiError && error.status === 404) {
           return [];
+        }
+        throw error;
+      }),
+      apiRequest<ApiDeviceTimelapse>(`/api/devices/${deviceId}/timelapse?days=7&interval_minutes=60&max_frames=168`, {}, token).catch((error) => {
+        if (error instanceof ApiError && error.status === 404) {
+          return undefined;
         }
         throw error;
       }),
@@ -623,6 +640,7 @@ export async function getDeviceDashboard(
         },
         hardwareHealth: mapHardwareHealth(summary.hardware_health),
         recentImages: galleryImages,
+        timelapse: timelapse ? mapTimelapse(timelapse) : undefined,
         recentCommands: commands.slice(0, 6).map(mapCommand),
         history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),
       },
@@ -640,6 +658,22 @@ export async function getDeviceDashboard(
       },
     };
   }
+}
+
+function mapTimelapse(timelapse: ApiDeviceTimelapse): DeviceTimelapse {
+  return {
+    frames: timelapse.frames.map((frame) => ({
+      id: String(frame.id),
+      url: frame.content_url,
+      capturedAt: frame.timestamp,
+    })),
+    frameCount: timelapse.frame_count,
+    totalImageCount: timelapse.total_image_count,
+    intervalMinutes: timelapse.interval_minutes,
+    playbackFrameMs: timelapse.playback_frame_ms,
+    windowStart: timelapse.window_start,
+    windowEnd: timelapse.window_end,
+  };
 }
 
 function buildReadingsQuery(range: RangeKey): string {

@@ -689,6 +689,12 @@ input {
   gap: 14px;
 }
 
+.dev-login-panel {
+  border-top: 1px solid #d7dee3;
+  margin-top: 4px;
+  padding-top: 16px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -917,6 +923,32 @@ input {
 
 .gallery-capture-button {
   min-width: 160px;
+}
+
+.timelapse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timelapse-player {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.timelapse-image {
+  aspect-ratio: 4 / 3;
+  background: #edf2f4;
+  object-fit: cover;
+}
+
+.timelapse-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #708078;
+  font-size: 13px;
 }
 
 .activity-list {

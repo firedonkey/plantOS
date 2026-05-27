@@ -125,7 +125,7 @@ export async function logoutProductionSession(): Promise<void> {
   });
 }
 
-export function getGoogleAuthStartUrl(returnTo: string = `${window.location.origin}/login?auth=complete`): string {
+export function getGoogleAuthStartUrl(returnTo: string = `${window.location.origin}/login`): string {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
     throw new Error("API base URL is not configured. Set VITE_API_BASE_URL before using Google sign-in.");

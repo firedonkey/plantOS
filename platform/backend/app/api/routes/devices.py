@@ -30,6 +30,8 @@ from app.schemas.devices import (
     DeviceSummaryImageRead,
     DeviceSummaryRead,
     DeviceSummaryReadingRead,
+    DeviceTimelapseFrameRead,
+    DeviceTimelapseRead,
     DeviceUpdate,
 )
 from app.schemas.diagnostics import DeviceDiagnosticsRead
@@ -47,7 +49,7 @@ from app.services.devices import (
     release_device_for_user,
     update_device_for_user,
 )
-from app.services.images import list_recent_images_for_device
+from app.services.images import list_recent_images_for_device, list_timelapse_images_for_device
 from app.services.readings import MAX_READING_QUERY_LIMIT, get_latest_reading_for_device, list_recent_readings_for_device
 from app.services.storage import image_client_url
 
@@ -447,6 +449,53 @@ def get_device_images(
         )
         for image in images
     ]
+
+
+@router.get("/{device_id}/timelapse", response_model=DeviceTimelapseRead)
+def get_device_timelapse(
+    device_id: int,
+    request: Request,
+    days: int = Query(default=7, ge=1, le=30),
+    interval_minutes: int = Query(default=60, ge=5, le=24 * 60),
+    max_frames: int = Query(default=168, ge=2, le=720),
+    playback_frame_ms: int = Query(default=450, ge=100, le=2000),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+
+    window_end = datetime.now(timezone.utc)
+    window_start = window_end - timedelta(days=days)
+    images, total_image_count = list_timelapse_images_for_device(
+        session,
+        device.id,
+        start=window_start,
+        end=window_end,
+        interval_minutes=interval_minutes,
+        max_frames=max_frames,
+    )
+    settings = get_settings()
+    frames = [
+        DeviceTimelapseFrameRead(
+            id=image.id,
+            content_url=image_client_url(image, request, settings),
+            timestamp=image.timestamp,
+            source_hardware_device_id=image.source_hardware_device_id,
+        )
+        for image in images
+    ]
+    return DeviceTimelapseRead(
+        device_id=device.id,
+        window_start=window_start,
+        window_end=window_end,
+        interval_minutes=interval_minutes,
+        playback_frame_ms=playback_frame_ms,
+        total_image_count=total_image_count,
+        frame_count=len(frames),
+        frames=frames,
+    )
 
 
 @router.post("/{device_id}/commands/light", response_model=DeviceCommandEnvelopeRead, status_code=201)

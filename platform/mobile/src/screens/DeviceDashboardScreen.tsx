@@ -11,6 +11,7 @@ import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { Screen } from "@/components/Screen";
 import { SkeletonCard } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
+import { TimelapsePlayer } from "@/components/TimelapsePlayer";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
@@ -152,6 +153,11 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                   : "Capture image"
             }
             onCapture={() => runCommand("capture_image")}
+          />
+
+          <TimelapsePlayer
+            timelapse={dashboard.timelapse}
+            imageHeaders={token ? { Authorization: `Bearer ${token}` } : undefined}
           />
 
           <ReadingTrendSection

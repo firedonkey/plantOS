@@ -53,16 +53,15 @@ export function LoginScreen() {
       <div className="auth-card">
         <div className="eyebrow">PLANTLAB WEB</div>
         <h1>Sign in</h1>
-        {authMode === "production" ? (
-          <>
-            <p className="subtitle">Use backend-owned Google sign-in for standalone PlantLab access.</p>
-            <button className="primary-button" type="button" onClick={startGoogleAuth}>
-              Continue with Google
-            </button>
-          </>
-        ) : (
-          <form className="stack-form" onSubmit={onSubmit}>
-            <p className="subtitle">Dev-only login uses the local backend. Mock fallback is off by default and only activates when <code>VITE_ENABLE_MOCK_FALLBACK=true</code>.</p>
+        <div className="stack-form">
+          <p className="subtitle">Sign in to sync and manage your PlantLab devices.</p>
+          <button className="primary-button" type="button" onClick={startGoogleAuth}>
+            Continue with Google
+          </button>
+        </div>
+        {authMode === "dev" ? (
+          <form className="stack-form dev-login-panel" onSubmit={onSubmit}>
+            <p className="subtitle">Local development sign-in</p>
             <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
             <input
               value={password}
@@ -70,11 +69,11 @@ export function LoginScreen() {
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Password"
             />
-            <button className="primary-button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Continue"}
+            <button className="secondary-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Signing in..." : "Continue locally"}
             </button>
           </form>
-        )}
+        ) : null}
         {authError ? <p className="error-text">{authError}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
       </div>

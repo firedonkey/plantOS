@@ -26,6 +26,24 @@ class DeviceSummaryImageRead(BaseModel):
     source_hardware_device_id: str | None = None
 
 
+class DeviceTimelapseFrameRead(BaseModel):
+    id: int
+    content_url: str
+    timestamp: datetime
+    source_hardware_device_id: str | None = None
+
+
+class DeviceTimelapseRead(BaseModel):
+    device_id: int
+    window_start: datetime
+    window_end: datetime
+    interval_minutes: int
+    playback_frame_ms: int
+    total_image_count: int
+    frame_count: int
+    frames: list[DeviceTimelapseFrameRead] = Field(default_factory=list)
+
+
 class DeviceHealthNodeRead(BaseModel):
     hardware_device_id: str
     node_role: str | None

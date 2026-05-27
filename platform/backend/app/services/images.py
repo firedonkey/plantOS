@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -51,3 +53,59 @@ def list_recent_images_for_device(
             .limit(limit)
         )
     )
+
+
+def list_timelapse_images_for_device(
+    session: Session,
+    device_id: int,
+    *,
+    start: datetime,
+    end: datetime,
+    interval_minutes: int,
+    max_frames: int,
+) -> tuple[list[Image], int]:
+    images = list(
+        session.scalars(
+            select(Image)
+            .where(Image.device_id == device_id)
+            .where(Image.timestamp >= start)
+            .where(Image.timestamp <= end)
+            .order_by(Image.timestamp.asc(), Image.id.asc())
+        )
+    )
+    if not images:
+        return [], 0
+
+    interval_seconds = max(interval_minutes * 60, 1)
+    start_utc = _as_utc(start)
+    bucketed: list[Image] = []
+    seen_buckets: set[int] = set()
+    for image in images:
+        elapsed_seconds = max(0, (_as_utc(image.timestamp) - start_utc).total_seconds())
+        bucket = int(elapsed_seconds // interval_seconds)
+        if bucket in seen_buckets:
+            continue
+        seen_buckets.add(bucket)
+        bucketed.append(image)
+
+    if len(bucketed) <= max_frames:
+        return bucketed, len(images)
+
+    return _downsample_images(bucketed, max_frames), len(images)
+
+
+def _downsample_images(images: list[Image], max_frames: int) -> list[Image]:
+    if max_frames <= 1:
+        return images[:1]
+    if len(images) <= max_frames:
+        return images
+
+    step = (len(images) - 1) / (max_frames - 1)
+    selected_indexes = {round(index * step) for index in range(max_frames)}
+    return [image for index, image in enumerate(images) if index in selected_indexes][:max_frames]
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
