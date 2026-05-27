@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "message_id": "evt_01HXHEARTBEATFULL",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "HEARTBEAT",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "uptime_seconds": 12345,
+    "wifi_rssi_dbm": -58,
+    "ip_address": "192.168.1.20",
+    "free_heap_bytes": 185000,
+    "node_status": "online",
+    "firmware_version": "1.0.0",
+    "hardware_model": "esp32_master",
+    "hardware_version": "ESP32-S3-DevKitC-1-N32R16V",
+    "capabilities": ["ota", "ambient_led", "camera_gateway"],
+    "actuators": {
+      "ambient_light": {
+        "enabled": true,
+        "brightness_percent": 65
+      }
+    },
+    "runtime": {
+      "capture_interval_seconds": 3600,
+      "ota_status": "idle",
+      "provisioning_status": "normal",
+      "camera_node_status": "online",
+      "last_command_id": "cmd_189",
+      "last_command_status": "completed"
+    }
+  }
+}

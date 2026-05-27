@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/ota_status_payload.schema.json",
+  "title": "PlantLab OTA Status Payload",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["command_id", "status"],
+  "properties": {
+    "command_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "status": {
+      "$ref": "../common/enums.schema.json#/$defs/OTAStatus"
+    },
+    "progress_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "current_version": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "target_version": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "firmware_channel": {
+      "$ref": "../common/enums.schema.json#/$defs/OTAChannel"
+    },
+    "phase": {
+      "$ref": "../common/enums.schema.json#/$defs/OTAInstallPhase"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "failure_reason": {
+      "$ref": "../common/enums.schema.json#/$defs/OTAFailureReason"
+    },
+    "release_id": {
+      "type": "string",
+      "maxLength": 80
+    }
+  }
+}

@@ -4,7 +4,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-OtaStatus = Literal["idle", "available", "downloading", "installing", "success", "failed"]
+OtaStatus = Literal[
+    "idle",
+    "available",
+    "preparing",
+    "downloading",
+    "validating",
+    "installing",
+    "rebooting",
+    "success",
+    "failed",
+    "rolled_back",
+]
 
 
 class FirmwareManifestRead(BaseModel):

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/command_result.schema.json",
+  "title": "PlantLab Command Result Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "COMMAND_RESULT"
+        },
+        "payload": {
+          "$ref": "./command_result_payload.schema.json"
+        }
+      }
+    }
+  ]
+}

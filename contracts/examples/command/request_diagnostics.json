@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "message_id": "cmdmsg_01HXDIAGREQ",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "COMMAND",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "command_id": "cmd_01HXDIAGREQ",
+    "command_type": "REQUEST_DIAGNOSTICS",
+    "target": {
+      "node_role": "master",
+      "hardware_device_id": "pl-esp32-64e0a80af6e8"
+    },
+    "params": {},
+    "timeout_ms": 30000,
+    "priority": "normal",
+    "scheduled_for": null
+  }
+}

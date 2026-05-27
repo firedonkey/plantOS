@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "message_id": "cmdresmsg_01HXREJECTED",
+  "device_id": 33,
+  "hardware_device_id": "pl-cam-1c1df816a398",
+  "node_role": "camera",
+  "message_type": "COMMAND_RESULT",
+  "sent_at": "2026-05-27T12:00:10Z",
+  "payload": {
+    "command_id": "cmd_01HXCAPTURE",
+    "command_type": "CAPTURE_IMAGE",
+    "status": "rejected",
+    "message": "camera is busy",
+    "result": {},
+    "error_code": "DEVICE_BUSY"
+  }
+}

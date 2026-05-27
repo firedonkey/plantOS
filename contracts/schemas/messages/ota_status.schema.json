@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/ota_status.schema.json",
+  "title": "PlantLab OTA Status Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "OTA_STATUS"
+        },
+        "payload": {
+          "$ref": "./ota_status_payload.schema.json"
+        }
+      }
+    }
+  ]
+}

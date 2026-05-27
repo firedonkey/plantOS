@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/command.schema.json",
+  "title": "PlantLab Command Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "COMMAND"
+        },
+        "payload": {
+          "$ref": "./command_payload.schema.json"
+        }
+      }
+    }
+  ]
+}

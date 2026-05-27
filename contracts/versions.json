@@ -1,0 +1,20 @@
+{
+  "current_schema_version": "1.0",
+  "supported_major_versions": [1],
+  "compatibility": {
+    "policy": "1.x versions are additive and backward compatible. Breaking changes require a new major version.",
+    "migration_stage": "ota_status",
+    "legacy_payloads_accepted": true
+  },
+  "contracts": {
+    "device_message": "contracts/schemas/messages/base_envelope.schema.json",
+    "heartbeat": "contracts/schemas/messages/heartbeat.schema.json",
+    "diagnostics": "contracts/schemas/messages/diagnostics.schema.json",
+    "command": "contracts/schemas/messages/command.schema.json",
+    "command_poll_response": "contracts/schemas/messages/command_poll_response.schema.json",
+    "command_result": "contracts/schemas/messages/command_result.schema.json",
+    "ota_command_params": "contracts/schemas/messages/ota_command_params.schema.json",
+    "ota_status": "contracts/schemas/messages/ota_status.schema.json",
+    "canonical_event": "contracts/schemas/events/canonical_event.schema.json"
+  }
+}

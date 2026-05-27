@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/command_poll_response.schema.json",
+  "title": "PlantLab Command Poll Response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "commands"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "commands": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "./command.schema.json"
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/diagnostics.schema.json",
+  "title": "PlantLab Diagnostics Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "DIAGNOSTICS"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["status", "severity"],
+          "properties": {
+            "status": {
+              "$ref": "../common/enums.schema.json#/$defs/DeviceStatus"
+            },
+            "severity": {
+              "$ref": "../common/enums.schema.json#/$defs/DiagnosticSeverity"
+            },
+            "error_counters": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxProperties": 16
+            },
+            "last_error_code": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "last_error_message": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "reboot_reason": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "subsystem_statuses": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "../common/enums.schema.json#/$defs/DeviceStatus"
+              },
+              "maxProperties": 16
+            }
+          }
+        }
+      }
+    }
+  ]
+}

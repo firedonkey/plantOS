@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "message_id": "otamsg_unsupported_hardware",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "OTA_STATUS",
+  "sent_at": "2026-05-27T12:01:00Z",
+  "payload": {
+    "command_id": "cmd_ota_123",
+    "status": "failed",
+    "progress_percent": 0,
+    "current_version": "1.1.0",
+    "target_version": "1.2.0",
+    "firmware_channel": "beta",
+    "phase": "check",
+    "failure_reason": "unsupported_hardware",
+    "message": "Firmware does not support this hardware model",
+    "release_id": "master-1.2.0-beta"
+  }
+}

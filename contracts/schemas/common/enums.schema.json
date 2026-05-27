@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/common/enums.schema.json",
+  "title": "PlantLab Shared Protocol Enums",
+  "$defs": {
+    "NodeRole": {
+      "type": "string",
+      "enum": ["master", "camera", "sensor", "actuator"]
+    },
+    "MessageType": {
+      "type": "string",
+      "enum": ["HEARTBEAT", "DIAGNOSTICS", "COMMAND", "COMMAND_RESULT", "OTA_STATUS"]
+    },
+    "DeviceStatus": {
+      "type": "string",
+      "enum": ["online", "degraded", "offline", "provisioning", "updating", "error"]
+    },
+    "DiagnosticSeverity": {
+      "type": "string",
+      "enum": ["info", "warning", "critical"]
+    },
+    "EventType": {
+      "type": "string",
+      "enum": [
+        "DEVICE_ONLINE",
+        "DEVICE_OFFLINE",
+        "HEARTBEAT_RECEIVED",
+        "DIAGNOSTICS_RECEIVED",
+        "SENSOR_ERROR",
+        "CAMERA_NODE_CONNECTED",
+        "CAMERA_NODE_DISCONNECTED",
+        "OTA_AVAILABLE",
+        "OTA_STARTED",
+        "OTA_PROGRESS",
+        "OTA_PREPARING",
+        "OTA_DOWNLOADING",
+        "OTA_VALIDATING",
+        "OTA_INSTALLING",
+        "OTA_REBOOTING",
+        "OTA_SUCCESS",
+        "OTA_FAILED",
+        "OTA_ROLLED_BACK",
+        "COMMAND_QUEUED",
+        "COMMAND_SENT",
+        "COMMAND_POLLED",
+        "COMMAND_ACKED",
+        "COMMAND_IN_PROGRESS",
+        "COMMAND_COMPLETED",
+        "COMMAND_FAILED",
+        "COMMAND_TIMED_OUT",
+        "COMMAND_REJECTED",
+        "PROVISIONING_STARTED",
+        "PROVISIONING_SUCCESS",
+        "PROVISIONING_FAILED",
+        "FACTORY_RESET"
+      ]
+    },
+    "CommandType": {
+      "type": "string",
+      "enum": [
+        "SET_LIGHT_BRIGHTNESS",
+        "CAPTURE_IMAGE",
+        "REBOOT",
+        "START_OTA",
+        "ENTER_PAIRING_MODE",
+        "FACTORY_RESET",
+        "REQUEST_DIAGNOSTICS",
+        "UPDATE_CAPTURE_INTERVAL"
+      ]
+    },
+    "CommandStatus": {
+      "type": "string",
+      "enum": ["queued", "sent", "acked", "in_progress", "completed", "failed", "timed_out", "rejected"]
+    },
+    "CommandTargetRole": {
+      "type": "string",
+      "enum": ["master", "camera", "sensor", "actuator"]
+    },
+    "CommandPriority": {
+      "type": "string",
+      "enum": ["low", "normal", "high"]
+    },
+    "CommandErrorCode": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN_COMMAND",
+        "INVALID_PARAMS",
+        "UNSUPPORTED_TARGET",
+        "DEVICE_BUSY",
+        "TIMEOUT",
+        "TRANSPORT_ERROR",
+        "INTERNAL_ERROR"
+      ]
+    },
+    "OTAStatus": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "available",
+        "preparing",
+        "downloading",
+        "validating",
+        "installing",
+        "rebooting",
+        "success",
+        "failed",
+        "rolled_back"
+      ]
+    },
+    "OTAFailureReason": {
+      "type": "string",
+      "enum": [
+        "checksum_mismatch",
+        "unsupported_hardware",
+        "unsupported_firmware_version",
+        "unsupported_schema_version",
+        "download_failed",
+        "validation_failed",
+        "install_failed",
+        "reboot_failed",
+        "rollback_failed",
+        "network_error",
+        "timeout",
+        "internal_error"
+      ]
+    },
+    "OTAChannel": {
+      "type": "string",
+      "enum": ["stable", "beta", "dev", "local"]
+    },
+    "OTAInstallPhase": {
+      "type": "string",
+      "enum": ["check", "prepare", "download", "validate", "install", "reboot", "completed", "rollback"]
+    }
+  }
+}

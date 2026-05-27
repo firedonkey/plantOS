@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/ota_command_params.schema.json",
+  "title": "PlantLab OTA Command Params",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["target_version"],
+  "properties": {
+    "target_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "firmware_channel": {
+      "$ref": "../common/enums.schema.json#/$defs/OTAChannel",
+      "default": "stable"
+    },
+    "download_url": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "checksum_sha256": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "hardware_model": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "minimum_current_version": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "schema_major": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 1
+    },
+    "rollback_version": {
+      "type": "string",
+      "maxLength": 120
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/heartbeat.schema.json",
+  "title": "PlantLab Heartbeat Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "HEARTBEAT"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["uptime_seconds", "node_status", "firmware_version"],
+          "properties": {
+            "uptime_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "wifi_rssi_dbm": {
+              "type": "integer",
+              "minimum": -127,
+              "maximum": 0
+            },
+            "ip_address": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "free_heap_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "node_status": {
+              "$ref": "../common/enums.schema.json#/$defs/DeviceStatus"
+            },
+            "firmware_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "hardware_model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "hardware_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "maxItems": 32,
+              "uniqueItems": true
+            },
+            "actuators": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "ambient_light": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "brightness_percent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                }
+              }
+            },
+            "runtime": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "capture_interval_seconds": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "ota_status": {
+                  "$ref": "../common/enums.schema.json#/$defs/OTAStatus"
+                },
+                "provisioning_status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "camera_node_status": {
+                  "$ref": "../common/enums.schema.json#/$defs/DeviceStatus"
+                },
+                "last_command_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "last_command_status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

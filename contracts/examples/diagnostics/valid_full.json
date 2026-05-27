@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "message_id": "evt_01HXDIAGNOSTICSFULL",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "DIAGNOSTICS",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "status": "degraded",
+    "severity": "warning",
+    "error_counters": {
+      "wifi_disconnects": 2,
+      "image_upload_failures": 1
+    },
+    "last_error_code": "CAMERA_TIMEOUT",
+    "last_error_message": "Camera node did not respond before timeout",
+    "reboot_reason": "software_reset",
+    "subsystem_statuses": {
+      "wifi": "online",
+      "camera": "degraded",
+      "ota": "online"
+    }
+  }
+}

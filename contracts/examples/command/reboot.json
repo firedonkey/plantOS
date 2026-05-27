@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "message_id": "cmdmsg_01HXREBOOT",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "COMMAND",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "command_id": "cmd_01HXREBOOT",
+    "command_type": "REBOOT",
+    "target": {
+      "node_role": "master",
+      "hardware_device_id": "pl-esp32-64e0a80af6e8"
+    },
+    "params": {
+      "reason": "support"
+    },
+    "timeout_ms": 30000,
+    "priority": "high",
+    "scheduled_for": null
+  }
+}

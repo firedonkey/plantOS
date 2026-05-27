@@ -7,6 +7,11 @@ def test_esp32_platform_client_heartbeat_includes_software_version(tmp_path):
     repo_root = Path(__file__).resolve().parents[3]
     test_src = repo_root / "device/esp32/tests_host/test_platform_client_heartbeat.cpp"
     client_src = repo_root / "device/esp32/src/platform/platform_client.cpp"
+    contract_client_src = repo_root / "device/esp32/src/contracts/contract_client.cpp"
+    command_dispatcher_src = repo_root / "device/esp32/src/contracts/command_dispatcher.cpp"
+    envelope_builder_src = repo_root / "device/esp32/src/contracts/envelope_builder.cpp"
+    envelope_parser_src = repo_root / "device/esp32/src/contracts/envelope_parser.cpp"
+    ota_status_reporter_src = repo_root / "device/esp32/src/contracts/ota_status_reporter.cpp"
     arduino_json = (
         repo_root
         / "device/esp32/.pio/libdeps/esp32-s3-devkitc-1/ArduinoJson/src"
@@ -64,8 +69,16 @@ class String {
     const auto pos = value_.find(needle);
     return pos == std::string::npos ? -1 : static_cast<int>(pos);
   }
+  int indexOf(const char* needle) const {
+    const auto pos = value_.find(needle == nullptr ? "" : needle);
+    return pos == std::string::npos ? -1 : static_cast<int>(pos);
+  }
   int indexOf(char needle, std::size_t from) const {
     const auto pos = value_.find(needle, from);
+    return pos == std::string::npos ? -1 : static_cast<int>(pos);
+  }
+  int indexOf(const char* needle, std::size_t from) const {
+    const auto pos = value_.find(needle == nullptr ? "" : needle, from);
     return pos == std::string::npos ? -1 : static_cast<int>(pos);
   }
   String substring(std::size_t start) const {
@@ -180,11 +193,17 @@ class WiFiClientSecure : public WiFiClient {
 namespace platform_client_host_test {
 inline std::string last_url;
 inline std::string last_post_body;
+inline std::string next_response_body = "{}";
+inline int next_get_status = 200;
+inline int next_post_status = 200;
 inline std::vector<std::pair<std::string, std::string>> headers;
 
 inline void reset_http_capture() {
   last_url.clear();
   last_post_body.clear();
+  next_response_body = "{}";
+  next_get_status = 200;
+  next_post_status = 200;
   headers.clear();
 }
 }
@@ -201,10 +220,10 @@ class HTTPClient {
   }
   int POST(const String& body) {
     platform_client_host_test::last_post_body = body.c_str();
-    return 200;
+    return platform_client_host_test::next_post_status;
   }
-  int GET() { return 200; }
-  String getString() const { return "{}"; }
+  int GET() { return platform_client_host_test::next_get_status; }
+  String getString() const { return String(platform_client_host_test::next_response_body); }
   String errorToString(int code) const { return String(code); }
   void end() {}
   WiFiClient* getStreamPtr() { return &stream_; }
@@ -242,9 +261,16 @@ class HTTPClient {
         "-I",
         str(repo_root / "device/esp32/src"),
         "-I",
+        str(repo_root / "device/esp32/include"),
+        "-I",
         str(arduino_json),
         str(test_src),
         str(client_src),
+        str(contract_client_src),
+        str(command_dispatcher_src),
+        str(envelope_builder_src),
+        str(envelope_parser_src),
+        str(ota_status_reporter_src),
         "-o",
         str(output_binary),
     ]

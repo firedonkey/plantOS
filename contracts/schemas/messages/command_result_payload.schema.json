@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/command_result_payload.schema.json",
+  "title": "PlantLab Command Result Payload",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["command_id", "command_type", "status"],
+  "properties": {
+    "command_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "command_type": {
+      "$ref": "../common/enums.schema.json#/$defs/CommandType"
+    },
+    "status": {
+      "$ref": "../common/enums.schema.json#/$defs/CommandStatus"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "../common/enums.schema.json#/$defs/CommandErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

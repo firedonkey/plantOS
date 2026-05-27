@@ -34,12 +34,13 @@ from app.schemas.devices import (
     DeviceTimelapseRead,
     DeviceUpdate,
 )
-from app.schemas.diagnostics import DeviceDiagnosticsRead
+from app.schemas.diagnostics import DeviceDiagnosticsRead, DeviceTimelineRead
 from app.schemas.setup import DeviceClaimTokenRequest, DeviceSetupCodeRead, DeviceSetupCodeRequest
 from app.schemas.readings import SensorReadingRead
 from app.services.commands import create_command, list_commands_for_device
 from app.services.device_diagnostics import event_read, list_diagnostic_events, list_diagnostic_snapshots, snapshot_read
 from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
+from app.services.device_timeline import list_timeline_events, timeline_event_read
 from app.services.devices import (
     create_device_for_user,
     delete_device_for_user,
@@ -377,6 +378,39 @@ def get_device_diagnostics(
     return DeviceDiagnosticsRead(
         snapshots=[snapshot_read(snapshot) for snapshot in list_diagnostic_snapshots(session, device.id)],
         recent_events=[event_read(event) for event in list_diagnostic_events(session, device.id, limit=events_limit)],
+    )
+
+
+@router.get("/{device_id}/timeline", response_model=DeviceTimelineRead)
+def get_device_timeline(
+    device_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    before: datetime | None = Query(default=None),
+    after: datetime | None = Query(default=None),
+    event_type: list[str] | None = Query(default=None),
+    severity: list[str] | None = Query(default=None),
+    node_role: str | None = Query(default=None, min_length=3, max_length=40),
+    correlation_id: str | None = Query(default=None, min_length=1, max_length=120),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    events = list_timeline_events(
+        session,
+        device.id,
+        limit=limit,
+        before=before,
+        after=after,
+        event_types=event_type,
+        severities=severity,
+        node_role=node_role,
+        correlation_id=correlation_id,
+    )
+    return DeviceTimelineRead(
+        events=[timeline_event_read(event) for event in events],
+        next_before=events[-1].occurred_at if len(events) == limit else None,
     )
 
 

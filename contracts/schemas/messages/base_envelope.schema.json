@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/base_envelope.schema.json",
+  "title": "PlantLab Device Message Envelope",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "message_id",
+    "hardware_device_id",
+    "node_role",
+    "message_type",
+    "sent_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "message_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "device_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hardware_device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "node_role": {
+      "$ref": "../common/enums.schema.json#/$defs/NodeRole"
+    },
+    "message_type": {
+      "$ref": "../common/enums.schema.json#/$defs/MessageType"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/command_payload.schema.json",
+  "title": "PlantLab Command Payload",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["command_id", "command_type", "target", "params", "timeout_ms"],
+  "properties": {
+    "command_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "command_type": {
+      "$ref": "../common/enums.schema.json#/$defs/CommandType"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["node_role"],
+      "properties": {
+        "node_role": {
+          "$ref": "../common/enums.schema.json#/$defs/CommandTargetRole"
+        },
+        "hardware_device_id": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600000
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["max_attempts", "backoff_ms"],
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "backoff_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000
+        }
+      }
+    },
+    "priority": {
+      "$ref": "../common/enums.schema.json#/$defs/CommandPriority"
+    },
+    "scheduled_for": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  }
+}

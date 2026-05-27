@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "commands": [
+    {
+      "schema_version": "1.0",
+      "message_id": "cmdmsg_123_1780000000000",
+      "device_id": 33,
+      "hardware_device_id": "pl-esp32-64e0a80af6e8",
+      "node_role": "master",
+      "message_type": "COMMAND",
+      "sent_at": "2026-05-27T12:00:00Z",
+      "payload": {
+        "command_id": "cmd_123",
+        "command_type": "CAPTURE_IMAGE",
+        "target": {
+          "node_role": "camera",
+          "hardware_device_id": "pl-cam-1c1df816a398"
+        },
+        "params": {
+          "reason": "manual"
+        },
+        "timeout_ms": 150000,
+        "priority": "normal",
+        "scheduled_for": null
+      }
+    }
+  ]
+}

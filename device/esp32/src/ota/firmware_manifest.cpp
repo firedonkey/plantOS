@@ -60,6 +60,7 @@ bool parseFirmwareManifest(
   manifest->artifact_size_bytes = static_cast<size_t>(doc["artifact_size_bytes"] | 0);
   manifest->sha256 = String(doc["sha256"] | "");
   manifest->signature = String(doc["signature"] | "");
+  manifest->firmware_channel = String(doc["firmware_channel"] | "");
   manifest->sha256.toLowerCase();
 
   if (manifest->release_id.length() == 0 || manifest->version.length() == 0) {

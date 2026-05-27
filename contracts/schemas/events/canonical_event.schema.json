@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/events/canonical_event.schema.json",
+  "title": "PlantLab Canonical Event",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "event_type",
+    "severity",
+    "device_id",
+    "hardware_device_id",
+    "node_role",
+    "occurred_at",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "event_type": {
+      "$ref": "../common/enums.schema.json#/$defs/EventType"
+    },
+    "severity": {
+      "$ref": "../common/enums.schema.json#/$defs/DiagnosticSeverity"
+    },
+    "device_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hardware_device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "node_role": {
+      "$ref": "../common/enums.schema.json#/$defs/NodeRole"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "message_id": "otamsg_success",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "OTA_STATUS",
+  "sent_at": "2026-05-27T12:10:00Z",
+  "payload": {
+    "command_id": "cmd_ota_123",
+    "status": "success",
+    "progress_percent": 100,
+    "current_version": "1.2.0",
+    "target_version": "1.2.0",
+    "firmware_channel": "beta",
+    "phase": "completed",
+    "message": "OTA completed successfully",
+    "release_id": "master-1.2.0-beta"
+  }
+}

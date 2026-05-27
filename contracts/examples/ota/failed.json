@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "message_id": "otamsg_failed",
+  "device_id": 33,
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "OTA_STATUS",
+  "sent_at": "2026-05-27T12:04:30Z",
+  "payload": {
+    "command_id": "cmd_ota_123",
+    "status": "failed",
+    "progress_percent": 37,
+    "current_version": "1.1.0",
+    "target_version": "1.2.0",
+    "firmware_channel": "beta",
+    "phase": "install",
+    "failure_reason": "checksum_mismatch",
+    "message": "Firmware checksum validation failed",
+    "release_id": "master-1.2.0-beta"
+  }
+}

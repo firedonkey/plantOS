@@ -10,14 +10,36 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.contracts import DiagnosticSeverity, EventType, OTACommandParams
+from app.contracts.device_protocol import SUPPORTED_SCHEMA_MAJOR
 from app.core.settings import Settings
 from app.models import DeviceNode, FirmwareRelease
 from app.schemas.firmware import FirmwareManifestRead, FirmwareOtaStatusCreate, FirmwareOtaStatusRead
+from app.services.events import write_canonical_event
 
 
-OTA_STATUSES = {"idle", "available", "downloading", "installing", "success", "failed"}
+OTA_STATUSES = {
+    "idle",
+    "available",
+    "preparing",
+    "downloading",
+    "validating",
+    "installing",
+    "rebooting",
+    "success",
+    "failed",
+    "rolled_back",
+}
 PUBLISHED_STATUS = "published"
 SHA256_PATTERN = r"^[0-9a-fA-F]{64}$"
+
+
+class OtaCompatibilityError(ValueError):
+    def __init__(self, code: str, message: str, *, details: dict | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = details or {}
 
 
 def build_manifest_for_node(
@@ -40,6 +62,11 @@ def build_manifest_for_node(
         _mark_no_update(session, node)
         return FirmwareManifestRead(update_available=False)
 
+    should_emit_available = (
+        node.ota_status != "available"
+        or node.ota_release_id != release.release_id
+        or node.ota_target_version != release.version
+    )
     now = datetime.now(timezone.utc)
     node.ota_status = "available"
     node.ota_available_version = release.version
@@ -50,6 +77,22 @@ def build_manifest_for_node(
     node.ota_updated_at = now
     session.add(node)
     session.commit()
+    if should_emit_available:
+        _write_ota_event(
+            session,
+            node=node,
+            event_type=EventType.OTA_AVAILABLE,
+            status="available",
+            correlation_id=release.release_id,
+            data={
+                "release_id": release.release_id,
+                "current_version": current_version or node.software_version,
+                "target_version": release.version,
+                "firmware_channel": "stable",
+                "progress_percent": 0,
+                "hardware_model": release.hardware_model,
+            },
+        )
 
     return FirmwareManifestRead(
         update_available=True,
@@ -71,8 +114,11 @@ def update_ota_status(
     *,
     node: DeviceNode,
     payload: FirmwareOtaStatusCreate,
+    correlation_id: str | None = None,
+    contract_data: dict | None = None,
 ) -> FirmwareOtaStatusRead:
     now = datetime.now(timezone.utc)
+    previous_status = node.ota_status
     release = None
     if payload.release_id:
         release = session.get(FirmwareRelease, payload.release_id)
@@ -89,6 +135,10 @@ def update_ota_status(
         node.ota_available_version = None
         node.ota_progress = 100
         node.ota_last_success_at = now
+    elif payload.status == "rolled_back":
+        node.software_version = payload.installed_version or node.software_version
+        node.ota_progress = payload.progress if payload.progress is not None else 100
+        node.ota_error = payload.error
     elif payload.status == "idle":
         node.ota_available_version = None
         node.ota_target_version = None
@@ -100,6 +150,25 @@ def update_ota_status(
     session.add(node)
     session.commit()
     session.refresh(node)
+    if _should_emit_started(previous_status, payload.status):
+        _write_ota_event(
+            session,
+            node=node,
+            event_type=EventType.OTA_STARTED,
+            status=payload.status,
+            correlation_id=correlation_id or payload.release_id,
+            data=_ota_event_data(node, payload, release, contract_data),
+        )
+    event_type = _ota_event_type(payload.status)
+    if event_type is not None:
+        _write_ota_event(
+            session,
+            node=node,
+            event_type=event_type,
+            status=payload.status,
+            correlation_id=correlation_id or payload.release_id,
+            data=_ota_event_data(node, payload, release, contract_data),
+        )
     return FirmwareOtaStatusRead(
         hardware_device_id=node.hardware_device_id,
         status=node.ota_status,  # type: ignore[arg-type]
@@ -111,6 +180,52 @@ def update_ota_status(
         error=node.ota_error,
         updated_at=node.ota_updated_at,
     )
+
+
+def validate_ota_command_compatibility(
+    *,
+    node: DeviceNode,
+    params: OTACommandParams,
+) -> None:
+    schema_major = params.schema_major or SUPPORTED_SCHEMA_MAJOR
+    if schema_major != SUPPORTED_SCHEMA_MAJOR:
+        raise OtaCompatibilityError(
+            "unsupported_schema_version",
+            f"Unsupported OTA schema major version: {schema_major}.",
+            details={"schema_major": schema_major, "supported_schema_major": SUPPORTED_SCHEMA_MAJOR},
+        )
+    if params.hardware_model and node.hardware_model and params.hardware_model != node.hardware_model:
+        raise OtaCompatibilityError(
+            "unsupported_hardware",
+            "OTA command hardware_model does not match the registered node hardware_model.",
+            details={"expected": node.hardware_model, "actual": params.hardware_model},
+        )
+    if params.hardware_model and not node.hardware_model:
+        raise OtaCompatibilityError(
+            "unsupported_hardware",
+            "OTA command requires a known node hardware_model.",
+            details={"actual": params.hardware_model},
+        )
+
+    current_code = _version_code(node.software_version)
+    if params.minimum_current_version and current_code < _version_code(params.minimum_current_version):
+        raise OtaCompatibilityError(
+            "unsupported_firmware_version",
+            "Current firmware is below the minimum supported OTA version.",
+            details={
+                "current_version": node.software_version,
+                "minimum_current_version": params.minimum_current_version,
+            },
+        )
+    if params.rollback_version is None and _version_code(params.target_version) <= current_code:
+        raise OtaCompatibilityError(
+            "unsupported_firmware_version",
+            "OTA target_version must be newer than the current firmware version.",
+            details={
+                "current_version": node.software_version,
+                "target_version": params.target_version,
+            },
+        )
 
 
 def firmware_artifact_response(release: FirmwareRelease, settings: Settings):
@@ -177,6 +292,68 @@ def _mark_no_update(session: Session, node: DeviceNode) -> None:
     node.ota_updated_at = datetime.now(timezone.utc)
     session.add(node)
     session.commit()
+
+
+def _ota_event_type(status: str) -> EventType | None:
+    return {
+        "available": EventType.OTA_AVAILABLE,
+        "preparing": EventType.OTA_PREPARING,
+        "downloading": EventType.OTA_DOWNLOADING,
+        "validating": EventType.OTA_VALIDATING,
+        "installing": EventType.OTA_INSTALLING,
+        "rebooting": EventType.OTA_REBOOTING,
+        "success": EventType.OTA_SUCCESS,
+        "failed": EventType.OTA_FAILED,
+        "rolled_back": EventType.OTA_ROLLED_BACK,
+    }.get(status)
+
+
+def _should_emit_started(previous_status: str | None, next_status: str) -> bool:
+    active_statuses = {"preparing", "downloading", "validating", "installing", "rebooting"}
+    inactive_statuses = {"idle", "available", None}
+    return next_status in active_statuses and previous_status in inactive_statuses
+
+
+def _ota_event_data(
+    node: DeviceNode,
+    payload: FirmwareOtaStatusCreate,
+    release: FirmwareRelease | None,
+    contract_data: dict | None,
+) -> dict:
+    data = {
+        "release_id": payload.release_id or node.ota_release_id,
+        "current_version": payload.installed_version or node.software_version,
+        "target_version": payload.target_version or (release.version if release else node.ota_target_version),
+        "firmware_channel": (contract_data or {}).get("firmware_channel", "stable"),
+        "progress_percent": payload.progress,
+        "failure_reason": (contract_data or {}).get("failure_reason"),
+        "message": payload.error,
+    }
+    if contract_data:
+        data["contract"] = contract_data
+    return {key: value for key, value in data.items() if value is not None}
+
+
+def _write_ota_event(
+    session: Session,
+    *,
+    node: DeviceNode,
+    event_type: EventType,
+    status: str,
+    correlation_id: str | None,
+    data: dict,
+) -> None:
+    severity = DiagnosticSeverity.WARNING if status in {"failed", "rolled_back"} else DiagnosticSeverity.INFO
+    write_canonical_event(
+        session,
+        event_type=event_type,
+        severity=severity,
+        device_id=node.device_id,
+        hardware_device_id=node.hardware_device_id,
+        node_role=node.node_role,
+        correlation_id=correlation_id,
+        data=data,
+    )
 
 
 def _version_code(version: str | None) -> int:

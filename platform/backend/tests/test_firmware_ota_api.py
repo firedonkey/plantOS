@@ -11,7 +11,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import Device, DeviceNode, FirmwareRelease, User
+from app.models import Device, DeviceDiagnosticEvent, DeviceNode, FirmwareRelease, User
 from app.models.base import Base
 
 
@@ -143,6 +143,9 @@ def test_ota_manifest_advertises_backend_owned_release_and_marks_node_available(
             assert node.ota_target_version == "0.2.0"
             assert node.ota_release_id == "master-0.2.0"
             assert node.ota_progress == 0
+            event = session.query(DeviceDiagnosticEvent).order_by(DeviceDiagnosticEvent.id.desc()).first()
+            assert event.event_type == "OTA_AVAILABLE"
+            assert event.metadata_json["data"]["target_version"] == "0.2.0"
     finally:
         teardown_overrides()
 

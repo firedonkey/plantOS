@@ -8,6 +8,8 @@ import {
   DeviceDiagnosticEvent,
   DeviceDiagnosticSnapshot,
   DeviceDiagnostics,
+  DeviceTimeline,
+  DeviceTimelineEvent,
   FriendlyHardwareStatus,
   HardwareDiagnostics,
   HardwareHealth,
@@ -254,6 +256,26 @@ type ApiDeviceDiagnostics = {
   recent_events?: ApiDeviceDiagnosticEvent[] | null;
 };
 
+type ApiDeviceTimelineEvent = {
+  id: number;
+  event_type: string;
+  severity: string;
+  occurred_at: string;
+  hardware_device_id?: string | null;
+  node_role?: string | null;
+  correlation_id?: string | null;
+  summary: string;
+  code?: string | null;
+  message?: string | null;
+  data?: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type ApiDeviceTimeline = {
+  events?: ApiDeviceTimelineEvent[] | null;
+  next_before?: string | null;
+};
+
 const READING_LIMIT_BY_RANGE: Record<RangeKey, number> = {
   "24h": 5000,
   "7d": 25000,
@@ -286,6 +308,16 @@ export type DeviceSettingsDetails = {
   hardwareIdentifiers: { label: string; value: string }[];
   onboardingStatus: string;
   onboardingGuidance: string;
+};
+
+export type DeviceTimelineFilters = {
+  eventType?: string;
+  severity?: string;
+  nodeRole?: string;
+  correlationId?: string;
+  before?: string;
+  after?: string;
+  limit?: number;
 };
 
 function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
@@ -574,6 +606,51 @@ export async function getDeviceDiagnostics(
   }
 }
 
+export async function getDeviceTimeline(
+  deviceId: string,
+  filters: DeviceTimelineFilters = {},
+  token?: string,
+): Promise<{ timeline: DeviceTimeline; usedMock: boolean }> {
+  try {
+    const params = new URLSearchParams({ limit: String(filters.limit ?? 30) });
+    if (filters.eventType) {
+      params.set("event_type", filters.eventType);
+    }
+    if (filters.severity) {
+      params.set("severity", filters.severity);
+    }
+    if (filters.nodeRole) {
+      params.set("node_role", filters.nodeRole);
+    }
+    if (filters.correlationId) {
+      params.set("correlation_id", filters.correlationId);
+    }
+    if (filters.before) {
+      params.set("before", filters.before);
+    }
+    if (filters.after) {
+      params.set("after", filters.after);
+    }
+
+    const payload = await apiRequest<ApiDeviceTimeline>(`/api/devices/${deviceId}/timeline?${params.toString()}`, {}, token);
+    return {
+      usedMock: false,
+      timeline: {
+        events: (payload.events ?? []).map(mapTimelineEvent),
+        nextBefore: payload.next_before ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      timeline: filterMockTimeline(buildMockDeviceTimeline(deviceId), filters),
+    };
+  }
+}
+
 function mapDiagnosticSnapshot(snapshot: ApiDeviceDiagnosticSnapshot): DeviceDiagnosticSnapshot {
   return {
     hardwareDeviceId: snapshot.hardware_device_id,
@@ -613,6 +690,23 @@ function mapDiagnosticEvent(event: ApiDeviceDiagnosticEvent): DeviceDiagnosticEv
     count: event.count ?? undefined,
     metadata: event.metadata ?? {},
     occurredAt: event.occurred_at,
+    createdAt: event.created_at,
+  };
+}
+
+function mapTimelineEvent(event: ApiDeviceTimelineEvent): DeviceTimelineEvent {
+  return {
+    id: String(event.id),
+    eventType: event.event_type,
+    severity: event.severity,
+    occurredAt: event.occurred_at,
+    hardwareDeviceId: event.hardware_device_id ?? undefined,
+    nodeRole: event.node_role ?? undefined,
+    correlationId: event.correlation_id ?? undefined,
+    summary: event.summary,
+    code: event.code ?? undefined,
+    message: event.message ?? undefined,
+    data: event.data ?? {},
     createdAt: event.created_at,
   };
 }
@@ -740,6 +834,97 @@ function buildMockDiagnosticEvents(
   }
 
   return events;
+}
+
+function buildMockDeviceTimeline(deviceId: string): DeviceTimeline {
+  const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
+  const now = new Date();
+  const health = mockDashboard.hardwareHealth;
+  const latestReading = mockDashboard.device.latestReading;
+  const lightOn = mockDashboard.device.currentLightOn ?? latestReading?.lightOn ?? false;
+  const events: DeviceTimelineEvent[] = [
+    {
+      id: "mock-timeline-command-completed",
+      eventType: "COMMAND_COMPLETED",
+      severity: "info",
+      occurredAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+      hardwareDeviceId: health?.primary?.hardwareDeviceId,
+      nodeRole: "master",
+      correlationId: "mock-command-light",
+      summary: `SET_LIGHT_BRIGHTNESS completed`,
+      data: {
+        command_id: "mock-command-light",
+        command_type: "SET_LIGHT_BRIGHTNESS",
+        status: "completed",
+        actuator_state: {
+          ambient_light: {
+            enabled: lightOn,
+            brightness_percent: mockDashboard.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent ?? 0,
+          },
+        },
+      },
+      createdAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+    },
+    {
+      id: "mock-timeline-heartbeat",
+      eventType: "HEARTBEAT_RECEIVED",
+      severity: "info",
+      occurredAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+      hardwareDeviceId: health?.primary?.hardwareDeviceId,
+      nodeRole: "master",
+      correlationId: "mock-heartbeat",
+      summary: `Heartbeat received${health?.primary?.diagnostics?.wifiRssiDbm ? ` (RSSI ${health.primary.diagnostics.wifiRssiDbm} dBm)` : ""}`,
+      data: {
+        wifi_rssi_dbm: health?.primary?.diagnostics?.wifiRssiDbm,
+        firmware_version: health?.primary?.diagnostics?.firmwareVersion,
+        runtime: {
+          camera_node_status: health?.cameraStatus,
+          last_command_status: health?.lastCommand?.status,
+        },
+      },
+      createdAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+    },
+    {
+      id: "mock-timeline-diagnostics",
+      eventType: "DIAGNOSTICS_RECEIVED",
+      severity: health?.friendlyStatus === "needs_attention" ? "warning" : "info",
+      occurredAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+      hardwareDeviceId: health?.primary?.hardwareDeviceId,
+      nodeRole: "master",
+      summary: health?.friendlyStatus === "needs_attention" ? "Diagnostics received (warning)" : "Diagnostics received (info)",
+      data: {
+        status: health?.overallStatus,
+        attention_reasons: health?.attentionReasons ?? [],
+      },
+      createdAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+    },
+  ];
+  return { events };
+}
+
+function filterMockTimeline(timeline: DeviceTimeline, filters: DeviceTimelineFilters): DeviceTimeline {
+  const events = timeline.events.filter((event) => {
+    if (filters.eventType && event.eventType !== filters.eventType) {
+      return false;
+    }
+    if (filters.severity && event.severity !== filters.severity) {
+      return false;
+    }
+    if (filters.nodeRole && event.nodeRole !== filters.nodeRole) {
+      return false;
+    }
+    if (filters.correlationId && event.correlationId !== filters.correlationId) {
+      return false;
+    }
+    if (filters.before && new Date(event.occurredAt).getTime() >= new Date(filters.before).getTime()) {
+      return false;
+    }
+    if (filters.after && new Date(event.occurredAt).getTime() < new Date(filters.after).getTime()) {
+      return false;
+    }
+    return true;
+  });
+  return { events: events.slice(0, filters.limit ?? 30) };
 }
 
 function isProblemDiagnosticStatus(status: string | undefined): boolean {

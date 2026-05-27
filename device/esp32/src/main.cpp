@@ -16,6 +16,8 @@
 #include "camera_capture_schedule.h"
 #include "actuators/pump_controller.h"
 #include "config.h"
+#include "contracts/command_dispatcher.h"
+#include "contracts/plantlab_contracts.h"
 #include "espnow_test_protocol.h"
 #include "firmware_version.h"
 #include "ota/ota_update_manager.h"
@@ -28,6 +30,16 @@
 #include "sensors/water_temperature_sensor.h"
 #include "system/power_button.h"
 #include "system/status_led.h"
+
+bool reportPlatformCommandResult(
+    const PlatformCommand& command,
+    const char* status,
+    const char* message,
+    const char* error_code = nullptr);
+bool reportPendingCaptureCommandResult(
+    const char* status,
+    const char* message,
+    const char* error_code = nullptr);
 
 namespace {
 constexpr char kPreferencesNamespace[] = "plantlab";
@@ -90,6 +102,9 @@ struct PendingCaptureCommand {
   bool result_ready = false;
   uint8_t dispatch_attempts = 0;
   int command_id = 0;
+  bool contract_native = false;
+  String contract_command_id;
+  String contract_command_type;
   uint32_t request_id = 0;
   unsigned long started_at_ms = 0;
   unsigned long last_result_attempt_ms = 0;
@@ -1114,20 +1129,16 @@ void flushPendingCaptureCommandResult() {
 
   setCameraSchedulePausedForManual(false);
 
-  String ack_error;
-  if (!g_platform_client->report_hardware_command_result(
-          g_pending_capture_command.command_id,
+  const char* error_code =
+      g_pending_capture_command.result_status == "completed" ? nullptr : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR;
+  if (!reportPendingCaptureCommandResult(
           g_pending_capture_command.result_status.c_str(),
           g_pending_capture_command.result_message.c_str(),
-          g_growing_light.is_on(),
-          g_pump.is_on(),
-          &ack_error)) {
-    ++g_diagnostic_error_counters.upload_failures;
-    recordDiagnosticError("command_result_upload_failed", "command result update failed");
+          error_code)) {
     g_pending_capture_command.last_result_attempt_ms = millis();
     Serial.printf(
         "[platform] capture command result update failed: %s (will retry %s: %s)\n",
-        ack_error.c_str(),
+        g_pending_capture_command.contract_native ? "contract result upload failed" : "legacy result upload failed",
         g_pending_capture_command.result_status.c_str(),
         g_pending_capture_command.result_message.c_str());
     return;
@@ -1148,17 +1159,12 @@ void markPendingCaptureCommandInProgress(int command_id) {
   Serial.printf("[platform] capture command %d marked in_progress\n", command_id);
   recordLastCommandResult(command_id, "in_progress", "waiting for camera upload", "camera_capture_started");
 
-  String ack_error;
-  if (!g_platform_client->report_hardware_command_result(
-          command_id,
-          "in_progress",
-          "waiting for camera upload",
-          g_growing_light.is_on(),
-          g_pump.is_on(),
-          &ack_error)) {
-    ++g_diagnostic_error_counters.upload_failures;
-    recordDiagnosticError("command_result_upload_failed", "command progress update failed");
-    Serial.printf("[platform] capture command progress update failed: %s\n", ack_error.c_str());
+  if (g_pending_capture_command.active &&
+      g_pending_capture_command.command_id == command_id &&
+      !reportPendingCaptureCommandResult(
+          PLANTLAB_COMMAND_STATUS_IN_PROGRESS,
+          "waiting for camera upload")) {
+    Serial.println("[platform] capture command progress update failed");
   }
 }
 
@@ -1168,34 +1174,32 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
         "[platform] capture command %d cannot start while command %d is still pending\n",
         command.id,
         g_pending_capture_command.command_id);
-    String ack_error;
-    if (!g_platform_client->report_hardware_command_result(
-            command.id,
-            "failed",
+    if (!reportPlatformCommandResult(
+            command,
+            PLANTLAB_COMMAND_STATUS_FAILED,
             "capture already in progress",
-            g_growing_light.is_on(),
-            g_pump.is_on(),
-            &ack_error)) {
-      ++g_diagnostic_error_counters.upload_failures;
-      recordDiagnosticError("command_result_upload_failed", "command result update failed");
-      Serial.printf("[platform] overlapping capture command update failed: %s\n", ack_error.c_str());
+            PLANTLAB_COMMAND_ERROR_DEVICE_BUSY)) {
+      Serial.println("[platform] overlapping capture command update failed");
     }
     return false;
   }
 
   setCameraSchedulePausedForManual(true);
-  markPendingCaptureCommandInProgress(command.id);
 
   g_pending_capture_command.active = true;
   g_pending_capture_command.dispatched = false;
   g_pending_capture_command.result_ready = false;
   g_pending_capture_command.dispatch_attempts = 0;
   g_pending_capture_command.command_id = command.id;
+  g_pending_capture_command.contract_native = command.contract_native;
+  g_pending_capture_command.contract_command_id = command.command_id;
+  g_pending_capture_command.contract_command_type = command.command_type;
   g_pending_capture_command.request_id = 0;
   g_pending_capture_command.started_at_ms = now;
   g_pending_capture_command.last_result_attempt_ms = 0;
   g_pending_capture_command.result_status = "";
   g_pending_capture_command.result_message = "";
+  markPendingCaptureCommandInProgress(command.id);
 
   if (g_camera_capture_in_flight.active) {
     Serial.printf(
@@ -1218,17 +1222,11 @@ bool dispatchPendingCaptureCommand(unsigned long now) {
   if (!sendEspNowCaptureCommand(now, &request_id, g_pending_capture_command.command_id)) {
     const String message =
         g_camera_target_mac_known ? "failed to send capture request to camera" : "camera node is not reachable";
-    String ack_error;
-    if (!g_platform_client->report_hardware_command_result(
-            g_pending_capture_command.command_id,
-            "failed",
+    if (!reportPendingCaptureCommandResult(
+            PLANTLAB_COMMAND_STATUS_FAILED,
             message.c_str(),
-            g_growing_light.is_on(),
-            g_pump.is_on(),
-            &ack_error)) {
-      ++g_diagnostic_error_counters.upload_failures;
-      recordDiagnosticError("command_result_upload_failed", "command result update failed");
-      Serial.printf("[platform] capture command failure update failed: %s\n", ack_error.c_str());
+            PLANTLAB_COMMAND_ERROR_TRANSPORT_ERROR)) {
+      Serial.println("[platform] capture command failure update failed");
     }
     Serial.printf(
         "[platform] capture command %d failed to start: %s\n",
@@ -2985,8 +2983,16 @@ PlatformStatus platform_status(const String& message) {
   PlatformStatus status{};
   const unsigned long now = millis();
   status.hardware_device_id = stableHardwareDeviceId();
-  status.node_role = "master";
-  status.status = "online";
+  status.node_role = PLANTLAB_NODE_ROLE_MASTER;
+  status.status = PLANTLAB_DEVICE_STATUS_ONLINE;
+  status.hardware_model = "esp32_master";
+  status.hardware_version = BOARD_NAME;
+  status.has_free_heap_bytes = true;
+  status.free_heap_bytes = ESP.getFreeHeap();
+  if (WiFi.status() == WL_CONNECTED) {
+    status.ip_address = WiFi.localIP().toString();
+  }
+  status.has_light_state = true;
   status.light_on = g_growing_light.is_on();
   if (g_growing_light.supports_intensity_control()) {
     status.light_intensity_percent = g_growing_light.intensity_percent();
@@ -2994,6 +3000,19 @@ PlatformStatus platform_status(const String& message) {
   status.pump_on = g_pump.is_on();
   status.message = message;
   status.software_version = kSoftwareVersion;
+  status.has_capture_interval_seconds = true;
+  status.capture_interval_seconds = static_cast<uint32_t>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS / 1000UL);
+  status.ota_status = g_ota_update_manager ? g_ota_update_manager->current_status() : PLANTLAB_OTA_STATUS_IDLE;
+  status.provisioning_status = plantlab::provisioningStateName(g_provisioning_state);
+  if (g_camera_runtime_ready) {
+    status.camera_node_status = PLANTLAB_DEVICE_STATUS_ONLINE;
+  } else if (g_camera_target_mac_known || g_camera_provisioning_acknowledged) {
+    status.camera_node_status = PLANTLAB_DEVICE_STATUS_DEGRADED;
+  }
+  if (g_last_command_result_ms > 0 && g_last_command_id > 0) {
+    status.last_command_contract_id = "cmd_" + String(g_last_command_id);
+    status.last_command_status = g_last_command_status;
+  }
   status.diagnostics.valid = true;
   status.diagnostics.has_uptime_seconds = true;
   status.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
@@ -3182,9 +3201,85 @@ int reportedLightIntensityPercent() {
   return g_growing_light.supports_intensity_control() ? g_growing_light.intensity_percent() : -1;
 }
 
+bool reportPlatformCommandResult(
+    const PlatformCommand& command,
+    const char* status,
+    const char* message,
+    const char* error_code) {
+  if (!platform_enabled()) {
+    return false;
+  }
+
+  String ack_error;
+  bool reported = false;
+  if (command.contract_native) {
+    const String hardware_id = stableHardwareDeviceId();
+    reported = g_platform_client->report_contract_command_result(
+        command,
+        hardware_id.c_str(),
+        PLANTLAB_NODE_ROLE_MASTER,
+        status,
+        message,
+        g_growing_light.is_on(),
+        g_pump.is_on(),
+        &ack_error,
+        reportedLightIntensityPercent(),
+        error_code);
+  } else {
+    reported = g_platform_client->report_hardware_command_result(
+        command.id,
+        status,
+        message,
+        g_growing_light.is_on(),
+        g_pump.is_on(),
+        &ack_error,
+        reportedLightIntensityPercent());
+  }
+
+  if (!reported) {
+    ++g_diagnostic_error_counters.upload_failures;
+    recordDiagnosticError("command_result_upload_failed", "command result update failed");
+    Serial.printf("[platform] command result update failed: %s\n", ack_error.c_str());
+    return false;
+  }
+  return true;
+}
+
+bool reportPendingCaptureCommandResult(const char* status, const char* message, const char* error_code) {
+  PlatformCommand command{};
+  command.id = g_pending_capture_command.command_id;
+  command.target = "camera";
+  command.action = "capture";
+  command.valid = command.id > 0;
+  command.contract_native = g_pending_capture_command.contract_native;
+  command.command_id = g_pending_capture_command.contract_command_id;
+  command.command_type = g_pending_capture_command.contract_command_type;
+  return reportPlatformCommandResult(command, status, message, error_code);
+}
+
 void execute_platform_command(const PlatformCommand& command) {
   String message;
   bool success = true;
+
+  if (command.contract_native) {
+    Serial.printf(
+        "[platform] contract command received id=%s type=%s legacy_id=%d\n",
+        command.command_id.c_str(),
+        command.command_type.c_str(),
+        command.id);
+    reportPlatformCommandResult(command, PLANTLAB_COMMAND_STATUS_ACKED, "command accepted");
+    if (!plantlab::contracts::isSupportedMasterCommand(command)) {
+      message = "contract command is not supported by this firmware build";
+      recordLastCommandResult(command.id, "rejected", message, "command_rejected");
+      recordDiagnosticError("command_rejected", message);
+      reportPlatformCommandResult(
+          command,
+          PLANTLAB_COMMAND_STATUS_REJECTED,
+          message.c_str(),
+          plantlab::contracts::unsupportedCommandErrorCode(command));
+      return;
+    }
+  }
 
   if (command.target == "light") {
     if (command.action == "on") {
@@ -3226,6 +3321,55 @@ void execute_platform_command(const PlatformCommand& command) {
     Serial.printf("[platform] received backend capture command id=%d value=%s\n", command.id, command.value.c_str());
     startPendingCaptureCommand(command, millis());
     return;
+  } else if (command.target == "ota" && command.action == "start") {
+    if (!g_ota_update_manager) {
+      message = "OTA manager is not available";
+      recordLastCommandResult(command.id, "rejected", message, "ota_unavailable");
+      recordDiagnosticError("ota_unavailable", message);
+      reportPlatformCommandResult(
+          command,
+          PLANTLAB_COMMAND_STATUS_REJECTED,
+          message.c_str(),
+          PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR);
+      return;
+    }
+
+    plantlab::OtaStartRequest ota_request;
+    ota_request.legacy_command_id = command.id;
+    ota_request.command_id = command.command_id;
+    ota_request.command_type = command.command_type;
+    ota_request.target_version = command.ota_target_version;
+    ota_request.download_url = command.ota_download_url;
+    ota_request.checksum_sha256 = command.ota_checksum_sha256;
+    ota_request.hardware_model = command.ota_hardware_model;
+    ota_request.firmware_channel = command.ota_firmware_channel;
+    ota_request.release_id = command.ota_release_id;
+    ota_request.artifact_size_bytes = command.ota_artifact_size_bytes;
+
+    String ota_error;
+    if (!g_ota_update_manager->startContractUpdate(ota_request, &ota_error)) {
+      const bool rejected = ota_error.startsWith("START_OTA missing") ||
+                            ota_error.startsWith("START_OTA hardware_model") ||
+                            ota_error.startsWith("START_OTA checksum") ||
+                            ota_error.startsWith("START_OTA download_url") ||
+                            ota_error == "OTA update already in progress";
+      recordLastCommandResult(
+          command.id,
+          rejected ? "rejected" : "failed",
+          ota_error,
+          rejected ? "ota_command_rejected" : "ota_command_failed");
+      recordDiagnosticError(rejected ? "ota_command_rejected" : "ota_command_failed", ota_error);
+      if (rejected || ota_error != "OTA install failed") {
+        reportPlatformCommandResult(
+            command,
+            rejected ? PLANTLAB_COMMAND_STATUS_REJECTED : PLANTLAB_COMMAND_STATUS_FAILED,
+            ota_error.c_str(),
+            rejected ? PLANTLAB_COMMAND_ERROR_INVALID_PARAMS : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR);
+      }
+    }
+    return;
+  } else if (command.target == "diagnostics" && command.action == "request") {
+    message = "diagnostics heartbeat sent";
   } else {
     success = false;
     message = "unsupported command target";
@@ -3236,22 +3380,16 @@ void execute_platform_command(const PlatformCommand& command) {
     ++g_diagnostic_error_counters.upload_failures;
     recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
   }
-  String ack_error;
   recordLastCommandResult(command.id, success ? "completed" : "failed", message, success ? "ok" : "command_failed");
   if (!success) {
     recordDiagnosticError("command_failed", message);
   }
-  if (!g_platform_client->report_hardware_command_result(
-          command.id,
-          success ? "completed" : "failed",
+  if (!reportPlatformCommandResult(
+          command,
+          success ? PLANTLAB_COMMAND_STATUS_COMPLETED : PLANTLAB_COMMAND_STATUS_FAILED,
           message.c_str(),
-          g_growing_light.is_on(),
-          g_pump.is_on(),
-          &ack_error,
-          reportedLightIntensityPercent())) {
-    ++g_diagnostic_error_counters.upload_failures;
-    recordDiagnosticError("command_result_upload_failed", "command result update failed");
-    Serial.printf("[platform] command ack failed: %s\n", ack_error.c_str());
+          success ? nullptr : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR)) {
+    Serial.println("[platform] command result update failed");
   } else {
     Serial.printf("[platform] command %d handled: %s\n", command.id, message.c_str());
   }
@@ -3265,10 +3403,23 @@ void poll_platform_commands(unsigned long now) {
 
   PlatformCommand commands[4]{};
   String error;
-  const int count = g_platform_client->poll_hardware_pending_commands(commands, 4, &error);
+  const String hardware_id = stableHardwareDeviceId();
+  int count = g_platform_client->poll_contract_commands(
+      hardware_id.c_str(),
+      PLANTLAB_NODE_ROLE_MASTER,
+      kSoftwareVersion,
+      "esp32_master",
+      commands,
+      4,
+      &error);
   if (count < 0) {
-    Serial.printf("[platform] command poll failed: %s\n", error.c_str());
-    return;
+    Serial.printf("[platform] contract command poll failed, falling back to legacy: %s\n", error.c_str());
+    error = "";
+    count = g_platform_client->poll_hardware_pending_commands(commands, 4, &error);
+    if (count < 0) {
+      Serial.printf("[platform] command poll failed: %s\n", error.c_str());
+      return;
+    }
   }
 
   for (int i = 0; i < count; ++i) {

@@ -15,6 +15,7 @@ struct FirmwareManifest {
   size_t artifact_size_bytes = 0;
   String sha256;
   String signature;
+  String firmware_channel;
 };
 
 bool parseFirmwareManifest(

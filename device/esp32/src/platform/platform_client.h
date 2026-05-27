@@ -9,6 +9,18 @@ struct PlatformCommand {
   String target;
   String action;
   String value;
+  String command_id;
+  String command_type;
+  String target_node_role;
+  String target_hardware_device_id;
+  String ota_target_version;
+  String ota_download_url;
+  String ota_checksum_sha256;
+  String ota_hardware_model;
+  String ota_firmware_channel;
+  String ota_release_id;
+  size_t ota_artifact_size_bytes = 0;
+  bool contract_native = false;
   bool valid;
 };
 
@@ -68,11 +80,24 @@ struct PlatformStatus {
   String hardware_device_id;
   String node_role;
   String status;
-  bool light_on;
+  String hardware_model;
+  String hardware_version;
+  String ip_address;
+  bool has_free_heap_bytes = false;
+  uint32_t free_heap_bytes = 0;
+  bool has_light_state = false;
+  bool light_on = false;
   int light_intensity_percent = -1;
-  bool pump_on;
+  bool pump_on = false;
   String message;
   String software_version;
+  bool has_capture_interval_seconds = false;
+  uint32_t capture_interval_seconds = 0;
+  String ota_status;
+  String provisioning_status;
+  String camera_node_status;
+  String last_command_contract_id;
+  String last_command_status;
   PlatformDiagnostics diagnostics;
 };
 
@@ -90,6 +115,14 @@ class PlatformClient {
   bool send_hardware_heartbeat(const PlatformStatus& status, String* error = nullptr);
   int poll_pending_commands(PlatformCommand* commands, size_t max_commands, String* error = nullptr);
   int poll_hardware_pending_commands(PlatformCommand* commands, size_t max_commands, String* error = nullptr);
+  int poll_contract_commands(
+      const char* hardware_device_id,
+      const char* node_role,
+      const char* firmware_version,
+      const char* hardware_model,
+      PlatformCommand* commands,
+      size_t max_commands,
+      String* error = nullptr);
   bool acknowledge_command(
       int command_id,
       const char* status,
@@ -106,6 +139,17 @@ class PlatformClient {
       bool pump_on,
       String* error = nullptr,
       int light_intensity_percent = -1);
+  bool report_contract_command_result(
+      const PlatformCommand& command,
+      const char* hardware_device_id,
+      const char* node_role,
+      const char* status,
+      const char* message,
+      bool light_on,
+      bool pump_on,
+      String* error = nullptr,
+      int light_intensity_percent = -1,
+      const char* error_code = nullptr);
   bool upload_jpeg(
       const uint8_t* bytes,
       size_t length,
@@ -137,6 +181,20 @@ class PlatformClient {
       const char* installed_version,
       int progress,
       const char* error_message,
+      String* error = nullptr);
+  bool report_contract_ota_status(
+      const char* hardware_device_id,
+      const char* node_role,
+      const char* command_id,
+      const char* status,
+      const char* release_id,
+      const char* target_version,
+      const char* current_version,
+      int progress,
+      const char* firmware_channel,
+      const char* phase,
+      const char* failure_reason,
+      const char* message,
       String* error = nullptr);
   bool download_ota_artifact(
       const String& artifact_path,

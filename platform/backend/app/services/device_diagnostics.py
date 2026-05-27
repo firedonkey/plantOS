@@ -41,19 +41,19 @@ def upsert_diagnostic_snapshot(
     )
     session.add(snapshot)
 
-    last_command = diagnostics.last_command
-    last_error = diagnostics.last_error
+    last_command = getattr(diagnostics, "last_command", None)
+    last_error = getattr(diagnostics, "last_error", None)
     snapshot.device_id = device_id
     snapshot.node_role = node.node_role
-    snapshot.schema_version = diagnostics.schema_version
+    snapshot.schema_version = int(getattr(diagnostics, "schema_version", 1) or 1)
     snapshot.reported_status = _clean_text(status, 40)
     snapshot.firmware_version = _clean_text(node.software_version, 120)
-    snapshot.uptime_seconds = diagnostics.uptime_seconds
-    snapshot.wifi_rssi_dbm = diagnostics.wifi_rssi_dbm
-    snapshot.reboot_reason = _clean_text(diagnostics.reboot_reason, 80)
-    snapshot.provisioning_state = _clean_text(diagnostics.provisioning_state, 80)
-    snapshot.last_sensor_reading_at = _timestamp_from_age(now, diagnostics.last_sensor_reading_age_seconds)
-    snapshot.last_camera_image_upload_at = _timestamp_from_age(now, diagnostics.last_camera_image_upload_age_seconds)
+    snapshot.uptime_seconds = getattr(diagnostics, "uptime_seconds", None)
+    snapshot.wifi_rssi_dbm = getattr(diagnostics, "wifi_rssi_dbm", None)
+    snapshot.reboot_reason = _clean_text(getattr(diagnostics, "reboot_reason", None), 80)
+    snapshot.provisioning_state = _clean_text(getattr(diagnostics, "provisioning_state", None), 80)
+    snapshot.last_sensor_reading_at = _timestamp_from_age(now, getattr(diagnostics, "last_sensor_reading_age_seconds", None))
+    snapshot.last_camera_image_upload_at = _timestamp_from_age(now, getattr(diagnostics, "last_camera_image_upload_age_seconds", None))
     snapshot.last_command_id = last_command.id if last_command else None
     snapshot.last_command_status = _clean_text(last_command.status if last_command else None, 40)
     snapshot.last_command_code = _clean_text(last_command.code if last_command else None, 80)

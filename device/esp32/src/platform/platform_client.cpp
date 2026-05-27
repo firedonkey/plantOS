@@ -8,6 +8,11 @@
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 
+#include "contracts/contract_client.h"
+#include "contracts/envelope_builder.h"
+#include "contracts/envelope_parser.h"
+#include "contracts/plantlab_contracts.h"
+
 namespace {
 constexpr uint32_t kHttpTimeoutMs = 10000;
 constexpr uint32_t kOtaDownloadTimeoutMs = 30000;
@@ -203,6 +208,48 @@ bool PlatformClient::send_status(const PlatformStatus& status, String* error) {
 }
 
 bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, String* error) {
+  if (status.diagnostics.valid && status.diagnostics.has_uptime_seconds &&
+      status.hardware_device_id.length() > 0 && status.node_role.length() > 0 &&
+      status.software_version.length() > 0) {
+    String contract_body;
+    if (plantlab::contracts::buildHeartbeatEnvelope(
+            device_id_,
+            status.hardware_device_id.c_str(),
+            status.node_role.c_str(),
+            status.status.c_str(),
+            status.software_version.c_str(),
+            status.hardware_model.c_str(),
+            status.hardware_version.c_str(),
+            status.diagnostics.uptime_seconds,
+            status.diagnostics.has_wifi_rssi_dbm,
+            status.diagnostics.wifi_rssi_dbm,
+            status.ip_address.c_str(),
+            status.has_free_heap_bytes,
+            status.free_heap_bytes,
+            status.has_light_state,
+            status.light_on,
+            status.light_intensity_percent,
+            status.has_capture_interval_seconds,
+            status.capture_interval_seconds,
+            status.ota_status.c_str(),
+            status.provisioning_status.c_str(),
+            status.camera_node_status.c_str(),
+            status.last_command_contract_id.c_str(),
+            status.last_command_status.c_str(),
+            &contract_body)) {
+      int contract_status_code = 0;
+      String contract_response_body;
+      if (!json_post("/api/hardware/heartbeat", contract_body, &contract_status_code, &contract_response_body)) {
+        set_error(error, contract_response_body);
+        return false;
+      }
+      if (contract_status_code >= 200 && contract_status_code < 300) {
+        return true;
+      }
+      // Keep older backend compatibility if contract heartbeat is not accepted.
+    }
+  }
+
   StaticJsonDocument<1024> doc;
   if (status.hardware_device_id.length() > 0) {
     doc["hardware_device_id"] = status.hardware_device_id;
@@ -369,6 +416,46 @@ int PlatformClient::poll_hardware_pending_commands(PlatformCommand* commands, si
   return static_cast<int>(count);
 }
 
+int PlatformClient::poll_contract_commands(
+    const char* hardware_device_id,
+    const char* node_role,
+    const char* firmware_version,
+    const char* hardware_model,
+    PlatformCommand* commands,
+    size_t max_commands,
+    String* error) {
+  if (!plantlab::contracts::validateCommandPollMetadata(
+          hardware_device_id,
+          node_role,
+          firmware_version,
+          error)) {
+    return -1;
+  }
+
+  String path = "/api/hardware/commands/poll?hardware_device_id=" +
+      url_encode(String(hardware_device_id)) +
+      "&node_role=" + url_encode(String(node_role)) +
+      "&firmware_version=" + url_encode(String(firmware_version)) +
+      "&schema_version=" + url_encode(String(PLANTLAB_CONTRACT_SCHEMA_VERSION)) +
+      "&limit=" + String(static_cast<int>(max_commands));
+  if (hardware_model != nullptr && String(hardware_model).length() > 0) {
+    path += "&hardware_model=" + url_encode(String(hardware_model));
+  }
+
+  int status_code = 0;
+  String response_body;
+  if (!json_get(path, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return -1;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "contract command poll failed with HTTP " + String(status_code) + ": " + response_body);
+    return -1;
+  }
+
+  return plantlab::contracts::parseCommandPollResponse(response_body, commands, max_commands, error);
+}
+
 bool PlatformClient::acknowledge_command(
     int command_id,
     const char* status,
@@ -440,6 +527,70 @@ bool PlatformClient::report_hardware_command_result(
     set_error(
         error,
         "hardware command result failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
+bool PlatformClient::report_contract_command_result(
+    const PlatformCommand& command,
+    const char* hardware_device_id,
+    const char* node_role,
+    const char* status,
+    const char* message,
+    bool light_on,
+    bool pump_on,
+    String* error,
+    int light_intensity_percent,
+    const char* error_code) {
+  if (!command.contract_native) {
+    return report_hardware_command_result(
+        command.id,
+        status,
+        message,
+        light_on,
+        pump_on,
+        error,
+        light_intensity_percent);
+  }
+  if (command.id <= 0) {
+    set_error(error, "contract command result skipped: missing numeric command id");
+    return false;
+  }
+
+  String body;
+  if (!plantlab::contracts::buildCommandResultEnvelope(
+          device_id_,
+          hardware_device_id,
+          node_role,
+          command.command_id.c_str(),
+          command.command_type.c_str(),
+          status,
+          message,
+          light_on,
+          pump_on,
+          light_intensity_percent,
+          error_code,
+          command.command_type != PLANTLAB_COMMAND_START_OTA,
+          &body)) {
+    set_error(error, "contract command result envelope build failed");
+    return false;
+  }
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post(
+          "/api/hardware/commands/" + String(command.id) + "/result",
+          body,
+          &status_code,
+          &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(
+        error,
+        "contract command result failed with HTTP " + String(status_code) + ": " + response_body);
     return false;
   }
   return true;
@@ -697,6 +848,53 @@ bool PlatformClient::report_ota_status(
   }
   if (status_code < 200 || status_code >= 300) {
     set_error(error, "OTA status failed with HTTP " + String(status_code) + ": " + response_body);
+    return false;
+  }
+  return true;
+}
+
+bool PlatformClient::report_contract_ota_status(
+    const char* hardware_device_id,
+    const char* node_role,
+    const char* command_id,
+    const char* status,
+    const char* release_id,
+    const char* target_version,
+    const char* current_version,
+    int progress,
+    const char* firmware_channel,
+    const char* phase,
+    const char* failure_reason,
+    const char* message,
+    String* error) {
+  String body;
+  if (!plantlab::contracts::buildOtaStatusEnvelope(
+          device_id_,
+          hardware_device_id,
+          node_role,
+          command_id,
+          status,
+          release_id,
+          target_version,
+          current_version,
+          progress,
+          firmware_channel,
+          phase,
+          failure_reason,
+          message,
+          &body)) {
+    set_error(error, "contract OTA status envelope build failed");
+    return false;
+  }
+
+  int status_code = 0;
+  String response_body;
+  if (!json_post("/api/hardware/ota/status", body, &status_code, &response_body)) {
+    set_error(error, response_body);
+    return false;
+  }
+  if (status_code < 200 || status_code >= 300) {
+    set_error(error, "contract OTA status failed with HTTP " + String(status_code) + ": " + response_body);
     return false;
   }
   return true;

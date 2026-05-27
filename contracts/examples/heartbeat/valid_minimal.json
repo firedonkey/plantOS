@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "message_id": "evt_01HXHEARTBEATMIN",
+  "hardware_device_id": "pl-esp32-64e0a80af6e8",
+  "node_role": "master",
+  "message_type": "HEARTBEAT",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "uptime_seconds": 12345,
+    "node_status": "online",
+    "firmware_version": "1.0.0"
+  }
+}

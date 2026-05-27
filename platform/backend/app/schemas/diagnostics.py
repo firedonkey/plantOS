@@ -95,3 +95,23 @@ class DeviceDiagnosticEventRead(BaseModel):
 class DeviceDiagnosticsRead(BaseModel):
     snapshots: list[DeviceDiagnosticSnapshotRead] = Field(default_factory=list)
     recent_events: list[DeviceDiagnosticEventRead] = Field(default_factory=list)
+
+
+class DeviceTimelineEventRead(BaseModel):
+    id: int
+    event_type: str
+    severity: str
+    occurred_at: datetime
+    hardware_device_id: str | None = None
+    node_role: str | None = None
+    correlation_id: str | None = None
+    summary: str
+    code: str | None = None
+    message: str | None = None
+    data: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
+class DeviceTimelineRead(BaseModel):
+    events: list[DeviceTimelineEventRead] = Field(default_factory=list)
+    next_before: datetime | None = None
