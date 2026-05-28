@@ -359,7 +359,6 @@ select {
 }
 
 .device-overview-subtitle,
-.device-overview-summary,
 .device-overview-meta {
   margin: 0;
 }
@@ -367,13 +366,6 @@ select {
 .device-overview-subtitle {
   color: var(--pl-color-text-secondary);
   font-size: var(--pl-font-size-body-large);
-}
-
-.device-overview-summary {
-  max-width: 720px;
-  color: var(--pl-color-text-primary);
-  font-size: 1.2rem;
-  line-height: 1.45;
 }
 
 .device-overview-meta {

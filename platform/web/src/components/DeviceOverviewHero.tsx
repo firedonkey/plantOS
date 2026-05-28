@@ -38,8 +38,6 @@ export function DeviceOverviewHero({
           </p>
         </div>
 
-        <p className="device-overview-summary">{health.summary}</p>
-
         <div className="device-overview-meta">
           <span>Last seen {formatAge(lastSeen)}</span>
           <span>Updated {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : "waiting"}</span>
@@ -95,17 +93,15 @@ function OverviewStat({
   );
 }
 
-function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "healthy" | "attention" | "offline" | "updating" | "critical"; summary: string } {
+function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "healthy" | "attention" | "offline" | "updating" | "critical" } {
   const health = dashboard.hardwareHealth;
   const status = health?.friendlyStatus ?? health?.overallStatus ?? dashboard.device.status;
   const cameraStatus = health?.cameraStatus;
-  const attentionReason = health?.attentionReasons?.[0];
 
   if (status === "online" || status === "recently_seen") {
     return {
       label: "Healthy",
       tone: "healthy",
-      summary: "Everything looks steady. The device is reporting normally.",
     };
   }
 
@@ -113,7 +109,6 @@ function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "heal
     return {
       label: "Offline",
       tone: "offline",
-      summary: "The device is not currently reporting. Recent data stays visible while it reconnects.",
     };
   }
 
@@ -121,7 +116,6 @@ function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "heal
     return {
       label: "Provisioning",
       tone: "updating",
-      summary: "Setup is still in progress. Keep the planter powered and nearby.",
     };
   }
 
@@ -129,7 +123,6 @@ function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "heal
     return {
       label: "Needs attention",
       tone: "critical",
-      summary: formatStatusReason(attentionReason) ?? "A device issue needs attention.",
     };
   }
 
@@ -137,14 +130,12 @@ function resolveHealth(dashboard: DeviceDashboard): { label: string; tone: "heal
     return {
       label: "Camera offline",
       tone: "attention",
-      summary: "Sensor readings can continue while the camera node reconnects.",
     };
   }
 
   return {
     label: "Needs attention",
     tone: "attention",
-    summary: formatStatusReason(attentionReason) ?? "PlantLab is watching a device state that may need review.",
   };
 }
 
@@ -212,23 +203,6 @@ function formatConnection(status: string | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatStatusReason(reason?: string): string | undefined {
-  if (!reason) {
-    return undefined;
-  }
-  const normalized = formatConnection(reason);
-  if (reason === "primary_node_warning") {
-    return "The main controller is reporting a warning.";
-  }
-  if (reason === "camera_node_warning") {
-    return "The camera node is reporting a warning.";
-  }
-  if (reason === "camera_node_offline") {
-    return "The camera node is offline. Sensor readings may still continue.";
-  }
-  return normalized;
 }
 
 function formatAge(timestamp?: string): string {
