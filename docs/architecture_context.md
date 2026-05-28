@@ -38,7 +38,6 @@
 - Backend: run focused pytest from `platform/backend/`.
 - Mobile/web: run package scripts from their package roots.
 - ESP32: run PlatformIO builds/tests from `device/esp32/`.
-- Avoid repo-wide `pytest .` on macOS because Raspberry Pi hardware tests require board-specific packages.
 
 ## Known Risks
 

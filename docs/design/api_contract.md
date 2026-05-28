@@ -1,6 +1,6 @@
 # PlantLab API Contract
 
-The device app and platform app communicate over HTTP. The device app should not import platform code, and the platform app should not import Raspberry Pi hardware code.
+The device app and platform app communicate over HTTP. Device firmware should not import platform code, and the platform app should not import hardware-specific firmware code.
 
 ## Sensor Data
 

@@ -20,7 +20,6 @@ PlantOS is a local-to-cloud plant monitoring and control system. It includes ESP
 ## Main Modules
 
 - `device/esp32/`: ESP32 master and camera firmware.
-- `device/raspberry_pi/`: older Raspberry Pi provisioning experiments and hardware tests.
 - `platform/backend/`: FastAPI backend, SQLAlchemy models, Alembic migrations, and tests.
 - `platform/mobile/`: Expo React Native mobile app.
 - `platform/web/`: Vite React web app.
@@ -37,7 +36,6 @@ PlantOS is a local-to-cloud plant monitoring and control system. It includes ESP
 
 ## Current Risks / Unfinished Areas
 
-- Raspberry Pi hardware tests require board-specific dependencies and should not be collected by generic macOS `pytest .` runs.
 - Device release/list cleanup remains tracked as a TODO task.
 - Cloud deployment should use the scripts under `platform/infra/cloud-run/`.
 

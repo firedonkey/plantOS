@@ -6,7 +6,7 @@ PlantLab is a multi-user, multi-device platform for monitoring and automating pl
 
 The system integrates:
 
-* Raspberry Pi-based plant devices
+* ESP32-based PlantLab devices
 * Sensors (moisture, temperature, humidity)
 * Camera for plant monitoring
 * Web platform for users
@@ -173,17 +173,16 @@ Trigger alerts when:
 
 ## 6. System Architecture
 
-### Device Layer (Raspberry Pi)
+### Device Layer (ESP32)
 
 * sensors:
 
-  * moisture sensor (ADC)
+  * moisture sensor
   * DHT22
-  * USB camera
+  * camera node
 * actuators:
 
-  * pump (relay)
-  * light (relay)
+  * grow light
 
 ---
 

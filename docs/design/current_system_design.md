@@ -2,84 +2,62 @@
 
 ## Purpose
 
-This document is the current source of truth for the PlantLab hardware and platform architecture.
+This document is the current source of truth for the PlantLab hardware and
+platform architecture.
 
-It reflects the latest working system in this repository, including:
-
-- Raspberry Pi single-board devices
-- ESP32 master + camera-node grouped devices
-- shared website behavior for both hardware families
+PlantLab currently uses ESP32-based devices. The legacy Raspberry Pi runtime has
+been removed from the active repository.
 
 ## Core Product Rule
 
 One user-visible PlantLab device is one **logical device**.
 
-That logical device may be backed by:
+That logical device is backed by:
 
-- one Raspberry Pi board
-- one ESP32 master node
-- one ESP32 master node plus one or more ESP32 camera nodes
+- one ESP32-S3 master node
+- zero or more ESP32-S3 camera nodes
 
-From the user's perspective, these are all still just one PlantLab device.
+From the user's perspective, this remains one PlantLab device.
 
 ## Current Hardware Architecture
 
-### Raspberry Pi path
+### Master Node
 
-Current Raspberry Pi devices are single-board systems:
+- `ESP32-S3-DevKitC-1-N32R16V`
+- sensor reporting
+- grow-light control
+- BLE provisioning
+- Wi-Fi validation
+- contract heartbeat and diagnostics
+- command polling and command-result reporting
+- OTA command execution and OTA status reporting
+- camera scheduling authority
 
-- sensors
-- camera
-- actuators
-- provisioning flow
-- backend communication
+### Camera Node
 
-all live on the same board.
+- `Seeed Studio XIAO ESP32-S3 Sense`
+- camera capture
+- image upload
+- camera-node heartbeat and diagnostics
+- low-power Wi-Fi operation
 
-### ESP32 path
-
-Current ESP32 systems are split into:
-
-- **Master node**
-  - `ESP32-S3-DevKitC-1-N32R16V`
-  - moisture sensor
-  - DHT22
-  - DS18B20 water temperature sensor
-  - water level touch sensor
-  - light control
-  - pump control
-  - provisioning button
-  - PlantLab SoftAP setup host
-  - command execution
-  - camera scheduling authority
-
-- **Camera node**
-  - `Seeed Studio XIAO ESP32-S3 Sense`
-  - camera capture
-  - image upload
-  - node heartbeat
-  - low-power always-connected Wi-Fi operation
-
-The master and camera nodes together still represent one PlantLab device in the website.
+The master and camera nodes together represent one PlantLab device.
 
 ## Communication Model
-
-### Raspberry Pi
-
-- Wi-Fi -> platform
-- single board owns readings, images, and commands
-
-### ESP32 master + camera
 
 - master <-> camera:
   - ESP-NOW for provisioning and capture coordination
 - master -> platform:
+  - heartbeat
   - sensor readings
+  - diagnostics
   - command polling and acknowledgements
-  - device-level status
+  - command completion/failure results
+  - OTA status
 - camera -> platform:
   - image upload
   - camera-node heartbeat
+  - diagnostics
 
 Important rule:
 
@@ -88,49 +66,33 @@ Important rule:
 
 ## Provisioning Model
 
-### Shared user-facing flow
-
-The user provisions only one device.
-
-High-level flow:
-
-1. User clicks **Add Device**
-2. User verifies the serial number
-3. User joins `PlantLab-Setup`
-4. User enters home Wi-Fi once
-5. PlantLab finishes setup
-
-### Raspberry Pi provisioning
-
-The Raspberry Pi performs its own SoftAP onboarding and then registers as a single-board device.
-
-### ESP32 provisioning
-
 The ESP32 master owns the user-facing setup flow.
 
 Current flow:
 
-1. User long-presses the master button
-2. Master starts SoftAP at `http://10.42.0.1:8080`
-3. User enters Wi-Fi once
-4. Master joins home Wi-Fi
-5. Master registers as a `master` node
-6. Master provisions the camera node over ESP-NOW
-7. Camera stores runtime config in `Preferences`
-8. Camera joins Wi-Fi and registers as a `camera` node
-9. Master requests image capture
+1. User starts provisioning from the mobile app.
+2. Mobile app sends Wi-Fi and backend setup data over BLE.
+3. Master validates Wi-Fi and stores pending config.
+4. Master registers with the backend as the `master` node.
+5. Master provisions the camera node over ESP-NOW.
+6. Camera stores runtime config in `Preferences`.
+7. Camera joins Wi-Fi and registers as a `camera` node.
+8. Master requests image capture.
 
 The camera node is not separately provisioned by the user.
 
 ## Website Model
 
-The website treats one PlantLab device as one logical device with one or more hardware nodes.
+The website treats one PlantLab device as one logical device with one or more
+hardware nodes.
 
 Current node roles:
 
-- `single_board`
 - `master`
 - `camera`
+
+Legacy `single_board` records may still exist in old databases, but new device
+work should use `master` and `camera`.
 
 Rules:
 
@@ -143,14 +105,12 @@ Rules:
 
 ### Master-owned data
 
-- soil moisture
-- temperature
-- humidity
-- water temperature
-- water level raw/state
-- growing light state
-- pump state
+- sensor readings
+- water state
+- grow-light state
 - command execution
+- runtime state
+- OTA state
 
 ### Camera-owned data
 
@@ -165,61 +125,23 @@ The dashboard merges these into one device view:
 - one readings panel
 - one controls panel
 - one image gallery
+- one diagnostics timeline
 
 ## Setup Finishing Behavior
-
-### Raspberry Pi
-
-Setup completes when:
-
-- device exists
-- first reading exists
-- first image exists
-
-### ESP32 master-only path
 
 If there is no camera expected, setup can complete after:
 
 - device exists
-- first reading exists
+- first heartbeat or reading exists
 
-### ESP32 master + camera path
+If a camera node is expected:
 
-Current working behavior:
-
-- setup waits for the first image when camera capture is expected
+- setup waits for the first image
 - the finishing page should not jump to the dashboard early
 
-This matches the current user expectation for ESP32 grouped devices:
+This matches the current user expectation:
 
 - onboarding should land on the dashboard with the first image already present
-
-## Master-Controlled Camera Scheduling
-
-The master owns the image schedule.
-
-Current behavior:
-
-- master sends `capture_image` commands over ESP-NOW
-- camera captures only when requested
-- camera stays connected to Wi-Fi between captures
-- camera initializes the camera only during capture/upload
-- camera deinitializes the camera afterward
-
-Current default capture interval:
-
-- `15000 ms` (15 seconds)
-
-### First-image reliability behavior
-
-The current onboarding path includes first-image hardening:
-
-- provisioning ACK path
-- bootstrap capture retries
-- direct targeting of the learned camera MAC once available
-- readiness promotion after successful capture ACK
-
-This is intended to make the first dashboard image appear during setup, not long after it.
 
 ## Camera Node Power Strategy
 
@@ -234,24 +156,11 @@ The current camera-node runtime is low-power but always connected:
 - Wi-Fi TX power is reduced by config
 - camera stays deinitialized until capture is requested
 
-## Current Tradeoffs
-
-### Raspberry Pi
-
-- simpler single-board behavior
-- higher hardware cost
-- less modular
-
-### ESP32
-
-- cheaper and more modular
-- better multi-camera future
-- more coordination complexity between master and camera nodes
-
 ## Current Recommended Docs
 
 For more detail, pair this document with:
 
 - [ESP32 Device Group Website Spec](/Users/gary/plantOS/docs/design/esp32_device_group_website_spec.md)
 - [API Contract](/Users/gary/plantOS/docs/design/api_contract.md)
-- [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md)
+- [Device Protocol](/Users/gary/plantOS/docs/device_protocol.md)
+- [Firmware Contract Client](/Users/gary/plantOS/docs/firmware_contract_client.md)

@@ -44,10 +44,10 @@ def test_sqlite_models_create_and_query():
         image = Image(device_id=device.id, path="data/images/plant.jpg")
         node = DeviceNode(
             device_id=device.id,
-            hardware_device_id="pi-001",
+            hardware_device_id="node-001",
             node_role="single_board",
-            display_name="Raspberry Pi",
-            hardware_model="raspberry_pi",
+            display_name="PlantLab Node",
+            hardware_model="plantlab_esp32",
             status="online",
         )
         session.add(reading)
@@ -67,5 +67,5 @@ def test_sqlite_models_create_and_query():
         assert saved_device.commands[0].target == CommandTarget.PUMP
         assert saved_device.events[0].type == EventType.PUMP
         assert saved_device.images[0].path == "data/images/plant.jpg"
-        assert saved_device.nodes[0].hardware_device_id == "pi-001"
+        assert saved_device.nodes[0].hardware_device_id == "node-001"
         assert saved_device.nodes[0].node_role == "single_board"

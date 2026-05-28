@@ -24,7 +24,7 @@ function buildDefaultNodeDisplayName(nodeRole, nodeIndex) {
   if (nodeRole === "camera") {
     return nodeIndex ? `Camera ${nodeIndex}` : "Camera";
   }
-  return "Raspberry Pi";
+  return "Device";
 }
 
 function normalizeBleDeviceIdentity(identity) {

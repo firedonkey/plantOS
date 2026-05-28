@@ -29,7 +29,7 @@
         <div class="hero-copy">
           <p class="eyebrow">Indoor Plant Intelligence</p>
           <h1 id="hero-title">Watch every plant grow with sensors, images, and cloud control.</h1>
-          <p class="hero-subheadline">PlantLab connects a Raspberry Pi, moisture sensors, camera captures, and a clean cloud dashboard for calmer plant care.</p>
+          <p class="hero-subheadline">PlantLab connects ESP32 sensors, camera captures, and a clean cloud dashboard for calmer plant care.</p>
           <div class="hero-actions">
             {% if current_user %}
             <a class="button primary-button" href="/devices">Open dashboard</a>
@@ -63,7 +63,7 @@
           <p class="eyebrow">What is PlantLab</p>
           <h2 id="what-title">A small plant lab that starts at home.</h2>
         </div>
-        <p>PlantLab turns a Raspberry Pi into a practical plant monitoring station. It keeps photos, sensor readings, and pump or light controls in one place, so each setup can grow from a simple experiment into a dependable care system.</p>
+        <p>PlantLab turns an indoor planter into a practical connected plant monitoring station. It keeps photos, sensor readings, and light controls in one place, so each setup can grow from a simple experiment into a dependable care system.</p>
       </section>
 
       <section class="landing-section" aria-labelledby="features-title">
@@ -85,7 +85,7 @@
           <article class="feature-card">
             <span class="feature-kicker">Cloud</span>
             <h3>Cloud Dashboard</h3>
-            <p>Send Raspberry Pi readings to Cloud Run, then check status and controls from any browser.</p>
+            <p>Send ESP32 device readings to Cloud Run, then check status and controls from any browser.</p>
           </article>
         </div>
       </section>
@@ -98,13 +98,13 @@
         <div class="step-grid">
           <article class="step-card">
             <span>01</span>
-            <h3>Connect the Pi</h3>
-            <p>Attach the camera, sensors, relay, light, and pump to the local device code.</p>
+            <h3>Connect the device</h3>
+            <p>Provision the ESP32 master node and camera node through the PlantLab setup flow.</p>
           </article>
           <article class="step-card">
             <span>02</span>
             <h3>Send readings</h3>
-            <p>The Pi posts sensor data and images to the secure PlantLab backend.</p>
+            <p>The device posts sensor data and images to the secure PlantLab backend.</p>
           </article>
           <article class="step-card">
             <span>03</span>

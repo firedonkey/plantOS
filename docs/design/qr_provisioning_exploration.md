@@ -30,7 +30,7 @@ Traditional onboarding:
 Use **camera-based QR provisioning**:
 
 * Website generates a QR code
-* Raspberry Pi scans QR
+* device scans QR
 * QR contains:
 
   * Wi-Fi credentials

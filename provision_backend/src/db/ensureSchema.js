@@ -14,13 +14,13 @@ export async function ensureProvisioningSchema(pool) {
 
   await pool.query(`
     INSERT INTO device_serial_numbers (serial_number, hardware_model, status)
-    VALUES ('123', 'raspberry_pi_3_test', 'available')
+    VALUES ('123', 'plantlab_esp32_test', 'available')
     ON CONFLICT (serial_number) DO NOTHING
   `);
 
   await pool.query(`
     INSERT INTO device_serial_numbers (serial_number, hardware_model, status)
-    VALUES ('SN-20260428-016521', 'raspberry_pi_3_label_test', 'available')
+    VALUES ('SN-20260428-016521', 'plantlab_esp32_label_test', 'available')
     ON CONFLICT (serial_number) DO NOTHING
   `);
 

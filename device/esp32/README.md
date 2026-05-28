@@ -8,7 +8,7 @@ Current status:
 - DHT22 local reading implemented
 - Power button + status LED state handling implemented in main firmware
 - Local Wi-Fi + platform HTTP path now available for dev testing
-- ESP32 master provisioning now mirrors the Raspberry Pi user flow
+- ESP32 master provisioning is the active PlantLab device onboarding path
 
 ## Board
 
@@ -181,8 +181,6 @@ Recommended usage:
 # GCP testing
 ./scripts/flash_esp32.sh --gcp --monitor
 ```
-
-This change is ESP32-only and does not alter the Raspberry Pi path.
 
 For local dev, the quickest way to get `device_id` and `api_token` is:
 

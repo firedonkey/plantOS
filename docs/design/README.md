@@ -46,10 +46,10 @@ If you only read one file first, start with:
   - higher-level product intent and V1 requirements
 
 - [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md)
-  - original Raspberry Pi SoftAP provisioning design
+  - deprecated Raspberry Pi SoftAP provisioning design, retained for historical context only
 
 - [Provisioning v1 Implementation](/Users/gary/plantOS/docs/design/provisioning_v1_implementation.md)
-  - Raspberry Pi v1 implementation summary
+  - deprecated Raspberry Pi v1 implementation summary, retained for historical context only
 
 - [QR Provisioning Exploration](/Users/gary/plantOS/docs/design/qr_provisioning_exploration.md)
   - exploratory QR-based onboarding concept
@@ -62,7 +62,7 @@ Recommended order for current work:
 2. [ESP32 Device Group Website Spec](/Users/gary/plantOS/docs/design/esp32_device_group_website_spec.md)
 3. [API Contract](/Users/gary/plantOS/docs/design/api_contract.md)
 
-Recommended order for Raspberry Pi provisioning context:
+Historical Raspberry Pi provisioning context:
 
 1. [SoftAP Provisioning Design](/Users/gary/plantOS/docs/design/softap_provisioning_design.md)
 2. [Provisioning v1 Implementation](/Users/gary/plantOS/docs/design/provisioning_v1_implementation.md)

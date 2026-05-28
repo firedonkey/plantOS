@@ -1,534 +1,153 @@
-# AI Plant Lab Kit
+# PlantLab
 
-A PlantLab hardware and platform repository for indoor plant monitoring and control, with both Raspberry Pi and ESP32 device paths.
+PlantLab is a smart indoor plant monitoring system by Mars Potato Lab. This
+repository contains the ESP32 firmware, FastAPI backend, React web app, Expo
+mobile app, provisioning backend, simulator, contracts, and deployment tooling.
 
-## Overview
+## Current Architecture
 
-This project is an early developer / prosumer kit for a closed-loop plant intelligence system.
+- ESP32-S3 master node for sensors, grow-light state, heartbeat, diagnostics,
+  command polling, and OTA flow.
+- ESP32-S3 camera node for image capture and upload.
+- FastAPI backend for devices, auth, readings, images, commands, OTA,
+  diagnostics, canonical events, and timeline APIs.
+- Vite React web app for the public landing page, demo, dashboard, images, and
+  diagnostics timeline.
+- Expo React Native mobile app for provisioning and mobile dashboard usage.
+- Node provisioning backend for setup claim/token flows.
+- Contract-first JSON protocol shared across firmware, backend, web, mobile,
+  and simulator.
 
-The MVP can:
-- read soil moisture
-- read temperature and humidity
-- control a small water pump
-- control a USB grow light
-- capture plant images from a USB webcam
-- log data locally
-- provide a simple local web dashboard
+The legacy Raspberry Pi device runtime has been removed. Current device work
+lives under `device/esp32/`.
 
-Longer term, this project may expand into a polished smart planter product and then into broader outdoor or yard automation.
-
-## Product idea
-
-This is not just a smart planter.
-
-The core loop is:
-- Observe
-- Decide
-- Act
-- Learn
-
-For the MVP, the emphasis is reliability, simplicity, and fast iteration.
-
-## Hardware
-
-### Already available
-- Raspberry Pi 3
-- breadboard
-- jumper wires
-- USB webcam (Logitech C270)
-- DHT22 temperature and humidity sensor module
-- 5V relay module
-- 5V mini submersible water pump
-- USB LED strip / grow light
-
-### Ordered / arriving
-- capacitive soil moisture sensor
-- ADC module for analog sensor input
-- SD card
-
-## System architecture
-
-### Inputs
-- USB camera
-- soil moisture sensor
-- DHT22 sensor
-
-### Outputs
-- water pump via relay
-- USB light via relay
-
-### Controllers
-- Raspberry Pi 3
-- ESP32-S3 master node
-- XIAO ESP32-S3 Sense camera node
-
-## Software goals
-
-The software should include:
-- sensor reading modules
-- actuator control modules
-- image capture
-- periodic automation logic
-- local logging
-- a simple Flask dashboard
-
-## Repository structure
+## Repository Structure
 
 ```text
 plantOS/
-  docs/
-    README.md
-    deployment_readme.md
-    design/
-      README.md
-      current_system_design.md
-      esp32_device_group_website_spec.md
-      api_contract.md
-      product_requirements.md
-      softap_provisioning_design.md
-      provisioning_v1_implementation.md
-      qr_provisioning_exploration.md
+  contracts/              shared JSON Schemas and generated contract outputs
   device/
-    README.md
-    raspberry_pi/
-      requirements.txt
-      requirements-pi.txt
-      config.yaml
-      app.py
-      main.py
-      sensors/
-      actuators/
-      camera/
-      services/
-      dashboard/
-      provisioning/
-      data/
-        logs/
-        images/
-    esp32/
-      README.md
+    esp32/                ESP32-S3 master/camera firmware and tests
+  docs/                   architecture, protocol, validation, and design docs
   platform/
-    requirements.txt
-    app/
-      main.py
-      api/
-      core/
-      db/
-      models/
-      schemas/
-      services/
-      web/
-    tests/
+    backend/              FastAPI backend, migrations, and tests
+    web/                  Vite React web app
+    mobile/               Expo React Native app
+    infra/                Docker, Cloud Run, env, and operations scripts
+  provision_backend/      Node provisioning backend
+  tools/
+    simulator/            local protocol simulator
 ```
 
-The `device/` folder is a hardware container. The Raspberry Pi app lives under `device/raspberry_pi/`. The ESP32 master and camera-node firmware lives under `device/esp32/`. The `platform/` app runs the FastAPI web platform. The two sides communicate over HTTP and should not import each other.
-
-For the current architecture and design source of truth, start with:
+For the current design source of truth, start with:
 
 - [Design Docs Index](/Users/gary/plantOS/docs/design/README.md)
+- [Current System Design](/Users/gary/plantOS/docs/design/current_system_design.md)
+- [Device Protocol](/Users/gary/plantOS/docs/device_protocol.md)
+- [Simulator Guide](/Users/gary/plantOS/docs/simulator.md)
 
-## Local demo entry points
+## Local Development
 
-For the current local hardware-backed flow:
-
-- backend: [platform/backend/README.md](/Users/gary/plantOS/platform/backend/README.md)
-- standalone web: [platform/web/README.md](/Users/gary/plantOS/platform/web/README.md)
-- Expo mobile: [platform/mobile/README.md](/Users/gary/plantOS/platform/mobile/README.md)
-- ESP32 master + camera notes: [device/esp32/README.md](/Users/gary/plantOS/device/esp32/README.md)
-- local recovery scripts: [platform/infra/scripts/README.md](/Users/gary/plantOS/platform/infra/scripts/README.md)
-- local release checklist: [platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md](/Users/gary/plantOS/platform/shared/docs/LOCAL_RELEASE_CHECKLIST.md)
-
-## Auth notes
-
-- The old backend-rendered web still uses `/login`, `/auth/login`, `/auth/callback`, and session auth.
-- Standalone web production auth is backend-owned Google OAuth through `/api/auth/google/start`, `/api/auth/google/callback`, `/api/auth/refresh`, `/api/auth/logout`, and `/api/me`.
-- Standalone web keeps the production refresh credential in an HTTP-only cookie and holds the short-lived access token in memory.
-- Local dev bearer auth remains available only through explicit dev mode env settings.
-- Mobile has backend Google handoff API helpers, but production mobile persistence remains blocked until OS-backed secure storage and deep-link callback handling are added.
-
-## MVP behavior
-
-### Watering
-- read soil moisture periodically
-- if moisture drops below a threshold, turn on the pump for a short duration
-- log the event
-
-### Lighting
-- run the USB grow light on a daily schedule
-- allow manual override later
-
-### Camera
-- capture still images periodically
-- save timestamped images locally
-- support future timelapse generation
-
-### Logging
-- store:
-  - timestamp
-  - temperature
-  - humidity
-  - moisture value
-  - light state
-  - pump events
-  - image path
-
-## Raspberry Pi 3 notes
-
-- use Raspberry Pi OS Lite (32-bit)
-- power via micro-USB with a stable 5V 2.5A or higher supply
-- do not power the pump directly from the Pi
-- USB light should also use external power through relay switching
-- moisture sensor requires an ADC because the Pi has no analog input
-- relay boards may be active-low, so software should support configurable active state
-
-## Setup plan
-
-### 1. Flash OS
-Use Raspberry Pi Imager and select:
-- Raspberry Pi OS Lite (32-bit)
-
-Before writing the SD card, set:
-- hostname
-- username and password
-- Wi-Fi credentials
-- enable SSH
-
-### 2. Boot Pi
-- insert SD card
-- connect power
-- wait for boot
-- SSH in from laptop
-
-### 3. Install base packages
-```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install python3-pip python3-venv git -y
-```
-
-### 4. Create project environment
-```bash
-mkdir -p ~/projects/plant-ai-kit
-cd ~/projects/plant-ai-kit
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 5. Install Python dependencies
-For device laptop/mock-mode development:
-```bash
-cd device/raspberry_pi
-pip install -r requirements.txt
-```
-
-For Raspberry Pi hardware access:
-```bash
-cd device/raspberry_pi
-pip install -r requirements-pi.txt
-```
-
-For platform development:
-```bash
-cd platform/backend
-pip install -r requirements.txt
-```
-
-Optional camera helpers on Raspberry Pi OS:
-```bash
-sudo apt install fswebcam
-sudo apt install python3-opencv
-```
-
-DHT22 support uses the CircuitPython DHT library. On Raspberry Pi OS, install the system GPIO helper first:
+Start the local Docker stack:
 
 ```bash
-sudo apt install libgpiod2
+docker compose -f platform/infra/docker/docker-compose.local.yml up --build
 ```
 
-## Test flow
+Common local URLs:
 
-### Laptop mock test
-Keep `hardware.mock_mode: true` in `device/raspberry_pi/config.yaml`, then run:
-```bash
-cd device/raspberry_pi
-python main.py --once
-python -m flask --app app run --host 127.0.0.1 --port 5000
-```
+- Web app: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+- Admin web: `http://localhost:5174`
+- Provisioning backend: `http://localhost:3000`
 
-Open `http://127.0.0.1:5000`.
-
-To test a real USB webcam while the rest of the device stays in mock mode, keep:
-
-```yaml
-hardware:
-  mock_mode: true
-
-camera:
-  enabled: true
-  mock_mode: false
-  device_index: 0
-  resolution: 1280x720
-  skip_frames: 30
-```
-
-Then run one cycle and refresh the local device dashboard:
+Run backend tests:
 
 ```bash
-cd device/raspberry_pi
-python main.py --once
-python -m flask --app app run --host 0.0.0.0 --port 5000
+.venv/bin/pytest platform/backend/tests -q
 ```
 
-For a webcam stress test, run the automation loop with a short loop interval and capture interval:
+Run web validation:
 
 ```bash
-cd device/raspberry_pi
-python main.py --loop-interval 2 --capture-interval 2
+npm --prefix platform/web run typecheck
+npm --prefix platform/web run build
 ```
 
-This asks the app to wake up every 2 seconds and capture a webcam image every 2 seconds. Stop with `Ctrl+C`.
-
-To test a real DHT22 while the rest of the device stays in mock mode, keep global mock mode on but set the DHT22 override off:
-
-```yaml
-hardware:
-  mock_mode: true
-
-sensors:
-  dht22:
-    enabled: true
-    mock_mode: false
-    gpio_pin: 4
-    retries: 5
-    retry_delay_seconds: 2
-```
-
-`gpio_pin: 4` means BCM GPIO 4, physical pin 7 on the Raspberry Pi header.
-
-Then install Pi requirements and run one cycle:
+Run mobile validation:
 
 ```bash
-cd device/raspberry_pi
-pip install -r requirements-pi.txt
-python main.py --once
+npm --prefix platform/mobile run typecheck
 ```
 
-### Send Raspberry Pi data to the platform
-Start the platform first. Use `0.0.0.0` when another device, such as the Raspberry Pi, needs to connect:
+Build ESP32 firmware:
 
 ```bash
-cd platform/backend
-source ../../.venv/bin/activate
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.venv/bin/pio run -d device/esp32 -e esp32-local
+.venv/bin/pio run -d device/esp32 -e camera-platform-test
 ```
 
-Sign in, add a device, then open that device dashboard and copy:
-
-- `Device ID`
-- `X-Device-Token`
-
-On the Raspberry Pi, send real device readings and real captured camera images:
+Run simulator smoke tests:
 
 ```bash
-cd device/raspberry_pi
-source ../../.venv/bin/activate
-python platform_client.py --platform-url http://your-laptop-ip:8000 --device-id 1 --device-token paste-token-here --send-interval 600 --command-interval 2 --status-interval 10 --image-every 1
+.venv/bin/pytest tools/simulator/test_simulator_smoke.py -q
+python3 -m compileall -q tools/simulator
 ```
 
-The platform client sends readings, polls commands, and reports actuator status on separate timers. `--send-interval` controls sensor uploads, `--command-interval` controls how quickly pump/light commands are picked up, and `--status-interval` controls lightweight light/pump status heartbeats. Command polling and status heartbeats run in lightweight background loops, so slow sensor reads, camera capture, or image uploads do not block light/pump commands. `--interval` is still accepted as an alias for `--send-interval`. Use `--skip-commands` to send data without polling commands or status heartbeats. Manual light commands pause the normal light schedule for `actuators.light.manual_override_seconds`.
+## Simulator
 
-When the Pi has a real camera enabled, uploaded images come from the latest camera capture path returned by the automation cycle. For frequent real image uploads, set `camera.capture_interval_seconds` low enough to match the sender cadence.
+The simulator uses real backend APIs and contract envelopes. It can generate
+heartbeats, diagnostics, command results, OTA status, image events, and timeline
+activity without physical hardware.
 
-You can also save the values under `platform:` in `device/raspberry_pi/config.yaml` and run:
+Example:
 
 ```bash
-python platform_client.py
+python3 tools/simulator/simulator.py \
+  --base-url http://localhost:8000 \
+  --device-id 1 \
+  --device-token REAL_API_TOKEN_FROM_DB \
+  --devices 1 \
+  --camera-nodes 1 \
+  --scenario unstable_wifi
 ```
 
-### Send mock data to the platform
-Use the mock sender when you want to exercise the platform without waiting on real hardware:
+See [docs/simulator.md](/Users/gary/plantOS/docs/simulator.md).
+
+## Firmware
+
+ESP32 firmware is in [device/esp32](/Users/gary/plantOS/device/esp32).
+
+Useful commands:
 
 ```bash
-cd device/raspberry_pi
-source ../../.venv/bin/activate
-python mock_platform_sender.py --device-id 1 --device-token paste-token-here --once
+cd device/esp32
+../../.venv/bin/pio run -e esp32-local
+../../.venv/bin/pio run -e camera-platform-test
 ```
 
-To send mock readings every 5 seconds and upload one bundled mock rose image every 3 cycles:
+## Public Web
+
+The public marketing homepage lives at `/`.
+
+The no-auth product demo lives at `/demo` and uses static web-owned demo assets
+under `platform/web/src/assets/demo`.
+
+The root route must remain a landing page for both signed-in and signed-out
+users. Auth state should only change CTA labels or destinations.
+
+## Validation
+
+Before committing product or protocol changes, run the smallest relevant
+validation set and include the results in the commit/report. Typical checks:
 
 ```bash
-python mock_platform_sender.py --device-id 1 --device-token paste-token-here --send-interval 5 --command-interval 2 --image-every 3
+npm --prefix platform/web run typecheck
+npm --prefix platform/web run build
+npm --prefix platform/mobile run typecheck
+.venv/bin/pytest platform/backend/tests -q
+.venv/bin/pytest tools/simulator/test_simulator_smoke.py -q
+git diff --check
 ```
 
-You can also save the values under `platform:` in `device/raspberry_pi/config.yaml` and run:
-
-```bash
-python mock_platform_sender.py
-```
-
-The mock sender forces mock mode for DHT22, moisture, and camera. It still polls pending pump/light commands and acknowledges them with mock actuators unless `--skip-commands` is used.
-
-### Raspberry Pi mock test
-Copy the repo to the Pi, keep `hardware.mock_mode: true`, then run:
-```bash
-cd device/raspberry_pi
-python main.py --once
-python -m flask --app app run --host 0.0.0.0 --port 5000
-```
-
-Open `http://<pi-ip-address>:5000` from another device on the same network.
-
-### Raspberry Pi wired test
-After wiring the sensors, relays, pump, light, and camera, set:
-```yaml
-hardware:
-  mock_mode: false
-```
-
-For the ADS1115 moisture sensor, the default device config expects:
-
-- I2C address `0x48`
-- channel `A0`
-- one raw sample every 1 second
-- a 5-sample moving average for the reported moisture percentage
-
-Install the Pi hardware dependencies, then confirm the ADC is visible:
-```bash
-sudo apt install i2c-tools -y
-i2cdetect -y 1
-```
-
-You should see `48` in the scan output. Calibrate `sensors.moisture.dry_value` and `sensors.moisture.wet_value` in `device/raspberry_pi/config.yaml` after checking raw readings from your actual sensor and soil.
-
-For a relay-controlled LED or grow light, the current Raspberry Pi config uses GPIO27, which is physical pin 13:
-
-```yaml
-actuators:
-  relay_active_high: true
-  light:
-    gpio_pin: 27
-```
-
-Wire the relay module input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO27. Use the relay `COM` and `NO` screw terminals for the LED power circuit so the LED is normally off and turns on only when the relay is active. Keep testing on low-voltage DC before switching anything higher power.
-
-Start with a short pump run time while testing:
-```yaml
-actuators:
-  relay_active_high: true
-  pump:
-    gpio_pin: 17
-    run_seconds: 2
-    cooldown_seconds: 3600
-```
-
-The current pump relay wiring uses GPIO17, which is physical pin 11. Wire the relay input side with relay `VCC` to Pi `5V`, relay `GND` to Pi `GND`, and relay `IN` to Pi GPIO17. Use `COM` and `NO` for the pump power circuit so the pump is normally off.
-
-Run a short manual pump relay test before connecting water tubing to the plant:
-```bash
-cd device/raspberry_pi
-source ../../.venv/bin/activate
-python test_pump.py --seconds 2
-```
-
-## Web dashboard and phone app path
-
-The Flask dashboard is also a lightweight progressive web app.
-
-Run it locally:
-```bash
-cd device/raspberry_pi
-source ../../.venv/bin/activate
-python -m flask --app app run --host 127.0.0.1 --port 5000
-```
-
-Run it on the Pi for other devices on the network:
-```bash
-cd device/raspberry_pi
-source ../../.venv/bin/activate
-python -m flask --app app run --host 0.0.0.0 --port 5000
-```
-
-On iPhone:
-- open `http://<pi-hostname-or-ip>:5000` in Safari
-- tap Share
-- tap Add to Home Screen
-- launch PlantOS from the Home Screen
-
-The web app includes:
-- mobile-friendly dashboard layout
-- live status refresh
-- app manifest
-- service worker shell cache
-- iPhone Home Screen metadata
-
-## Platform app
-
-Run the FastAPI platform locally:
-
-```bash
-cd platform/backend
-source ../../.venv/bin/activate
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-Run platform tests:
-
-```bash
-cd platform/backend
-source ../../.venv/bin/activate
-python -m pytest tests
-```
-
-## Coding priorities
-
-Build in this order:
-1. project scaffold
-2. DHT22 read
-3. ADC moisture read
-4. relay control
-5. pump control
-6. light control
-7. camera capture
-8. local logger
-9. automation loop
-10. Flask dashboard
-
-## Safety / reliability rules
-
-- default pump OFF on startup
-- default light OFF on startup unless schedule says otherwise
-- keep GPIO mapping in config file
-- avoid hardcoding thresholds in multiple places
-- log all pump activations
-- keep code modular and easy to debug
-
-## Non-goals for MVP
-
-- advanced ML models
-- disease classification with high accuracy
-- dimming control
-- cloud backend
-- mobile app
-- automatic fertilizer or medicine dispensing
-
-## Success criteria
-
-The MVP is successful if it can:
-- read sensors reliably
-- water automatically when dry
-- turn the light on and off on schedule
-- capture images over time
-- show basic status in a local dashboard
-
-## First task for Codex
-
-Create the repository structure, `requirements.txt`, `config.yaml`, and Python stubs for:
-- DHT22 reading
-- ADC moisture reading
-- relay control
-- pump control
-- light control
-- camera capture
-- logging
-- main automation loop
-- minimal Flask dashboard
+Firmware changes should also run the relevant PlatformIO builds.

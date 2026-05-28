@@ -1,8 +1,8 @@
 # Device Targets
 
-The `device/` folder now holds hardware-specific implementations.
+The `device/` folder holds hardware-specific implementations.
 
-- `raspberry_pi/`: the current Python device runtime, provisioning flow, dashboard, and hardware test scripts.
-- `esp32/`: a placeholder for future ESP32 firmware and setup code.
+- `esp32/`: current PlantLab ESP32-S3 master and camera-node firmware, PlatformIO config, firmware tests, and flash scripts.
 
-Today, all production device work lives under `device/raspberry_pi/`.
+The legacy Raspberry Pi device runtime has been removed. Current production
+device work should stay under `device/esp32/`.

@@ -234,16 +234,16 @@ def test_device_summary_json_includes_node_summary():
         teardown_overrides()
 
 
-def test_device_detail_page_shows_raspberry_pi_component():
+def test_device_detail_page_shows_single_board_component():
     client, TestingSessionLocal, _, device_id = build_client_with_device(set_session_cookie=True)
     try:
         with TestingSessionLocal() as session:
             upsert_device_node(
                 session,
                 device_id=device_id,
-                hardware_device_id="pi-001",
+                hardware_device_id="node-001",
                 node_role="single_board",
-                display_name="Raspberry Pi",
+                display_name="PlantLab Node",
                 status="online",
             )
 
@@ -251,7 +251,7 @@ def test_device_detail_page_shows_raspberry_pi_component():
 
         assert response.status_code == 200
         assert "Device Components" in response.text
-        assert "Raspberry Pi" in response.text
+        assert "PlantLab Node" in response.text
         assert "Single Board" in response.text
         assert "Online" in response.text
     finally:
@@ -291,7 +291,7 @@ def test_device_detail_page_shows_master_and_camera_components():
         teardown_overrides()
 
 
-def test_devices_page_shows_compact_health_for_raspberry_pi_card():
+def test_devices_page_shows_compact_health_for_single_board_card():
     client, TestingSessionLocal, user_id, device_id = build_client_with_device(set_session_cookie=True)
     try:
         with TestingSessionLocal() as session:
@@ -303,16 +303,16 @@ def test_devices_page_shows_compact_health_for_raspberry_pi_card():
             upsert_device_node(
                 session,
                 device_id=device_id,
-                hardware_device_id="pi-001",
+                hardware_device_id="node-001",
                 node_role="single_board",
-                display_name="Raspberry Pi",
+                display_name="PlantLab Node",
                 status="online",
             )
 
         response = client.get("/devices")
 
         assert response.status_code == 200
-        assert "Raspberry Pi online" in response.text
+        assert "PlantLab Node online" in response.text
         assert response.text.count("View dashboard") == 1
     finally:
         teardown_overrides()
@@ -393,9 +393,9 @@ def test_devices_page_keeps_one_card_per_logical_device_in_mixed_account():
             upsert_device_node(
                 session,
                 device_id=second_device.id,
-                hardware_device_id="pi-001",
+                hardware_device_id="node-001",
                 node_role="single_board",
-                display_name="Raspberry Pi",
+                display_name="PlantLab Node",
                 status="online",
             )
 
@@ -405,7 +405,7 @@ def test_devices_page_keeps_one_card_per_logical_device_in_mixed_account():
         assert response.text.count("View dashboard") == 2
         assert "Master online" in response.text
         assert "1 camera online" in response.text
-        assert "Raspberry Pi online" in response.text
+        assert "PlantLab Node online" in response.text
     finally:
         teardown_overrides()
 
@@ -424,9 +424,9 @@ def test_setup_status_waits_for_image_for_single_board_device():
             upsert_device_node(
                 session,
                 device_id=device_id,
-                hardware_device_id="pi-001",
+                hardware_device_id="node-001",
                 node_role="single_board",
-                display_name="Raspberry Pi",
+                display_name="PlantLab Node",
                 status="online",
             )
             session.add(
@@ -774,9 +774,9 @@ def test_delete_device_releases_single_board_provisioning_references():
             upsert_device_node(
                 session,
                 device_id=device_id,
-                hardware_device_id="pi-001",
+                hardware_device_id="node-001",
                 node_role="single_board",
-                display_name="Raspberry Pi",
+                display_name="PlantLab Node",
                 status="online",
             )
             session.execute(
@@ -787,7 +787,7 @@ def test_delete_device_releases_single_board_provisioning_references():
                       claimed_by_device_id, claimed_at, created_at, updated_at
                     )
                     VALUES (
-                      'SN-PI-001', 'raspberry_pi', 'claimed', :user_id,
+                      'SN-ESP32-001', 'plantlab_esp32', 'claimed', :user_id,
                       :device_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                     )
                     """
@@ -801,7 +801,7 @@ def test_delete_device_releases_single_board_provisioning_references():
                       claim_token, serial_number, user_id, created_at, expires_at, used_at, used_by_device_id
                     )
                     VALUES (
-                      'claim-pi-001', 'SN-PI-001', :user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                      'claim-node-001', 'SN-ESP32-001', :user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
                       CURRENT_TIMESTAMP, :device_id
                     )
                     """
@@ -812,7 +812,7 @@ def test_delete_device_releases_single_board_provisioning_references():
                 text(
                     """
                     INSERT INTO device_access_tokens (device_id, token_hash, created_at)
-                    VALUES (:device_id, 'hash-pi-001', CURRENT_TIMESTAMP)
+                    VALUES (:device_id, 'hash-node-001', CURRENT_TIMESTAMP)
                     """
                 ),
                 {"device_id": device_id},
@@ -833,7 +833,7 @@ def test_delete_device_releases_single_board_provisioning_references():
                     """
                     SELECT status, claimed_by_user_id, claimed_by_device_id
                     FROM device_serial_numbers
-                    WHERE serial_number = 'SN-PI-001'
+                    WHERE serial_number = 'SN-ESP32-001'
                     """
                 )
             ).mappings().one()
@@ -845,7 +845,7 @@ def test_delete_device_releases_single_board_provisioning_references():
                     """
                     SELECT used_by_device_id
                     FROM device_claim_tokens
-                    WHERE claim_token = 'claim-pi-001'
+                    WHERE claim_token = 'claim-node-001'
                     """
                 )
             ).mappings().one()

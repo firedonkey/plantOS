@@ -4,7 +4,6 @@
 
 - `.pantheon/`: Pantheon target-project control state.
 - `device/esp32/`: ESP32 firmware, PlatformIO config, firmware tests, and flash scripts.
-- `device/raspberry_pi/`: Raspberry Pi hardware scripts/tests; requires Pi-specific dependencies.
 - `docs/`: repo documentation and Pantheon target context.
 - `platform/backend/`: FastAPI backend app, migrations, and tests.
 - `platform/mobile/`: Expo React Native mobile app.

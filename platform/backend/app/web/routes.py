@@ -803,7 +803,7 @@ def _device_node_label(node_summary: dict) -> str:
     if role == "master":
         return "Master"
     if role == "single_board":
-        return "Raspberry Pi"
+        return "Device"
     return "Node"
 
 
