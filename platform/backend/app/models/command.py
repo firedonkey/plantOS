@@ -15,6 +15,7 @@ class CommandTarget(str, Enum):
     PUMP = "pump"
     LIGHT = "light"
     CAMERA = "camera"
+    OTA = "ota"
 
 
 class CommandAction(str, Enum):
@@ -23,6 +24,7 @@ class CommandAction(str, Enum):
     SET_INTENSITY = "set_intensity"
     RUN = "run"
     CAPTURE = "capture"
+    START = "start"
 
 
 class CommandStatus(str, Enum):

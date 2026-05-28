@@ -9,6 +9,7 @@ venv/
 !.env.local.example
 .pytest_cache/
 .DS_Store
+stress-reports/
 
 device/data/logs/*.csv
 device/data/logs/*.json

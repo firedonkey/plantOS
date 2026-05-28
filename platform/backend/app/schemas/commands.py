@@ -33,6 +33,8 @@ class CommandCreate(BaseModel):
                 raise ValueError("Growing light intensity value must be between 0 and 100.")
         if self.target == CommandTarget.CAMERA and self.action not in {CommandAction.CAPTURE}:
             raise ValueError("Camera commands support capture.")
+        if self.target == CommandTarget.OTA and self.action not in {CommandAction.START}:
+            raise ValueError("OTA commands support start.")
         return self
 
 
@@ -89,7 +91,7 @@ class PumpCommandRequest(BaseModel):
 class DeviceCommandEnvelopeRead(BaseModel):
     status: Literal["accepted", "unsupported", "error"]
     device_id: int
-    command: Literal["light", "pump", "capture"]
+    command: Literal["light", "pump", "capture", "ota"]
     action: str
     queued: bool
     message: str
