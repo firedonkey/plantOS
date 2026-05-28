@@ -13,6 +13,8 @@ type OptimisticLightState = {
 export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
   const autoRefreshMs = 10000;
   const commandRefreshMs = 1000;
+  const captureRefreshAttempts = 16;
+  const captureRefreshDelayMs = 500;
   const autoRefreshEnabled = options?.autoRefresh ?? true;
   const { token } = useSession();
   const [dashboard, setDashboard] = useState<DeviceDashboard | null>(null);
@@ -190,10 +192,33 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
               },
         );
         if (!result.usedMock && action === "capture_image") {
-          const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
+          const baselineImageId = dashboard?.recentImages[0]?.id ?? dashboard?.device.latestImage?.id ?? null;
+          const refreshed = await waitForCaptureDashboardRefresh({
+            deviceId,
+            selectedRange,
+            token: token ?? undefined,
+            commandId: result.command.id,
+            baselineImageId,
+            attempts: captureRefreshAttempts,
+            delayMs: captureRefreshDelayMs,
+          });
           setDashboard(refreshed.dashboard);
           setUsedMock(refreshed.usedMock);
           setLastUpdatedAt(new Date().toISOString());
+          const latestImageId = refreshed.dashboard.recentImages[0]?.id ?? refreshed.dashboard.device.latestImage?.id ?? null;
+          const matchingCommand = refreshed.dashboard.recentCommands.find((command) => command.id === result.command.id);
+          if (latestImageId !== null && latestImageId !== baselineImageId) {
+            setTrackedCommand(null);
+            setCommandTone("success");
+            setCommandMessage(matchingCommand?.detail ?? "Image captured and uploaded.");
+          } else if (matchingCommand?.status === "failed") {
+            setTrackedCommand(null);
+            setCommandTone("error");
+            setCommandMessage(matchingCommand.detail ?? "Capture image failed.");
+          } else {
+            setCommandTone("info");
+            setCommandMessage("Image captured. Waiting for gallery refresh.");
+          }
         }
       } catch (err) {
         setTrackedCommand(null);
@@ -243,6 +268,46 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     isActionBlocked,
     activeCommandAction,
   };
+}
+
+async function waitForCaptureDashboardRefresh({
+  deviceId,
+  selectedRange,
+  token,
+  commandId,
+  baselineImageId,
+  attempts,
+  delayMs,
+}: {
+  deviceId: string;
+  selectedRange: RangeKey;
+  token?: string;
+  commandId: string;
+  baselineImageId: string | null;
+  attempts: number;
+  delayMs: number;
+}): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
+  let lastResult: { dashboard: DeviceDashboard; usedMock: boolean } | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await delay(delayMs);
+    }
+    const result = await getDeviceDashboard(deviceId, selectedRange, token);
+    lastResult = result;
+    const latestImageId = result.dashboard.recentImages[0]?.id ?? result.dashboard.device.latestImage?.id ?? null;
+    if (latestImageId !== null && latestImageId !== baselineImageId) {
+      return result;
+    }
+    const matchingCommand = result.dashboard.recentCommands.find((command) => command.id === commandId);
+    if (matchingCommand?.status === "failed") {
+      return result;
+    }
+  }
+  return lastResult ?? getDeviceDashboard(deviceId, selectedRange, token);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function isLightCommand(action: DeviceCommand["action"]): boolean {

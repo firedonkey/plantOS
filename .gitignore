@@ -47,6 +47,12 @@ platform/infra/cloud-run/.provisioning_deploy_state
 device/esp32/.pio/
 device/esp32/include/platform_secrets.h
 tools/
+!tools/
+tools/*
+!tools/simulator/
+!tools/simulator/**
+tools/simulator/**/__pycache__/
+tools/simulator/**/*.py[cod]
 
 # Pantheon project control
 .pantheon/runs/
