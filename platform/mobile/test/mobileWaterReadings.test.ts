@@ -42,7 +42,7 @@ test("mobile surfaces water readings in list, dashboard, history, trends, and mo
   const mockSource = await readText("../src/mock/data.ts");
 
   for (const requiredText of [
-    "Water ${device.latestReading.waterTemperatureC?.toFixed(1) ?? \"--\"} C",
+    'DeviceMetric label="Water" value={formatMetric(latestReading?.waterTemperatureC, "C")}',
     'label="Water temp"',
     'label="Water level"',
     "Water {reading.waterTemperatureC?.toFixed(1) ?? \"--\"} C",

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocalSearchParams } from "expo-router";
-import { Animated, GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, GestureResponderEvent, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { MetricCard } from "@/components/MetricCard";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { Screen } from "@/components/Screen";
@@ -15,6 +16,7 @@ import { TimelapsePlayer } from "@/components/TimelapsePlayer";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
+import type { DeviceDashboard } from "@/types";
 
 type DeviceDashboardScreenProps = {
   deviceId: string;
@@ -61,6 +63,18 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
         : growLedOn
           ? "Turn off"
           : "Turn on";
+  const captureDisabled = isCommandRunning || isActionBlocked("capture_image");
+  const captureLabel =
+    activeCommandAction === "capture_image" || isActionBlocked("capture_image")
+      ? "Capture pending"
+      : isCommandRunning
+        ? "Working..."
+        : "Capture image";
+  const latestImage = dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
+  const health = dashboard ? resolveMobileHealth(dashboard) : null;
+  const wifi = dashboard ? resolveWifiState(dashboard) : null;
+  const camera = dashboard ? resolveCameraState(dashboard) : null;
+  const light = dashboard ? resolveLightState(dashboard) : null;
 
   if (!deviceId) {
     return (
@@ -74,19 +88,49 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     <Screen onRefresh={refresh} refreshing={isLoading} scrollEnabled={!sliderActive}>
       {dashboard ? (
         <>
-          <Card variant="hero">
-            <View style={styles.header}>
-              <View style={{ flex: 1, gap: 8 }}>
+          <Card variant="hero" style={styles.overviewCard}>
+            <View style={styles.overviewTop}>
+              <View style={styles.overviewCopy}>
+                <View style={styles.overviewChips}>
+                  <StatusChip label={usedMock ? "Simulator" : health?.label ?? "Device"} tone={usedMock ? "mock" : health?.tone ?? dashboard.device.status} />
+                </View>
                 <Text style={styles.eyebrow}>PLANTLAB DEVICE</Text>
                 <Text style={styles.title}>{dashboard.device.name}</Text>
                 <Text style={styles.subtitle}>
                   {dashboard.device.plantType ?? "Plant type not set"} | {dashboard.device.location ?? "No location set"}
                 </Text>
-                <Text style={styles.meta}>
-                  {lastUpdatedAt ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Pull to refresh for the latest device state."}
-                </Text>
+                <Text style={styles.overviewSummary}>{health?.summary ?? "Pull to refresh for the latest device state."}</Text>
               </View>
-              <StatusChip label={usedMock ? "Mock mode" : dashboard.device.status} tone={usedMock ? "mock" : dashboard.device.status} />
+              <View style={styles.overviewImageFrame}>
+                {latestImage ? (
+                  <Image
+                    source={imageSource(latestImage.url, token)}
+                    style={styles.overviewImage}
+                  />
+                ) : (
+                  <View style={styles.overviewImageEmpty}>
+                    <Text style={styles.overviewImageEmptyText}>No image</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.overviewStats}>
+              <OverviewStat label="Wi-Fi" value={wifi?.label ?? "Waiting"} meta={wifi?.meta ?? "No RSSI yet"} />
+              <OverviewStat label="Camera" value={camera?.label ?? "Waiting"} meta={camera?.meta ?? "No node yet"} />
+              <OverviewStat label="Light" value={light?.label ?? "Off"} meta={light?.meta ?? "Ready"} />
+              <OverviewStat label="Updated" value={lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : "Waiting"} meta={formatAge(dashboard.hardwareHealth?.lastHeartbeatAt ?? dashboard.device.lastSeenAt)} />
+            </View>
+
+            <View style={styles.overviewActions}>
+              <View style={styles.overviewActionButton}>
+                <PrimaryButton label={captureLabel} onPress={() => runCommand("capture_image")} disabled={captureDisabled} />
+              </View>
+              <Link href={`/(app)/devices/${deviceId}/settings`} asChild>
+                <Pressable accessibilityRole="button" style={styles.overviewSecondaryAction}>
+                  <Text style={styles.overviewSecondaryActionText}>Settings</Text>
+                </Pressable>
+              </Link>
             </View>
           </Card>
 
@@ -144,14 +188,8 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
           <RecentImageGallery
             images={dashboard.recentImages}
             imageHeaders={token ? { Authorization: `Bearer ${token}` } : undefined}
-            captureDisabled={isCommandRunning || isActionBlocked("capture_image")}
-            captureLabel={
-              activeCommandAction === "capture_image" || isActionBlocked("capture_image")
-                ? "Capture pending"
-                : isCommandRunning
-                  ? "Working..."
-                  : "Capture image"
-            }
+            captureDisabled={captureDisabled}
+            captureLabel={captureLabel}
             onCapture={() => runCommand("capture_image")}
           />
 
@@ -200,6 +238,16 @@ function ToggleButton({ disabled, label, on, onPress }: { disabled: boolean; lab
       <Text style={[styles.toggleLabel, on ? styles.toggleLabelOn : styles.toggleLabelOff]}>{on ? "ON" : "OFF"}</Text>
       <View style={[styles.toggleKnob, on ? styles.toggleKnobOn : styles.toggleKnobOff]} />
     </Pressable>
+  );
+}
+
+function OverviewStat({ label, value, meta }: { label: string; value: string; meta: string }) {
+  return (
+    <View style={styles.overviewStat}>
+      <Text style={styles.overviewStatLabel}>{label}</Text>
+      <Text style={styles.overviewStatValue}>{value}</Text>
+      <Text style={styles.overviewStatMeta}>{meta}</Text>
+    </View>
   );
 }
 
@@ -362,6 +410,90 @@ function formatWaterLevel(state?: string, raw?: number) {
   return raw !== undefined ? `${label} (${raw})` : label;
 }
 
+function resolveMobileHealth(dashboard: DeviceDashboard): { label: string; tone: "online" | "offline" | "degraded" | "waiting"; summary: string } {
+  const health = dashboard.hardwareHealth;
+  const status = health?.friendlyStatus ?? health?.overallStatus ?? dashboard.device.status;
+  const attentionReason = health?.attentionReasons?.[0];
+  if (status === "online" || status === "recently_seen") {
+    return { label: "Healthy", tone: "online", summary: "Everything looks steady. The device is reporting normally." };
+  }
+  if (status === "offline" || dashboard.device.status === "offline") {
+    return { label: "Offline", tone: "offline", summary: "Recent data stays visible while the device reconnects." };
+  }
+  if (status === "provisioning") {
+    return { label: "Setting up", tone: "waiting", summary: "Setup is still in progress. Keep the planter powered and nearby." };
+  }
+  return { label: "Needs attention", tone: "degraded", summary: formatStatusReason(attentionReason) ?? "A device state may need review." };
+}
+
+function resolveWifiState(dashboard: DeviceDashboard): { label: string; meta: string } {
+  const rssi = dashboard.hardwareHealth?.primary?.diagnostics?.wifiRssiDbm;
+  if (typeof rssi !== "number") {
+    return { label: "Waiting", meta: "No RSSI yet" };
+  }
+  if (rssi <= -85) {
+    return { label: "Weak", meta: `${rssi} dBm` };
+  }
+  if (rssi <= -75) {
+    return { label: "Low", meta: `${rssi} dBm` };
+  }
+  return { label: "Good", meta: `${rssi} dBm` };
+}
+
+function resolveCameraState(dashboard: DeviceDashboard): { label: string; meta: string } {
+  const status = dashboard.hardwareHealth?.cameraStatus ?? dashboard.hardwareHealth?.cameras[0]?.status;
+  const cameraCount = dashboard.hardwareHealth?.cameras.length ?? 0;
+  if (!cameraCount && !status) {
+    return { label: "Waiting", meta: "No node yet" };
+  }
+  if (status === "online") {
+    return { label: "Online", meta: `${cameraCount || 1} node${cameraCount === 1 ? "" : "s"}` };
+  }
+  if (status === "offline") {
+    return { label: "Offline", meta: "Reconnect pending" };
+  }
+  return { label: "Review", meta: formatCode(status ?? "unknown") };
+}
+
+function resolveLightState(dashboard: DeviceDashboard): { label: string; meta: string } {
+  const reading = dashboard.device.latestReading;
+  const lightOn = (dashboard.device.currentLightOn ?? reading?.lightOn) === true;
+  const intensity = dashboard.device.currentLightIntensityPercent ?? reading?.lightIntensityPercent;
+  if (!lightOn) {
+    return { label: "Off", meta: typeof intensity === "number" ? `${Math.round(intensity)}%` : "Ready" };
+  }
+  return { label: "On", meta: typeof intensity === "number" ? `${Math.round(intensity)}%` : "Active" };
+}
+
+function formatStatusReason(reason?: string): string | undefined {
+  if (!reason) {
+    return undefined;
+  }
+  if (reason === "primary_node_warning") {
+    return "The main controller is reporting a warning.";
+  }
+  if (reason === "camera_node_warning") {
+    return "The camera node is reporting a warning.";
+  }
+  if (reason === "camera_node_offline") {
+    return "The camera node is offline. Sensor readings may still continue.";
+  }
+  return formatCode(reason);
+}
+
+function formatCode(value: string): string {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function imageSource(url: string, token: string | null) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  return headers ? { uri: url, headers } : { uri: url };
+}
+
 function clampLightIntensity(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
@@ -409,6 +541,51 @@ function formatAge(timestamp?: string) {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", gap: theme.spacing.md, alignItems: "flex-start" },
+  overviewCard: { gap: theme.spacing.lg },
+  overviewTop: { flexDirection: "row", gap: theme.spacing.md, alignItems: "stretch" },
+  overviewCopy: { flex: 1, gap: theme.spacing.sm },
+  overviewChips: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
+  overviewSummary: { color: theme.colors.textPrimary, fontSize: theme.typography.bodyLarge, lineHeight: 23 },
+  overviewImageFrame: {
+    width: 112,
+    minHeight: 132,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.surfaceInset,
+    borderColor: theme.colors.borderSoft,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  overviewImage: { width: "100%", height: "100%" },
+  overviewImageEmpty: { flex: 1, alignItems: "center", justifyContent: "center", padding: theme.spacing.sm },
+  overviewImageEmptyText: { color: theme.colors.textMuted, fontSize: theme.typography.meta, fontWeight: "700", textAlign: "center" },
+  overviewStats: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
+  overviewStat: {
+    ...theme.surfaces.muted,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
+    gap: 2,
+    minWidth: 132,
+    padding: theme.spacing.md,
+  },
+  overviewStatLabel: { color: theme.colors.textMuted, fontSize: theme.typography.caption, fontWeight: "800" },
+  overviewStatValue: { color: theme.colors.textPrimary, fontSize: theme.typography.bodyLarge, fontWeight: "800" },
+  overviewStatMeta: { color: theme.colors.textSecondary, fontSize: theme.typography.meta },
+  overviewActions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
+  overviewActionButton: { flex: 1, minWidth: 150 },
+  overviewSecondaryAction: {
+    ...theme.surfaces.default,
+    alignItems: "center",
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    minWidth: 112,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  overviewSecondaryActionText: { color: theme.colors.textPrimary, fontSize: theme.typography.body, fontWeight: "700" },
   eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
   title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary },
