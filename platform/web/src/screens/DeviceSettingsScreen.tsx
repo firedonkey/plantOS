@@ -16,8 +16,6 @@ export function DeviceSettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [location, setLocation] = useState("");
-  const [plantType, setPlantType] = useState("");
 
   useEffect(() => {
     if (!deviceId) {
@@ -35,8 +33,6 @@ export function DeviceSettingsScreen() {
         setDetails(result.details);
         setUsedMock(result.usedMock);
         setName(result.details.device.name);
-        setLocation(result.details.device.location ?? "");
-        setPlantType(result.details.device.plantType ?? "");
       } catch (err) {
         if (!cancelled) {
           setUsedMock(false);
@@ -67,8 +63,6 @@ export function DeviceSettingsScreen() {
         deviceId,
         {
           name,
-          location: location || undefined,
-          plantType: plantType || undefined,
         },
         token ?? undefined,
       );
@@ -93,7 +87,7 @@ export function DeviceSettingsScreen() {
         <div>
           <div className="eyebrow">DEVICE SETTINGS</div>
           <h2>{details?.device.name ?? "Device settings"}</h2>
-          <p className="subtitle">Edit the core device labels and review the identifiers and provisioning state used by the real hardware loop.</p>
+          <p className="subtitle">Edit the device name and review the identifiers and provisioning state used by the real hardware loop.</p>
         </div>
         <div className="header-actions">
           {usedMock ? <span className="chip chip-mock">Mock mode</span> : null}
@@ -111,14 +105,6 @@ export function DeviceSettingsScreen() {
         <label className="field">
           <span>Device name</span>
           <input value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-        <label className="field">
-          <span>Location</span>
-          <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Optional" />
-        </label>
-        <label className="field">
-          <span>Plant type</span>
-          <input value={plantType} onChange={(event) => setPlantType(event.target.value)} placeholder="Optional" />
         </label>
         <div className="button-row">
           <button className="primary-button" type="submit" disabled={isSaving || isLoading}>

@@ -1344,15 +1344,20 @@ export async function updateDeviceSettings(
   token?: string,
 ): Promise<{ details: DeviceSettingsDetails; usedMock: boolean }> {
   try {
+    const payload: { name: string; location?: string | null; plant_type?: string | null } = {
+      name: input.name,
+    };
+    if (Object.prototype.hasOwnProperty.call(input, "location")) {
+      payload.location = input.location ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "plantType")) {
+      payload.plant_type = input.plantType ?? null;
+    }
     await apiRequest<ApiDevice>(
       `/api/devices/${deviceId}`,
       {
         method: "PATCH",
-        body: JSON.stringify({
-          name: input.name,
-          location: input.location ?? null,
-          plant_type: input.plantType ?? null,
-        }),
+        body: JSON.stringify(payload),
       },
       token,
     );
@@ -1368,8 +1373,8 @@ export async function updateDeviceSettings(
         device: {
           ...mockDashboard.device,
           name: input.name,
-          location: input.location,
-          plantType: input.plantType,
+          location: Object.prototype.hasOwnProperty.call(input, "location") ? input.location : mockDashboard.device.location,
+          plantType: Object.prototype.hasOwnProperty.call(input, "plantType") ? input.plantType : mockDashboard.device.plantType,
         },
         hardwareHealth: mockDashboard.hardwareHealth,
         maskedToken: "mock...token",
