@@ -2,90 +2,81 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import appIcon from "@/assets/app-icon-512.png";
-import roseSeedling from "@/assets/demo/rose-01-seedling.jpg";
-import roseLeaves from "@/assets/demo/rose-02-young-leaves.jpg";
-import roseBud from "@/assets/demo/rose-03-bud.jpg";
-import roseBloom from "@/assets/demo/rose-04-bloom.jpg";
-import roseCloseup from "@/assets/demo/rose-05-bloom.jpg";
 import { useSession } from "@/hooks/useSession";
 
-const demoGrowthImages = [
-  {
-    src: roseSeedling,
-    label: "Day 1",
-    capturedAt: "May 1, 8:12 AM",
-    note: "New rose seedling settled into the planter.",
-    alt: "Young rose seedling in soil inside a planter.",
-  },
-  {
-    src: roseLeaves,
-    label: "Day 3",
-    capturedAt: "May 3, 8:10 AM",
-    note: "Leaf surface and moisture visibility improved.",
-    alt: "Close view of rose plant leaves with dew.",
-  },
-  {
-    src: roseBud,
-    label: "Day 7",
-    capturedAt: "May 7, 8:09 AM",
-    note: "Bud formation became visible in the camera history.",
-    alt: "Rose bud beginning to open.",
-  },
-  {
-    src: roseBloom,
-    label: "Day 14",
-    capturedAt: "May 14, 8:11 AM",
-    note: "Bloom opened while device health stayed stable.",
-    alt: "Red rose bloom in outdoor light.",
-  },
-  {
-    src: roseCloseup,
-    label: "Today",
-    capturedAt: "May 28, 2:20 PM",
-    note: "Latest close-up capture is ready for the growth timeline.",
-    alt: "Close-up image of a fully opened red rose.",
-  },
-];
+const demoGrowthFrameModules = import.meta.glob<string>("../assets/demo/growth/*.jpg", {
+  eager: true,
+  import: "default",
+});
+
+const demoGrowthFrameUrls = Object.entries(demoGrowthFrameModules)
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([, src]) => src);
+
+const demoGrowthImages = demoGrowthFrameUrls.map((src, index) => {
+  const totalFrames = demoGrowthFrameUrls.length;
+  const finalIndex = Math.max(totalFrames - 1, 1);
+  const progress = index / finalIndex;
+  const day = Math.round(progress * 20) + 1;
+  const label = index === totalFrames - 1 ? "Today" : `Day ${day}`;
+  const captureTime = index === totalFrames - 1 ? "Today, 9:15 AM" : `May ${String(day).padStart(2, "0")}, 9:15 AM`;
+  const note = getGrowthObservation(progress, index === totalFrames - 1);
+
+  return {
+    src,
+    label,
+    capturedAt: `${captureTime} · Capture ${index + 1}/${totalFrames}`,
+    note,
+    alt: `Overhead PlantLab demo growth capture, frame ${index + 1} of ${totalFrames}.`,
+  };
+});
 
 const latestCapture = demoGrowthImages[demoGrowthImages.length - 1];
 
 const overviewStats = [
   { label: "Device health", value: "Healthy", detail: "Main controller online" },
-  { label: "Wi-Fi", value: "-61 dBm", detail: "Signal stable" },
-  { label: "Camera node", value: "Connected", detail: "Latest capture just now" },
-  { label: "Grow light", value: "65%", detail: "Scheduled evening support" },
+  { label: "Wi-Fi", value: "-58 dBm", detail: "Signal stable" },
+  { label: "Camera node", value: "Connected", detail: "Latest capture today" },
+  { label: "Capture interval", value: "4 hours", detail: "Daylight schedule" },
+  { label: "Grow light", value: "68%", detail: "Evening support active" },
 ];
 
 const sensorReadings = [
-  { label: "Air temp", value: "24.8 C" },
-  { label: "Humidity", value: "43%" },
-  { label: "Water state", value: "Ready" },
+  { label: "Air temp", value: "23.9 C" },
+  { label: "Humidity", value: "46%" },
+  { label: "Water state", value: "Stable" },
 ];
 
 const demoEvents = [
   {
     tone: "online",
-    time: "Just now",
-    title: "Image captured",
-    body: "The camera node saved a new rose close-up for the growth timeline.",
+    time: "9:15 AM",
+    title: "Growth image uploaded",
+    body: "A new overhead capture was added to the plant history.",
   },
   {
     tone: "online",
-    time: "2m ago",
-    title: "Heartbeat received",
-    body: "Device health, Wi-Fi, light state, and runtime state were updated.",
+    time: "9:12 AM",
+    title: "Device check-in healthy",
+    body: "PlantLab reported stable Wi-Fi, camera, and light state.",
+  },
+  {
+    tone: "online",
+    time: "8:00 AM",
+    title: "Lighting schedule updated",
+    body: "Grow light support adjusted to 68% for the morning cycle.",
   },
   {
     tone: "warning",
-    time: "18m ago",
+    time: "Yesterday",
     title: "Wi-Fi recovered",
-    body: "Signal returned to a stable range after a brief dip.",
+    body: "Signal returned to a stable range after a short drop.",
   },
   {
     tone: "online",
-    time: "1h ago",
-    title: "Firmware up to date",
-    body: "PlantLab is running the current stable release.",
+    time: "2 days ago",
+    title: "Software up to date",
+    body: "The device is running the current stable release.",
   },
 ];
 
@@ -153,6 +144,7 @@ export function PublicDemoScreen() {
               Explore a sample PlantLab device with realistic plant imagery, growth history, lighting state, camera
               status, and readable device activity. No sign-in or hardware is required.
             </p>
+            <p className="demo-sample-note">Demo uses sample PlantLab data for illustration.</p>
             <div className="button-row">
               <a className="primary-button" href="#demo-growth">
                 View growth timeline
@@ -168,20 +160,20 @@ export function PublicDemoScreen() {
               <img src={latestCapture.src} alt={latestCapture.alt} />
             </div>
             <span className="chip chip-online">Healthy</span>
-            <h2>Mars Rose Lab</h2>
-            <p>Demo rose planter - Local sample device</p>
+            <h2>Mars Basil Lab</h2>
+            <p>Demo basil planter - Local sample device</p>
             <div className="demo-live-grid">
               <div>
                 <span>Last capture</span>
-                <strong>Just now</strong>
+                <strong>Today 9:15</strong>
               </div>
               <div>
                 <span>Light</span>
-                <strong>65%</strong>
+                <strong>68%</strong>
               </div>
               <div>
                 <span>Wi-Fi</span>
-                <strong>-61 dBm</strong>
+                <strong>-58 dBm</strong>
               </div>
             </div>
           </article>
@@ -192,8 +184,8 @@ export function PublicDemoScreen() {
             <div className="eyebrow">Device overview</div>
             <h2 id="demo-overview-title">A calm snapshot of the plant and the device.</h2>
             <p>
-              The demo mirrors the kind of information PlantLab keeps visible: whether the plant was captured, whether
-              the device is healthy, and whether the supporting hardware is online.
+              The demo mirrors the information PlantLab keeps visible: whether the plant was captured, whether the
+              device is healthy, and whether the supporting hardware is online.
             </p>
           </div>
           <div className="demo-stat-grid" aria-label="Demo device state">
@@ -235,14 +227,14 @@ export function PublicDemoScreen() {
             <div className="eyebrow">Growth timeline</div>
             <h2 id="demo-growth-title">PlantLab makes slow changes visible.</h2>
             <p>
-              These local demo images show how a sequence of captures can become a clear growth story without manual
-              photo tracking.
+              These sample captures show the same plant from a consistent overhead angle, making slow growth easier to
+              compare at a glance.
             </p>
           </div>
           <div className="demo-growth-grid">
             {demoGrowthImages.map((image) => (
-              <article className="demo-growth-card" key={image.label}>
-                <img src={image.src} alt={image.alt} />
+              <article className="demo-growth-card" key={`${image.label}-${image.capturedAt}`}>
+                <img src={image.src} alt={image.alt} loading="lazy" />
                 <div>
                   <strong>{image.label}</strong>
                   <span>{image.capturedAt}</span>
@@ -318,4 +310,20 @@ function setMeta(name: string, content: string, attribute: "name" | "property" =
       element.setAttribute("content", previousContent);
     }
   };
+}
+
+function getGrowthObservation(progress: number, isLatest: boolean) {
+  if (isLatest) {
+    return "Canopy fills more of the view, with broader leaves visible near the center.";
+  }
+  if (progress < 0.18) {
+    return "First new leaves are visible under the camera.";
+  }
+  if (progress < 0.42) {
+    return "Leaf area expands as the plant settles into the light cycle.";
+  }
+  if (progress < 0.68) {
+    return "Growth accelerates and the canopy begins to fill the planter.";
+  }
+  return "New leaves widen and overlap, making the progression easy to see.";
 }

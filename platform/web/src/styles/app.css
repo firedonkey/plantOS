@@ -197,6 +197,14 @@ select {
   text-transform: uppercase;
 }
 
+.brand-home-link {
+  align-self: flex-start;
+}
+
+.brand-home-link:hover {
+  color: var(--pl-color-accent-strong);
+}
+
 .subtitle {
   margin: 0;
   color: var(--pl-color-text-secondary);
@@ -1881,6 +1889,17 @@ select {
   line-height: 1.7;
 }
 
+.demo-hero-copy > .demo-sample-note {
+  width: fit-content;
+  padding: 10px 14px;
+  border: 1px solid rgba(47, 133, 90, 0.18);
+  border-radius: var(--pl-radius-md);
+  background: rgba(47, 133, 90, 0.08);
+  color: var(--pl-color-text-secondary);
+  font-size: var(--pl-font-size-body);
+  line-height: 1.4;
+}
+
 .demo-live-card,
 .demo-stat-card,
 .demo-capture-image,
@@ -2056,14 +2075,20 @@ select {
 
 .demo-growth-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(190px, 230px);
   gap: var(--pl-space-4);
+  overflow-x: auto;
+  padding: var(--pl-space-2) var(--pl-space-1) var(--pl-space-4);
+  scroll-snap-type: x mandatory;
+  scrollbar-color: rgba(47, 133, 90, 0.36) transparent;
 }
 
 .demo-growth-card {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  scroll-snap-align: start;
   transition:
     border-color var(--pl-motion-normal),
     box-shadow var(--pl-motion-normal),
@@ -3321,8 +3346,7 @@ select {
 
 	  .demo-live-grid,
 	  .demo-stat-grid,
-	  .demo-sensor-row,
-	  .demo-growth-grid {
+	  .demo-sensor-row {
 	    grid-template-columns: 1fr;
 	  }
 
