@@ -20,7 +20,6 @@ export function DeviceDashboardScreen() {
     commandTone,
     isCommandRunning,
     lastUpdatedAt,
-    refresh,
     runCommand,
     imageAuthHeaders,
     selectedRange,
@@ -151,13 +150,6 @@ export function DeviceDashboardScreen() {
             latestImage={latestHeroImage}
             latestImageUrl={latestHeroImageUrl}
             lastUpdatedAt={lastUpdatedAt}
-            isLoading={isLoading}
-            isCommandRunning={isCommandRunning}
-            captureDisabled={captureDisabled}
-            captureLabel={captureLabel}
-            settingsHref={`/devices/${deviceId}/settings`}
-            onCapture={() => runCommand("capture_image")}
-            onRefresh={refresh}
           />
 
           {error ? <p className="status-banner status-banner-error">{error}</p> : null}

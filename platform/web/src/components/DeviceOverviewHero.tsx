@@ -1,5 +1,3 @@
-import { Link } from "react-router-dom";
-
 import type { DeviceDashboard, DeviceConnectionState, LatestImage } from "@/types";
 
 type DeviceOverviewHeroProps = {
@@ -8,13 +6,6 @@ type DeviceOverviewHeroProps = {
   latestImage?: LatestImage;
   latestImageUrl?: string;
   lastUpdatedAt?: string | null;
-  isLoading: boolean;
-  isCommandRunning: boolean;
-  captureDisabled: boolean;
-  captureLabel: string;
-  settingsHref: string;
-  onCapture: () => void;
-  onRefresh: () => void | Promise<void>;
 };
 
 export function DeviceOverviewHero({
@@ -23,13 +14,6 @@ export function DeviceOverviewHero({
   latestImage,
   latestImageUrl,
   lastUpdatedAt,
-  isLoading,
-  isCommandRunning,
-  captureDisabled,
-  captureLabel,
-  settingsHref,
-  onCapture,
-  onRefresh,
 }: DeviceOverviewHeroProps) {
   const device = dashboard.device;
   const health = resolveHealth(dashboard);
@@ -55,18 +39,6 @@ export function DeviceOverviewHero({
         </div>
 
         <p className="device-overview-summary">{health.summary}</p>
-
-        <div className="device-overview-actions">
-          <button className="primary-button" disabled={captureDisabled} onClick={onCapture} type="button">
-            {captureLabel}
-          </button>
-          <button className="secondary-button" disabled={isLoading || isCommandRunning} onClick={() => void onRefresh()} type="button">
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </button>
-          <Link className="secondary-button device-overview-settings" to={settingsHref}>
-            Settings
-          </Link>
-        </div>
 
         <div className="device-overview-meta">
           <span>Last seen {formatAge(lastSeen)}</span>

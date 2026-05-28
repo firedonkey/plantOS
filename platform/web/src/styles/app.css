@@ -376,17 +376,6 @@ select {
   line-height: 1.45;
 }
 
-.device-overview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--pl-space-3);
-  align-items: center;
-}
-
-.device-overview-settings {
-  text-decoration: none;
-}
-
 .device-overview-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2134,14 +2123,6 @@ select {
   .device-overview-hero {
     grid-template-columns: 1fr;
     padding: var(--pl-space-5);
-  }
-
-  .device-overview-actions {
-    align-items: stretch;
-  }
-
-  .device-overview-actions > * {
-    flex: 1 1 180px;
   }
 
   .device-overview-stats {
