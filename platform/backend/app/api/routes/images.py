@@ -25,7 +25,7 @@ from app.schemas.images import ImageRead
 from app.services.device_nodes import get_node_for_device
 from app.services.devices import get_device_for_user
 from app.services.images import save_uploaded_image
-from app.services.events import write_canonical_event
+from app.services.lifecycle_events import write_canonical_event_once
 from app.services.storage import image_response
 
 
@@ -80,6 +80,23 @@ def upload_image(
     if image_message is not None and source_node is not None and source_node.node_role != image_message.node_role.value:
         raise HTTPException(status_code=409, detail="Image source node role does not match registration.")
 
+    image_correlation_id = (
+        image_message.message_id
+        if image_message is not None
+        else f"image_upload:{source_hardware_device_id}:{datetime.now(timezone.utc).isoformat()}"
+    )
+    if source_node is not None:
+        _write_image_flow_event(
+            session,
+            device_id=device.id,
+            source_node=source_node,
+            event_type=EventType.IMAGE_UPLOAD_STARTED,
+            payload=image_message.payload if image_message is not None else None,
+            correlation_id=image_correlation_id,
+            image=None,
+            fallback_content_type=file.content_type,
+        )
+
     try:
         image = save_uploaded_image(
             session=session,
@@ -90,15 +107,37 @@ def upload_image(
             captured_at=image_message.payload.captured_at if image_message is not None else None,
         )
     except ValueError as exc:
+        if source_node is not None:
+            _write_image_flow_event(
+                session,
+                device_id=device.id,
+                source_node=source_node,
+                event_type=EventType.IMAGE_UPLOAD_FAILED,
+                payload=image_message.payload if image_message is not None else None,
+                correlation_id=image_correlation_id,
+                image=None,
+                fallback_content_type=file.content_type,
+                extra_data={"failure_reason": str(exc)},
+            )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if image_message is not None and source_node is not None:
-        _write_image_upload_event(
+    if source_node is not None:
+        _write_image_flow_event(
+            session,
+            device_id=device.id,
+            source_node=source_node,
+            event_type=EventType.IMAGE_CAPTURED,
+            payload=image_message.payload if image_message is not None else None,
+            correlation_id=image_correlation_id,
+            image=image,
+            fallback_content_type=file.content_type,
+        )
+        _write_image_flow_event(
             session,
             device_id=device.id,
             source_node=source_node,
             event_type=EventType.IMAGE_UPLOADED,
-            payload=image_message.payload,
-            correlation_id=image_message.message_id,
+            payload=image_message.payload if image_message is not None else None,
+            correlation_id=image_correlation_id,
             image=image,
             fallback_content_type=file.content_type,
         )
@@ -138,7 +177,7 @@ def report_image_upload(
     image = session.get(Image, message.payload.image_id) if message.payload.image_id is not None else None
     if image is not None and image.device_id != device.id:
         raise HTTPException(status_code=404, detail="Image not found.")
-    _write_image_upload_event(
+    _write_image_flow_event(
         session,
         device_id=device.id,
         source_node=source_node,
@@ -225,18 +264,19 @@ def _source_hardware_device_id(payload: ImageUploadPayload, envelope_hardware_de
     return payload.source_hardware_device_id or envelope_hardware_device_id
 
 
-def _write_image_upload_event(
+def _write_image_flow_event(
     session: Session,
     *,
     device_id: int,
     source_node: DeviceNode,
     event_type: EventType,
-    payload: ImageUploadPayload,
+    payload: ImageUploadPayload | None,
     correlation_id: str,
     image: Image | None,
     fallback_content_type: str | None,
+    extra_data: dict[str, Any] | None = None,
 ) -> None:
-    data = payload.model_dump(mode="json", exclude_none=True)
+    data = payload.model_dump(mode="json", exclude_none=True) if payload is not None else {}
     if image is not None:
         data["image_id"] = image.id
         data["path"] = image.path
@@ -246,7 +286,9 @@ def _write_image_upload_event(
     data["source_node_role"] = source_node.node_role
     if fallback_content_type and "content_type" not in data:
         data["content_type"] = fallback_content_type
-    write_canonical_event(
+    if extra_data:
+        data.update(extra_data)
+    write_canonical_event_once(
         session,
         event_type=event_type,
         severity=DiagnosticSeverity.WARNING if event_type == EventType.IMAGE_UPLOAD_FAILED else DiagnosticSeverity.INFO,

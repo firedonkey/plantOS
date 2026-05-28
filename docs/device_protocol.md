@@ -64,8 +64,8 @@ Current backend ingestion:
   upload failures or upload-complete reports that do not carry the image binary.
 - `GET /api/devices/{id}/timeline` exposes canonical device events with
   summaries, filters, and cursor pagination for diagnostics.
-- Heartbeat, diagnostics, command results, and OTA status ingestion derive
-  state-change events when meaningful values change.
+- Heartbeat, diagnostics, command results, OTA status, setup status, and image
+  ingestion derive lifecycle/state-change events when meaningful values change.
 
 Current firmware support:
 
@@ -84,7 +84,12 @@ Current firmware support:
   legacy OTA status payload.
 - Legacy command polling and legacy result reporting remain as fallback paths.
 
-Future phases will migrate provisioning.
+Provisioning contract payloads are still a future phase, but setup status now
+emits canonical provisioning lifecycle events:
+
+- `PROVISIONING_STARTED`
+- `PROVISIONING_SUCCESS`
+- `PROVISIONING_FAILED`
 
 Image upload v1 metadata:
 
@@ -94,8 +99,9 @@ Image upload v1 metadata:
   `content_type`, and `upload_ms`.
 - Failed metadata must include `failure_reason`.
 - The backend keeps actual image storage unchanged and emits
-  `IMAGE_UPLOADED`/`IMAGE_UPLOAD_FAILED` canonical events from validated
-  metadata.
+  `IMAGE_CAPTURE_STARTED`, `IMAGE_CAPTURED`, `IMAGE_UPLOAD_STARTED`,
+  `IMAGE_UPLOADED`, and `IMAGE_UPLOAD_FAILED` canonical events from command
+  requests and validated metadata.
 
 Heartbeat v1 additive state:
 

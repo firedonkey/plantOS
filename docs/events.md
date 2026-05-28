@@ -51,6 +51,12 @@ Implemented writers:
 - `OTA_SUCCESS`
 - `OTA_FAILED`
 - `OTA_ROLLED_BACK`
+- `PROVISIONING_STARTED`
+- `PROVISIONING_SUCCESS`
+- `PROVISIONING_FAILED`
+- `IMAGE_CAPTURE_STARTED`
+- `IMAGE_CAPTURED`
+- `IMAGE_UPLOAD_STARTED`
 - `IMAGE_UPLOADED`
 - `IMAGE_UPLOAD_FAILED`
 
@@ -76,6 +82,10 @@ Deduplication rules:
   The gap is intentional hysteresis to avoid flapping.
 - Device health changes emit when heartbeat `node_status` or diagnostics
   status/severity changes.
+- Provisioning lifecycle events are deduplicated per device/hardware node and
+  provisioning phase.
+- Image capture/upload lifecycle events are deduplicated by command or image
+  message correlation id.
 
 Timeline API:
 
@@ -85,8 +95,10 @@ Timeline API:
   windows.
 - The backend returns concise summaries so clients can render a readable
   timeline without duplicating event interpretation logic.
-- Image summaries include successful uploads, image ids when available, upload
-  reasons, and failure reasons.
+- Image summaries include capture start, capture completion, upload start,
+  successful uploads, image ids when available, upload reasons, and failure
+  reasons.
+- Provisioning summaries include started, completed, and failed states.
 
 Timestamp behavior:
 
@@ -100,7 +112,6 @@ Timestamp behavior:
 
 TODO:
 
-- Migrate provisioning events into this format.
 - Move snapshots into a dedicated state table only if event lookup becomes a
   measurable performance issue.
 - Decide whether analytics needs a separate append-only event table later.

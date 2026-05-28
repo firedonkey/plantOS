@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import api_error
 from app.api.deps import get_current_user
+from app.contracts import DiagnosticSeverity, EventType
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import User
@@ -12,6 +13,7 @@ from app.schemas.setup import ClaimTokenStatusRead, ClaimTokenStatusRequest, Set
 from app.services.device_nodes import latest_node_heartbeat_at, list_nodes_for_device
 from app.services.devices import list_devices_for_user
 from app.services.images import list_recent_images_for_device
+from app.services.lifecycle_events import write_canonical_event_once
 from app.services.readings import get_latest_reading_for_device
 
 
@@ -91,6 +93,12 @@ def get_setup_status(
     status = _primary_node_status(nodes)
     online = status == "online"
     last_heartbeat_at = latest_node_heartbeat_at(nodes)
+    if ready:
+        _write_provisioning_event(session, matching_device.id, nodes, EventType.PROVISIONING_SUCCESS)
+    elif status == "error":
+        _write_provisioning_event(session, matching_device.id, nodes, EventType.PROVISIONING_FAILED)
+    else:
+        _write_provisioning_event(session, matching_device.id, nodes, EventType.PROVISIONING_STARTED)
 
     return _no_store_json(
         SetupStatusRead(
@@ -185,6 +193,35 @@ def _primary_node_status(nodes: list) -> str | None:
         return None
     status = str(getattr(primary, "status", "") or "").strip().lower()
     return status or None
+
+
+def _write_provisioning_event(session: Session, device_id: int, nodes: list, event_type: EventType) -> None:
+    primary = next(
+        (
+            node
+            for node in nodes
+            if str(getattr(node, "node_role", "") or "").strip().lower() in {"single_board", "master"}
+        ),
+        None,
+    )
+    if primary is None:
+        return
+    status = str(getattr(primary, "status", "") or "").strip().lower() or "unknown"
+    severity = DiagnosticSeverity.WARNING if event_type == EventType.PROVISIONING_FAILED else DiagnosticSeverity.INFO
+    write_canonical_event_once(
+        session,
+        event_type=event_type,
+        severity=severity,
+        device_id=device_id,
+        hardware_device_id=primary.hardware_device_id,
+        node_role=getattr(primary, "node_role", None) or "master",
+        correlation_id=f"provisioning:{device_id}:{primary.hardware_device_id}",
+        data={
+            "status": status,
+            "hardware_device_id": primary.hardware_device_id,
+            "node_role": getattr(primary, "node_role", None),
+        },
+    )
 
 
 def _no_store_json(payload: dict) -> JSONResponse:

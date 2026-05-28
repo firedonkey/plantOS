@@ -221,6 +221,11 @@ def test_upload_image_accepts_contract_metadata_and_emits_event(tmp_path, monkey
         assert payload["device_id"] == device_id
         assert payload["source_hardware_device_id"] == "cam-01"
         with next(app.dependency_overrides[get_session]()) as session:
+            event_types = [
+                event.event_type
+                for event in session.query(DeviceDiagnosticEvent).order_by(DeviceDiagnosticEvent.id).all()
+            ]
+            assert event_types == ["IMAGE_UPLOAD_STARTED", "IMAGE_CAPTURED", "IMAGE_UPLOADED"]
             event = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_UPLOADED").one()
             data = event.metadata_json["data"]
             assert event.hardware_device_id == "cam-01"
@@ -288,27 +293,64 @@ def test_image_upload_failed_report_emits_canonical_event(tmp_path, monkeypatch)
                 status="online",
             )
 
+        report = _image_upload_envelope(
+            device_id=device_id,
+            hardware_device_id="cam-01",
+            status="failed",
+            upload_reason="manual",
+            content_type="image/png",
+            failure_reason="camera_timeout",
+        )
         response = client.post(
             "/api/hardware/image-upload/report",
-            json=_image_upload_envelope(
-                device_id=device_id,
-                hardware_device_id="cam-01",
-                status="failed",
-                upload_reason="manual",
-                content_type="image/png",
-                failure_reason="camera_timeout",
-            ),
+            json=report,
+            headers={"X-Device-Token": "token-owner"},
+        )
+        duplicate_response = client.post(
+            "/api/hardware/image-upload/report",
+            json=report,
             headers={"X-Device-Token": "token-owner"},
         )
 
         assert response.status_code == 200
         assert response.json() == {"status": "accepted", "event_type": "IMAGE_UPLOAD_FAILED"}
+        assert duplicate_response.status_code == 200
         with next(app.dependency_overrides[get_session]()) as session:
-            event = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_UPLOAD_FAILED").one()
+            events = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_UPLOAD_FAILED").all()
+            assert len(events) == 1
+            event = events[0]
             data = event.metadata_json["data"]
             assert event.severity == "warning"
             assert data["failure_reason"] == "camera_timeout"
             assert data["source_hardware_device_id"] == "cam-01"
+    finally:
+        teardown_overrides()
+
+
+def test_capture_command_emits_image_capture_started_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(f"/api/devices/{device_id}/commands/capture")
+
+        assert response.status_code == 201
+        command_id = response.json()["command_id"]
+        with next(app.dependency_overrides[get_session]()) as session:
+            event = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_CAPTURE_STARTED").one()
+            assert event.hardware_device_id == "cam-01"
+            assert event.metadata_json["correlation_id"] == f"cmd_{command_id}"
+            assert event.metadata_json["data"]["upload_reason"] == "manual"
     finally:
         teardown_overrides()
 

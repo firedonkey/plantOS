@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import api_error
 from app.api.deps import get_current_user, get_device_from_token
+from app.contracts import DiagnosticSeverity, EventType
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import CommandStatus, User
@@ -51,6 +52,7 @@ from app.services.devices import (
     update_device_for_user,
 )
 from app.services.images import list_recent_images_for_device, list_timelapse_images_for_device
+from app.services.lifecycle_events import write_canonical_event_once
 from app.services.readings import MAX_READING_QUERY_LIMIT, get_latest_reading_for_device, list_recent_readings_for_device
 from app.services.storage import image_client_url
 
@@ -623,6 +625,23 @@ def create_capture_command(
         device.id,
         CommandCreate(target="camera", action="capture"),
     )
+    source_node = _image_event_source_node(session, device.id)
+    if source_node is not None:
+        write_canonical_event_once(
+            session,
+            event_type=EventType.IMAGE_CAPTURE_STARTED,
+            severity=DiagnosticSeverity.INFO,
+            device_id=device.id,
+            hardware_device_id=source_node.hardware_device_id,
+            node_role=source_node.node_role,
+            correlation_id=f"cmd_{command.id}",
+            data={
+                "command_id": f"cmd_{command.id}",
+                "upload_reason": "manual",
+                "source_hardware_device_id": source_node.hardware_device_id,
+                "source_node_role": source_node.node_role,
+            },
+        )
     return _queued_command_response(
         device_id=device.id,
         command_name="capture",
@@ -706,6 +725,14 @@ def _sanitize_registration_log_payload(value):
     if isinstance(value, list):
         return [_sanitize_registration_log_payload(item) for item in value]
     return value
+
+
+def _image_event_source_node(session: Session, device_id: int):
+    nodes = list_nodes_for_device(session, device_id)
+    camera_node = next((node for node in nodes if str(node.node_role).lower() == "camera"), None)
+    if camera_node is not None:
+        return camera_node
+    return next((node for node in nodes if str(node.node_role).lower() in {"master", "single_board"}), None)
 
 
 def _build_device_read(request: Request, session: Session, device) -> DeviceRead:

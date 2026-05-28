@@ -206,6 +206,33 @@ def test_device_timeline_summarizes_image_upload_events():
                     DeviceDiagnosticEvent(
                         device_id=device_id,
                         hardware_device_id="cam-01",
+                        event_type="IMAGE_CAPTURE_STARTED",
+                        severity="info",
+                        metadata_json={"correlation_id": "cmd_91", "node_role": "camera", "data": {}},
+                        occurred_at=now - timedelta(seconds=4),
+                        created_at=now - timedelta(seconds=4),
+                    ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="cam-01",
+                        event_type="IMAGE_CAPTURED",
+                        severity="info",
+                        metadata_json={"correlation_id": "img_1", "node_role": "camera", "data": {"image_id": 91}},
+                        occurred_at=now - timedelta(seconds=3),
+                        created_at=now - timedelta(seconds=3),
+                    ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="cam-01",
+                        event_type="IMAGE_UPLOAD_STARTED",
+                        severity="info",
+                        metadata_json={"correlation_id": "img_1", "node_role": "camera", "data": {}},
+                        occurred_at=now - timedelta(seconds=2, milliseconds=500),
+                        created_at=now - timedelta(seconds=2, milliseconds=500),
+                    ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="cam-01",
                         event_type="IMAGE_UPLOAD_FAILED",
                         severity="warning",
                         metadata_json={
@@ -227,6 +254,67 @@ def test_device_timeline_summarizes_image_upload_events():
 
         assert response.status_code == 200
         summaries = [event["summary"] for event in response.json()["events"]]
-        assert summaries[:2] == ["Image upload failed: camera timeout", "Image uploaded #91 (manual)"]
+        assert summaries == [
+            "Image upload failed: camera timeout",
+            "Image uploaded #91 (manual)",
+            "Image upload started",
+            "Image captured #91",
+            "Image capture started",
+        ]
+    finally:
+        teardown_overrides()
+
+
+def test_device_timeline_summarizes_provisioning_events():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        now = datetime.now(timezone.utc)
+        with client.testing_session_local() as session:
+            session.add_all(
+                [
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="master-01",
+                        event_type="PROVISIONING_STARTED",
+                        severity="info",
+                        metadata_json={"correlation_id": "provisioning:1", "node_role": "master", "data": {}},
+                        occurred_at=now - timedelta(seconds=3),
+                        created_at=now - timedelta(seconds=3),
+                    ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="master-01",
+                        event_type="PROVISIONING_SUCCESS",
+                        severity="info",
+                        metadata_json={"correlation_id": "provisioning:1", "node_role": "master", "data": {}},
+                        occurred_at=now - timedelta(seconds=2),
+                        created_at=now - timedelta(seconds=2),
+                    ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="master-01",
+                        event_type="PROVISIONING_FAILED",
+                        severity="warning",
+                        metadata_json={
+                            "correlation_id": "provisioning:2",
+                            "node_role": "master",
+                            "data": {"failure_reason": "claim_token_expired"},
+                        },
+                        occurred_at=now - timedelta(seconds=1),
+                        created_at=now - timedelta(seconds=1),
+                    ),
+                ]
+            )
+            session.commit()
+
+        response = client.get(f"/api/devices/{device_id}/timeline")
+
+        assert response.status_code == 200
+        summaries = [event["summary"] for event in response.json()["events"]]
+        assert summaries == [
+            "Provisioning failed: claim token expired",
+            "Provisioning completed",
+            "Provisioning started",
+        ]
     finally:
         teardown_overrides()

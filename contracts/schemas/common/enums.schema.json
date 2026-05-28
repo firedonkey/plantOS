@@ -58,6 +58,9 @@
         "PROVISIONING_SUCCESS",
         "PROVISIONING_FAILED",
         "FACTORY_RESET",
+        "IMAGE_CAPTURE_STARTED",
+        "IMAGE_CAPTURED",
+        "IMAGE_UPLOAD_STARTED",
         "IMAGE_UPLOADED",
         "IMAGE_UPLOAD_FAILED"
       ]

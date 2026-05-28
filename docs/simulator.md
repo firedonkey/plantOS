@@ -226,7 +226,8 @@ should show realistic entries:
 - diagnostics events
 - command queued/sent/acked/completed/failed events
 - OTA progress events
-- image upload and image upload failure events
+- image capture, image upload, and image upload failure events
+- provisioning lifecycle events when setup status is queried
 - degraded states from failure scenarios
 - state-change events such as `ACTUATOR_STATE_CHANGED`,
   `WIFI_SIGNAL_DEGRADED`, `WIFI_SIGNAL_RECOVERED`,

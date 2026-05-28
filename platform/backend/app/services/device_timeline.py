@@ -148,6 +148,20 @@ def summarize_timeline_event(event: DeviceDiagnosticEvent) -> str:
     if event_type == "DIAGNOSTICS_RECEIVED":
         severity = _string(data.get("severity")) or _string(event.severity)
         return f"Diagnostics received ({_humanize(severity)})" if severity else "Diagnostics received"
+    if event_type == "PROVISIONING_STARTED":
+        return "Provisioning started"
+    if event_type == "PROVISIONING_SUCCESS":
+        return "Provisioning completed"
+    if event_type == "PROVISIONING_FAILED":
+        reason = _string(data.get("failure_reason")) or _string(event.code)
+        return f"Provisioning failed: {_humanize(reason)}" if reason else "Provisioning failed"
+    if event_type == "IMAGE_CAPTURE_STARTED":
+        return "Image capture started"
+    if event_type == "IMAGE_CAPTURED":
+        image_id = data.get("image_id")
+        return f"Image captured #{image_id}" if isinstance(image_id, int) else "Image captured"
+    if event_type == "IMAGE_UPLOAD_STARTED":
+        return "Image upload started"
     if event_type == "IMAGE_UPLOADED":
         image_id = data.get("image_id")
         reason = _string(data.get("upload_reason"))

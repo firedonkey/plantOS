@@ -37,24 +37,30 @@ Stage 5, implemented now:
   envelope fields are available.
 - Preserve legacy heartbeat payload fallback.
 
-Stage 6:
+Stage 6, implemented now:
 
 - Add the diagnostics timeline API on top of canonical events.
 - Add a web diagnostics timeline panel for command, OTA, heartbeat, and runtime
   debugging.
 
-Stage 7:
+Stage 7, implemented now:
 
 - Migrate image upload metadata.
-- Emit `IMAGE_UPLOADED` and `IMAGE_UPLOAD_FAILED` canonical events while
-  preserving legacy multipart uploads.
+- Emit image capture/upload lifecycle events while preserving legacy multipart
+  uploads.
 - Accept upload failure reports at `POST /api/hardware/image-upload/report`.
 
-Stage 8:
+Stage 8, implemented now:
 
-- Migrate provisioning messages.
+- Emit provisioning lifecycle events from setup status without changing BLE
+  provisioning payloads.
+- Deduplicate provisioning and image lifecycle events by phase/correlation id.
+
+Future stages:
+
 - Generate Python and TypeScript types from JSON Schema.
 - Add firmware helpers to build envelopes without repeated string literals.
+- Migrate provisioning messages to contract envelopes.
 
 Operational rule:
 

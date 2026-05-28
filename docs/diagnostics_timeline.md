@@ -56,15 +56,24 @@ interpretation. Examples:
 - `DEVICE_HEALTH_CHANGED`: `Device health changed: online -> degraded`
 - `WIFI_SIGNAL_DEGRADED`: `Wi-Fi signal degraded: -58 -> -82 dBm`
 - `WIFI_SIGNAL_RECOVERED`: `Wi-Fi signal recovered: -82 -> -60 dBm`
+- `PROVISIONING_STARTED`: `Provisioning started`
+- `PROVISIONING_SUCCESS`: `Provisioning completed`
+- `PROVISIONING_FAILED`: `Provisioning failed: claim token expired`
+- `IMAGE_CAPTURE_STARTED`: `Image capture started`
+- `IMAGE_CAPTURED`: `Image captured #91`
+- `IMAGE_UPLOAD_STARTED`: `Image upload started`
+- `IMAGE_UPLOADED`: `Image uploaded #91 (manual)`
+- `IMAGE_UPLOAD_FAILED`: `Image upload failed: camera timeout`
 
 Unknown event types fall back to a safe humanized label.
 
 ## State Changes
 
 The backend derives state-change events during heartbeat, diagnostics,
-command-result, and OTA status ingestion. It compares the incoming payload with
-the latest known canonical event for the same hardware node, then writes a
-separate concise event when a meaningful transition happens.
+command-result, OTA status, setup status, and image ingestion. It compares the
+incoming payload with the latest known canonical event for the same hardware
+node when state comparison is needed, then writes a separate concise event when
+a meaningful transition happens.
 
 Current thresholds and dedupe behavior:
 
@@ -73,6 +82,9 @@ Current thresholds and dedupe behavior:
 - OTA progress-only updates do not emit `OTA_STATE_CHANGED`.
 - Repeated identical actuator and health states do not emit duplicate state
   events.
+- Provisioning events are deduplicated per provisioning phase and primary node.
+- Image capture/upload events are deduplicated by command or image message
+  correlation id.
 
 ## UI
 
