@@ -163,6 +163,8 @@ def test_admin_diagnostics_summarizes_all_users_without_tokens(monkeypatch):
         assert payload["recent_events"][0]["code"] == "wifi_reconnects"
         assert payload["recent_commands"][0]["action"] == "set_intensity"
         assert payload["recent_commands"][0]["owner_email"] == "grower@example.com"
+        assert payload["firmware_releases"][0]["channel"] == "stable"
+        assert payload["firmware_releases"][0]["rollout_percentage"] == 100
         assert "secret-device-token" not in response.text
     finally:
         app.dependency_overrides.clear()

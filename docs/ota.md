@@ -58,9 +58,26 @@ Compatibility rules:
 - `START_OTA` params can be checked against registered `hardware_model`.
 - Minimum current firmware version is enforced before issuing a contract OTA
   command.
+- Firmware releases may also set a maximum current firmware version.
+- Firmware releases are channel-scoped. Devices poll `stable` unless they
+  explicitly request another channel.
 - Non-advancing target versions are rejected unless a future rollback command
   explicitly opts into rollback behavior.
 - Existing legacy firmware may continue posting the old OTA status payload.
+
+Staged rollout rules:
+
+- Supported release channels are `dev`, `alpha`, `beta`, and `stable`.
+  `local` remains available for local development contracts.
+- `stable` manifest polling never receives `beta`, `alpha`, or `dev` releases.
+- `rollout_percentage` uses a deterministic hash of release id and
+  `hardware_device_id`, so a device stays in or out of a rollout consistently.
+- `allowed_hardware_device_ids` bypasses the percentage gate for explicit
+  device allowlists.
+- Rollback metadata is stored on releases as `rollback_release_id` and
+  `rollback_version`; firmware flashing behavior is unchanged.
+- The admin diagnostics panel lists release channel, rollout percentage, and
+  rollback version for quick support visibility.
 
 Canonical events:
 
@@ -90,5 +107,5 @@ Firmware command execution:
 
 Future work:
 
-- Add staged rollout percentage and cohort targeting to firmware releases.
+- Add admin UI controls for changing rollout percentage after publication.
 - Add rollback artifact selection once firmware rollback policy is finalized.

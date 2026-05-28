@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -79,6 +80,34 @@ TARGETS = {
 }
 
 
+def add_rollout_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--max-current-version",
+        default=None,
+        help="Optional maximum installed version eligible for this OTA release.",
+    )
+    parser.add_argument(
+        "--channel",
+        default="stable",
+        choices=("dev", "alpha", "beta", "stable", "local"),
+        help="OTA release channel. Default: stable.",
+    )
+    parser.add_argument(
+        "--rollout-percentage",
+        type=int,
+        default=100,
+        help="Deterministic rollout percentage, 0-100. Allowlisted hardware still receives the release.",
+    )
+    parser.add_argument(
+        "--allow-hardware-device-id",
+        action="append",
+        default=[],
+        help="Hardware device id allowed to receive this release regardless of rollout percentage. Repeatable.",
+    )
+    parser.add_argument("--rollback-release-id", default=None, help="Optional release id to use for rollback metadata.")
+    parser.add_argument("--rollback-version", default=None, help="Optional rollback firmware version metadata.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build and publish ESP32 OTA releases to local or GCP PlantLab backends.",
@@ -107,6 +136,7 @@ def main() -> int:
         default=None,
         help="Optional minimum installed version required for this OTA release.",
     )
+    add_rollout_arguments(publish)
     publish.add_argument(
         "--release-suffix",
         default="local-test",
@@ -152,6 +182,7 @@ def main() -> int:
         default=None,
         help="Optional minimum installed version required for this OTA release.",
     )
+    add_rollout_arguments(publish_gcp)
     publish_gcp.add_argument(
         "--release-suffix",
         default="gcp",
@@ -273,6 +304,7 @@ def publish_local(args: argparse.Namespace) -> int:
         fail("--release-id can only be used with one node.")
     if args.artifact and len(selected) != 1:
         fail("--artifact can only be used with one node.")
+    validate_rollout_args(args)
 
     require_file(FIRMWARE_VERSION_HEADER)
     ensure_local_docker_ready()
@@ -307,6 +339,7 @@ def publish_local(args: argparse.Namespace) -> int:
 
         print(f"[ota] publishing {target.name} release {release_id}")
         print(f"[ota] version={args.version} version_code={version_code}")
+        print(f"[ota] channel={args.channel} rollout={args.rollout_percentage}%")
         print(f"[ota] artifact={firmware_path}")
         print(f"[ota] size={artifact_size} sha256={checksum}")
 
@@ -318,6 +351,12 @@ def publish_local(args: argparse.Namespace) -> int:
             version=args.version,
             version_code=version_code,
             min_current_version=args.min_current_version,
+            max_current_version=args.max_current_version,
+            channel=args.channel,
+            rollout_percentage=args.rollout_percentage,
+            allow_hardware_device_ids=args.allow_hardware_device_id,
+            rollback_release_id=args.rollback_release_id,
+            rollback_version=args.rollback_version,
             artifact_path=artifact_name,
             artifact_size=artifact_size,
             checksum=checksum,
@@ -336,6 +375,7 @@ def publish_gcp_release(args: argparse.Namespace) -> int:
         fail("--release-id can only be used with one node.")
     if args.artifact and len(selected) != 1:
         fail("--artifact can only be used with one node.")
+    validate_rollout_args(args)
 
     require_file(FIRMWARE_VERSION_HEADER)
     require_command_available("gcloud")
@@ -374,6 +414,7 @@ def publish_gcp_release(args: argparse.Namespace) -> int:
 
         print(f"[ota] publishing GCP {target.name} release {release_id}")
         print(f"[ota] version={args.version} version_code={version_code}")
+        print(f"[ota] channel={args.channel} rollout={args.rollout_percentage}%")
         print(f"[ota] artifact={firmware_path}")
         print(f"[ota] gcs={artifact_uri}")
         print(f"[ota] size={artifact_size} sha256={checksum}")
@@ -393,6 +434,12 @@ def publish_gcp_release(args: argparse.Namespace) -> int:
             version=args.version,
             version_code=version_code,
             min_current_version=args.min_current_version,
+            max_current_version=args.max_current_version,
+            channel=args.channel,
+            rollout_percentage=args.rollout_percentage,
+            allow_hardware_device_ids=args.allow_hardware_device_id,
+            rollback_release_id=args.rollback_release_id,
+            rollback_version=args.rollback_version,
             artifact_path=artifact_uri,
             artifact_size=artifact_size,
             checksum=checksum,
@@ -497,6 +544,9 @@ select
   coalesce(hardware_model, '') as hardware_model,
   version,
   version_code,
+  channel,
+  rollout_percentage,
+  coalesce(rollback_version, '') as rollback_version,
   status,
   artifact_path,
   artifact_size_bytes,
@@ -535,6 +585,22 @@ def validate_declared_version(
             f"{target.name} firmware declares version code {declared.version_code}, "
             f"but release version code is {version_code}."
         )
+
+
+def validate_rollout_args(args: argparse.Namespace) -> None:
+    if args.max_current_version and len(args.max_current_version) > 120:
+        fail("--max-current-version must be 120 characters or fewer.")
+    if args.rollout_percentage < 0 or args.rollout_percentage > 100:
+        fail("--rollout-percentage must be between 0 and 100.")
+    for hardware_device_id in args.allow_hardware_device_id:
+        if not str(hardware_device_id).strip():
+            fail("--allow-hardware-device-id must not be empty.")
+        if len(hardware_device_id) > 120:
+            fail("--allow-hardware-device-id values must be 120 characters or fewer.")
+    if args.rollback_release_id and len(args.rollback_release_id) > 80:
+        fail("--rollback-release-id must be 80 characters or fewer.")
+    if args.rollback_version and len(args.rollback_version) > 120:
+        fail("--rollback-version must be 120 characters or fewer.")
 
 
 def current_cloud_run_image(*, service_name: str, project_id: str, region: str) -> str:
@@ -583,6 +649,12 @@ def gcp_publish_job_command(
     version: str,
     version_code: int,
     min_current_version: str | None,
+    max_current_version: str | None,
+    channel: str,
+    rollout_percentage: int,
+    allow_hardware_device_ids: list[str],
+    rollback_release_id: str | None,
+    rollback_version: str | None,
     artifact_path: str,
     artifact_size: int,
     checksum: str,
@@ -609,6 +681,16 @@ def gcp_publish_job_command(
     ]
     if min_current_version:
         args.extend(["--min-current-version", min_current_version])
+    if max_current_version:
+        args.extend(["--max-current-version", max_current_version])
+    args.extend(["--channel", channel])
+    args.extend(["--rollout-percentage", str(rollout_percentage)])
+    for hardware_device_id in allow_hardware_device_ids:
+        args.extend(["--allow-hardware-device-id", hardware_device_id])
+    if rollback_release_id:
+        args.extend(["--rollback-release-id", rollback_release_id])
+    if rollback_version:
+        args.extend(["--rollback-version", rollback_version])
 
     return [
         "gcloud",
@@ -665,10 +747,17 @@ def upsert_release(
     version: str,
     version_code: int,
     min_current_version: str | None,
+    max_current_version: str | None,
+    channel: str,
+    rollout_percentage: int,
+    allow_hardware_device_ids: list[str],
+    rollback_release_id: str | None,
+    rollback_version: str | None,
     artifact_path: str,
     artifact_size: int,
     checksum: str,
 ) -> None:
+    allowed_hardware = json.dumps(sorted(set(allow_hardware_device_ids))) if allow_hardware_device_ids else None
     sql = f"""
 insert into firmware_releases (
   release_id,
@@ -677,6 +766,12 @@ insert into firmware_releases (
   version,
   version_code,
   min_current_version,
+  max_current_version,
+  channel,
+  rollout_percentage,
+  allowed_hardware_device_ids,
+  rollback_release_id,
+  rollback_version,
   artifact_path,
   artifact_size_bytes,
   sha256,
@@ -691,6 +786,12 @@ insert into firmware_releases (
   {sql_literal(version)},
   {version_code},
   {sql_literal(min_current_version)},
+  {sql_literal(max_current_version)},
+  {sql_literal(channel)},
+  {rollout_percentage},
+  {sql_literal(allowed_hardware)},
+  {sql_literal(rollback_release_id)},
+  {sql_literal(rollback_version)},
   {sql_literal(artifact_path)},
   {artifact_size},
   {sql_literal(checksum)},
@@ -705,6 +806,12 @@ on conflict (release_id) do update set
   version = excluded.version,
   version_code = excluded.version_code,
   min_current_version = excluded.min_current_version,
+  max_current_version = excluded.max_current_version,
+  channel = excluded.channel,
+  rollout_percentage = excluded.rollout_percentage,
+  allowed_hardware_device_ids = excluded.allowed_hardware_device_ids,
+  rollback_release_id = excluded.rollback_release_id,
+  rollback_version = excluded.rollback_version,
   artifact_path = excluded.artifact_path,
   artifact_size_bytes = excluded.artifact_size_bytes,
   sha256 = excluded.sha256,

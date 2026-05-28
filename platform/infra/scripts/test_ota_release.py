@@ -42,6 +42,12 @@ class OtaReleaseScriptTest(unittest.TestCase):
             version="0.1.5",
             version_code=1005,
             min_current_version=None,
+            max_current_version="0.1.9",
+            channel="beta",
+            rollout_percentage=25,
+            allow_hardware_device_ids=["pl-esp32-test"],
+            rollback_release_id="master-0.1.4-gcp",
+            rollback_version="0.1.4",
             artifact_path="gs://plantlab-images-garylu/firmware/master-0.1.5-gcp.bin",
             artifact_size=123456,
             checksum="a" * 64,
@@ -52,6 +58,10 @@ class OtaReleaseScriptTest(unittest.TestCase):
         self.assertIn("--set-cloudsql-instances", command)
         self.assertIn("plantlab-493805:us-central1:plantlab", command)
         self.assertIn("gs://plantlab-images-garylu/firmware/master-0.1.5-gcp.bin", rendered)
+        self.assertIn("--channel,beta", rendered)
+        self.assertIn("--rollout-percentage,25", rendered)
+        self.assertIn("--allow-hardware-device-id,pl-esp32-test", rendered)
+        self.assertIn("--rollback-release-id,master-0.1.4-gcp", rendered)
         self.assertIn("APP_SECRET_KEY=app-secret-key:latest", rendered)
         self.assertIn("DB_PASSWORD=db-password:latest", rendered)
 

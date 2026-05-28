@@ -295,7 +295,7 @@ function renderFirmwareTable(releases) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Release</th><th>Role</th><th>Model</th><th>Version</th><th>Status</th><th>Published</th></tr></thead>
+        <thead><tr><th>Release</th><th>Role</th><th>Model</th><th>Version</th><th>Channel</th><th>Rollout</th><th>Rollback</th><th>Status</th><th>Published</th></tr></thead>
         <tbody>
           ${releases
             .map(
@@ -305,6 +305,9 @@ function renderFirmwareTable(releases) {
                   <td>${escapeHtml(release.node_role)}</td>
                   <td>${escapeHtml(release.hardware_model || "Any")}</td>
                   <td>${escapeHtml(release.version)}</td>
+                  <td>${escapeHtml(release.channel || "stable")}</td>
+                  <td>${Number.isFinite(release.rollout_percentage) ? `${release.rollout_percentage}%` : "100%"}</td>
+                  <td>${escapeHtml(release.rollback_version || "")}</td>
                   <td>${escapeHtml(release.status)}</td>
                   <td>${formatDate(release.published_at)}</td>
                 </tr>

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from re import fullmatch
@@ -33,6 +35,7 @@ OTA_STATUSES = {
 }
 PUBLISHED_STATUS = "published"
 SHA256_PATTERN = r"^[0-9a-fA-F]{64}$"
+OTA_CHANNELS = {"dev", "alpha", "beta", "stable", "local"}
 
 
 class OtaCompatibilityError(ValueError):
@@ -49,15 +52,19 @@ def build_manifest_for_node(
     node: DeviceNode,
     node_role: str,
     current_version: str | None,
+    firmware_channel: str = "stable",
 ) -> FirmwareManifestRead:
     if node.node_role != node_role:
         return FirmwareManifestRead(update_available=False)
+    requested_channel = normalize_ota_channel(firmware_channel)
 
     release = _latest_compatible_release(
         session,
         node_role=node_role,
+        hardware_device_id=node.hardware_device_id,
         hardware_model=node.hardware_model,
         current_version=current_version or node.software_version,
+        firmware_channel=requested_channel,
     )
     if release is None:
         _mark_no_update(session, node)
@@ -89,9 +96,12 @@ def build_manifest_for_node(
                 "release_id": release.release_id,
                 "current_version": current_version or node.software_version,
                 "target_version": release.version,
-                "firmware_channel": "stable",
+                "firmware_channel": release.channel,
                 "progress_percent": 0,
                 "hardware_model": release.hardware_model,
+                "rollout_percentage": release.rollout_percentage,
+                "rollback_release_id": release.rollback_release_id,
+                "rollback_version": release.rollback_version,
             },
         )
 
@@ -103,6 +113,12 @@ def build_manifest_for_node(
         hardware_model=release.hardware_model,
         version=release.version,
         version_code=release.version_code,
+        firmware_channel=release.channel,
+        min_current_version=release.min_current_version,
+        max_current_version=release.max_current_version,
+        rollout_percentage=release.rollout_percentage,
+        rollback_release_id=release.rollback_release_id,
+        rollback_version=release.rollback_version,
         artifact_url=f"/api/hardware/ota/artifacts/{release.release_id}",
         artifact_size_bytes=release.artifact_size_bytes,
         sha256=release.sha256.lower(),
@@ -261,18 +277,32 @@ def get_published_release(session: Session, release_id: str) -> FirmwareRelease 
     return release
 
 
+def normalize_ota_channel(value: str | None) -> str:
+    channel = str(value or "stable").strip().lower()
+    if channel not in OTA_CHANNELS:
+        raise OtaCompatibilityError(
+            "unsupported_ota_channel",
+            f"Unsupported OTA channel: {channel}.",
+            details={"channel": channel, "supported_channels": sorted(OTA_CHANNELS)},
+        )
+    return channel
+
+
 def _latest_compatible_release(
     session: Session,
     *,
     node_role: str,
+    hardware_device_id: str,
     hardware_model: str | None,
     current_version: str | None,
+    firmware_channel: str,
 ) -> FirmwareRelease | None:
     current_code = _version_code(current_version)
     releases = session.scalars(
         select(FirmwareRelease)
         .where(FirmwareRelease.node_role == node_role)
         .where(FirmwareRelease.status == PUBLISHED_STATUS)
+        .where(FirmwareRelease.channel == firmware_channel)
         .order_by(FirmwareRelease.version_code.desc())
     )
     for release in releases:
@@ -283,6 +313,10 @@ def _latest_compatible_release(
         if release.version_code <= current_code:
             continue
         if release.min_current_version and current_code < _version_code(release.min_current_version):
+            continue
+        if release.max_current_version and current_code > _version_code(release.max_current_version):
+            continue
+        if not _release_rollout_allows_device(release, hardware_device_id):
             continue
         if release.artifact_size_bytes <= 0 or not fullmatch(SHA256_PATTERN, release.sha256 or ""):
             continue
@@ -334,10 +368,12 @@ def _ota_event_data(
         "release_id": payload.release_id or node.ota_release_id,
         "current_version": payload.installed_version or node.software_version,
         "target_version": payload.target_version or (release.version if release else node.ota_target_version),
-        "firmware_channel": (contract_data or {}).get("firmware_channel", "stable"),
+        "firmware_channel": (contract_data or {}).get("firmware_channel") or (release.channel if release else "stable"),
         "progress_percent": payload.progress,
         "failure_reason": (contract_data or {}).get("failure_reason"),
         "message": payload.error,
+        "rollback_release_id": release.rollback_release_id if release else None,
+        "rollback_version": release.rollback_version if release else None,
     }
     if contract_data:
         data["contract"] = contract_data
@@ -376,6 +412,36 @@ def _version_code(version: str | None) -> int:
     minor = int(match.group(2) or 0)
     patch = int(match.group(3) or 0)
     return major * 1_000_000 + minor * 1_000 + patch
+
+
+def _release_rollout_allows_device(release: FirmwareRelease, hardware_device_id: str) -> bool:
+    allowlist = _allowed_hardware_ids(release.allowed_hardware_device_ids)
+    if hardware_device_id in allowlist:
+        return True
+    percentage = max(0, min(100, int(release.rollout_percentage or 0)))
+    if percentage >= 100:
+        return True
+    if percentage <= 0:
+        return False
+    bucket = int.from_bytes(
+        sha256(f"{release.release_id}:{hardware_device_id}".encode("utf-8")).digest()[:4],
+        "big",
+    ) % 100
+    return bucket < percentage
+
+
+def _allowed_hardware_ids(raw_value: str | None) -> set[str]:
+    text = str(raw_value or "").strip()
+    if not text:
+        return set()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, list):
+        return {str(item).strip() for item in parsed if str(item).strip()}
+    normalized = text.replace("\n", ",").replace(" ", ",")
+    return {item.strip() for item in normalized.split(",") if item.strip()}
 
 
 def _local_artifact_path(artifact_path: str, settings: Settings) -> Path:

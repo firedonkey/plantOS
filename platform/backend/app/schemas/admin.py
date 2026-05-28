@@ -99,6 +99,9 @@ class AdminFirmwareReleaseRead(BaseModel):
     node_role: str
     hardware_model: str | None = None
     version: str
+    channel: str = "stable"
+    rollout_percentage: int = 100
+    rollback_version: str | None = None
     status: str
     published_at: datetime | None = None
 

@@ -292,6 +292,9 @@ def _admin_firmware_releases(session: Session) -> list[AdminFirmwareReleaseRead]
             node_role=release.node_role,
             hardware_model=release.hardware_model,
             version=release.version,
+            channel=release.channel,
+            rollout_percentage=release.rollout_percentage,
+            rollback_version=release.rollback_version,
             status=release.status,
             published_at=release.published_at,
         )

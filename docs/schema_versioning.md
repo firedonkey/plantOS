@@ -21,4 +21,3 @@ Firmware/backend compatibility:
 TODO:
 
 - Add automated JSON Schema to Pydantic and TypeScript generation.
-- Extend OTA compatibility checks to staged rollout channels and rollback metadata.

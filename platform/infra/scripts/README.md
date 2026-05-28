@@ -141,13 +141,28 @@ cd /Users/gary/plantOS
 .venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
   --node camera \
   --version 0.1.5 \
+  --channel beta \
+  --rollout-percentage 25 \
   --build
 
 .venv/bin/python platform/infra/scripts/ota_release.py publish-gcp \
   --node master \
   --version 0.1.5 \
+  --channel beta \
+  --allow-hardware-device-id pl-esp32-64e0a80af6e8 \
   --build
 ```
+
+Rollout controls:
+
+- `--channel dev|alpha|beta|stable|local` defaults to `stable`.
+- `--rollout-percentage 0..100` gates eligible devices deterministically by
+  release id and hardware device id.
+- `--allow-hardware-device-id` can be repeated to bypass the percentage gate
+  for specific devices.
+- `--max-current-version` restricts a release to older installed versions.
+- `--rollback-release-id` and `--rollback-version` store rollback metadata for
+  support and future firmware rollback handling.
 
 Production OTA publishing does three things:
 

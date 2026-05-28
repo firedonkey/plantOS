@@ -102,7 +102,7 @@ export type OTAFailureReason =
   | "timeout"
   | "internal_error";
 
-export type OTAChannel = "stable" | "beta" | "dev" | "local";
+export type OTAChannel = "stable" | "alpha" | "beta" | "dev" | "local";
 
 export type OTAInstallPhase =
   | "check"

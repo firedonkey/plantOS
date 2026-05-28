@@ -56,6 +56,13 @@ Stage 8, implemented now:
   provisioning payloads.
 - Deduplicate provisioning and image lifecycle events by phase/correlation id.
 
+Stage 9, implemented now:
+
+- Add OTA release channels, rollout percentages, hardware allowlists, current
+  firmware upper bounds, and rollback metadata.
+- Keep legacy manifest polling stable by defaulting devices to the `stable`
+  channel.
+
 Future stages:
 
 - Generate Python and TypeScript types from JSON Schema.

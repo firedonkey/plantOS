@@ -15,6 +15,8 @@ from app.services.firmware import (
     build_manifest_for_node,
     firmware_artifact_response,
     get_published_release,
+    normalize_ota_channel,
+    OtaCompatibilityError,
     update_ota_status,
 )
 
@@ -42,17 +44,23 @@ def ota_manifest(
     hardware_device_id: str = Query(min_length=3, max_length=120),
     node_role: str = Query(min_length=3, max_length=40),
     current_version: str | None = Query(default=None, max_length=120),
+    firmware_channel: str = Query(default="stable", min_length=2, max_length=20),
     session: Session = Depends(get_session),
 ):
     device = _require_device(request, session)
     node = _require_node(session, device.id, hardware_device_id)
     if node.node_role != node_role:
         raise HTTPException(status_code=409, detail="Device node role does not match registration.")
+    try:
+        channel = normalize_ota_channel(firmware_channel)
+    except OtaCompatibilityError as exc:
+        raise api_error(422, exc.code, exc.message, details=exc.details) from exc
     return build_manifest_for_node(
         session,
         node=node,
         node_role=node_role,
         current_version=current_version,
+        firmware_channel=channel,
     )
 
 

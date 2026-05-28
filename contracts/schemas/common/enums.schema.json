@@ -136,7 +136,7 @@
     },
     "OTAChannel": {
       "type": "string",
-      "enum": ["stable", "beta", "dev", "local"]
+      "enum": ["stable", "alpha", "beta", "dev", "local"]
     },
     "OTAInstallPhase": {
       "type": "string",

@@ -16,6 +16,7 @@ OtaStatus = Literal[
     "failed",
     "rolled_back",
 ]
+OtaChannel = Literal["dev", "alpha", "beta", "stable", "local"]
 
 
 class FirmwareManifestRead(BaseModel):
@@ -26,6 +27,12 @@ class FirmwareManifestRead(BaseModel):
     hardware_model: str | None = None
     version: str | None = None
     version_code: int | None = None
+    firmware_channel: OtaChannel | None = None
+    min_current_version: str | None = None
+    max_current_version: str | None = None
+    rollout_percentage: int | None = None
+    rollback_release_id: str | None = None
+    rollback_version: str | None = None
     artifact_url: str | None = None
     artifact_size_bytes: int | None = None
     sha256: str | None = None

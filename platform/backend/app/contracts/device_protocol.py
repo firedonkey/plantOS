@@ -164,6 +164,7 @@ class OTAFailureReason(str, Enum):
 
 class OTAChannel(str, Enum):
     STABLE = "stable"
+    ALPHA = "alpha"
     BETA = "beta"
     DEV = "dev"
     LOCAL = "local"

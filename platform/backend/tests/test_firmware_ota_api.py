@@ -77,6 +77,30 @@ def add_master_node(session: Session, device_id: int, *, software_version: str =
     return node
 
 
+def add_node(
+    session: Session,
+    device_id: int,
+    *,
+    hardware_device_id: str,
+    node_role: str = "master",
+    hardware_model: str = "esp32-s3-devkitc-1",
+    software_version: str = "0.1.0",
+) -> DeviceNode:
+    node = DeviceNode(
+        device_id=device_id,
+        hardware_device_id=hardware_device_id,
+        node_role=node_role,
+        display_name=hardware_device_id,
+        hardware_model=hardware_model,
+        software_version=software_version,
+        status="online",
+    )
+    session.add(node)
+    session.commit()
+    session.refresh(node)
+    return node
+
+
 def add_release(
     session: Session,
     *,
@@ -84,6 +108,12 @@ def add_release(
     version: str = "0.2.0",
     version_code: int = 2000,
     hardware_model: str | None = "esp32-s3-devkitc-1",
+    channel: str = "stable",
+    rollout_percentage: int = 100,
+    allowed_hardware_device_ids: str | None = None,
+    max_current_version: str | None = None,
+    rollback_release_id: str | None = None,
+    rollback_version: str | None = None,
     artifact_path: str = "master-0.2.0.bin",
     artifact_size_bytes: int = 1024,
     checksum: str | None = None,
@@ -96,6 +126,12 @@ def add_release(
         version=version,
         version_code=version_code,
         min_current_version="0.1.0",
+        max_current_version=max_current_version,
+        channel=channel,
+        rollout_percentage=rollout_percentage,
+        allowed_hardware_device_ids=allowed_hardware_device_ids,
+        rollback_release_id=rollback_release_id,
+        rollback_version=rollback_version,
         artifact_path=artifact_path,
         artifact_size_bytes=artifact_size_bytes,
         sha256=checksum or ("a" * 64),
@@ -227,6 +263,113 @@ def test_ota_manifest_ignores_incompatible_nonadvancing_or_invalid_releases():
             assert node.ota_status == "idle"
             assert node.ota_available_version is None
             assert node.ota_release_id is None
+    finally:
+        teardown_overrides()
+
+
+def test_ota_manifest_respects_channel_rollout_and_allowlist():
+    client, testing_session_local, device_id, _ = build_client_with_devices()
+    try:
+        with testing_session_local() as session:
+            add_master_node(session, device_id)
+            add_node(session, device_id, hardware_device_id="master-02")
+            add_release(session, release_id="stable-open", version="0.2.0", version_code=2000)
+            add_release(session, release_id="beta-new", version="0.4.0", version_code=4000, channel="beta")
+            add_release(
+                session,
+                release_id="stable-blocked",
+                version="0.5.0",
+                version_code=5000,
+                rollout_percentage=0,
+            )
+            add_release(
+                session,
+                release_id="stable-allowlisted",
+                version="0.6.0",
+                version_code=6000,
+                rollout_percentage=0,
+                allowed_hardware_device_ids='["master-01"]',
+            )
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        allowlisted = client.get(
+            "/api/hardware/ota/manifest",
+            params={"hardware_device_id": "master-01", "node_role": "master", "current_version": "0.1.0"},
+            headers={"X-Device-Token": "token-owner"},
+        )
+        non_allowlisted = client.get(
+            "/api/hardware/ota/manifest",
+            params={"hardware_device_id": "master-02", "node_role": "master", "current_version": "0.1.0"},
+            headers={"X-Device-Token": "token-owner"},
+        )
+        beta = client.get(
+            "/api/hardware/ota/manifest",
+            params={
+                "hardware_device_id": "master-02",
+                "node_role": "master",
+                "current_version": "0.1.0",
+                "firmware_channel": "beta",
+            },
+            headers={"X-Device-Token": "token-owner"},
+        )
+        invalid_channel = client.get(
+            "/api/hardware/ota/manifest",
+            params={"hardware_device_id": "master-02", "node_role": "master", "firmware_channel": "gamma"},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert allowlisted.status_code == 200
+        assert allowlisted.json()["release_id"] == "stable-allowlisted"
+        assert allowlisted.json()["firmware_channel"] == "stable"
+        assert allowlisted.json()["rollout_percentage"] == 0
+        assert non_allowlisted.status_code == 200
+        assert non_allowlisted.json()["release_id"] == "stable-open"
+        assert beta.status_code == 200
+        assert beta.json()["release_id"] == "beta-new"
+        assert beta.json()["firmware_channel"] == "beta"
+        assert invalid_channel.status_code == 422
+        assert invalid_channel.json()["error"]["code"] == "unsupported_ota_channel"
+    finally:
+        teardown_overrides()
+
+
+def test_ota_manifest_respects_max_current_version_and_returns_rollback_metadata():
+    client, testing_session_local, device_id, _ = build_client_with_devices()
+    try:
+        with testing_session_local() as session:
+            add_master_node(session, device_id, software_version="0.2.0")
+            add_release(
+                session,
+                release_id="too-old-current-version",
+                version="0.3.0",
+                version_code=3000,
+                max_current_version="0.1.5",
+            )
+            add_release(
+                session,
+                release_id="rollback-ready",
+                version="0.2.1",
+                version_code=2001,
+                max_current_version="0.2.9",
+                rollback_release_id="master-0.2.0-stable",
+                rollback_version="0.2.0",
+            )
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        response = client.get(
+            "/api/hardware/ota/manifest",
+            params={"hardware_device_id": "master-01", "node_role": "master", "current_version": "0.2.0"},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["release_id"] == "rollback-ready"
+        assert payload["max_current_version"] == "0.2.9"
+        assert payload["rollback_release_id"] == "master-0.2.0-stable"
+        assert payload["rollback_version"] == "0.2.0"
     finally:
         teardown_overrides()
 
