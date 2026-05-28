@@ -3,36 +3,75 @@ import { Link } from "react-router-dom";
 import appIcon from "@/assets/app-icon-512.png";
 import { useSession } from "@/hooks/useSession";
 
-const proofPoints = ["Camera timeline", "Smart monitoring", "OTA updates", "Mobile + web", "Device health"];
+const proofPoints = [
+  { label: "Camera timeline", detail: "Growth history" },
+  { label: "Smart monitoring", detail: "Live plant state" },
+  { label: "OTA updates", detail: "Field-ready firmware" },
+  { label: "Mobile + web", detail: "Two product surfaces" },
+  { label: "Device health", detail: "Readable reliability" },
+];
 
-const featureCards = [
+type CapabilityVisual = "monitor" | "capture" | "track" | "control";
+
+const featureCards: Array<{
+  label: string;
+  title: string;
+  body: string;
+  metric: string;
+  state: string;
+  visual: CapabilityVisual;
+}> = [
   {
     label: "Monitor",
     title: "Know the growing environment.",
     body: "Track temperature, humidity, water state, and device runtime in one calm view.",
+    metric: "26.4 C",
+    state: "Stable air temp",
+    visual: "monitor",
   },
   {
     label: "Capture",
     title: "See slow growth clearly.",
     body: "Review plant images and build a visual growth history without manual photo tracking.",
+    metric: "12 captures",
+    state: "Latest image today",
+    visual: "capture",
   },
   {
     label: "Track",
     title: "Understand what changed.",
     body: "Readable activity and device health states help explain warnings, updates, and camera events.",
+    metric: "3 events",
+    state: "Camera recovered",
+    visual: "track",
   },
   {
     label: "Control",
     title: "Adjust simple device actions.",
     body: "Use web or mobile controls for supported actions like grow-light state and image capture.",
+    metric: "65%",
+    state: "Grow light on",
+    visual: "control",
   },
 ];
 
 const reliabilityItems = [
-  "Device health monitoring",
-  "Diagnostics timeline",
-  "OTA update readiness",
-  "Camera and Wi-Fi visibility",
+  {
+    title: "Device health monitoring",
+    body: "See when the planter is online, updating, or needs attention.",
+  },
+  {
+    title: "Diagnostics timeline",
+    body: "Review readable events instead of digging through raw logs.",
+  },
+  {
+    title: "OTA update readiness",
+    body: "Keep firmware up to date without plugging into a computer.",
+  },
+  {
+    title: "Camera and Wi-Fi visibility",
+    body: "Know when camera or connection state changes.",
+  },
 ];
 
 const useCases = [
@@ -58,6 +97,7 @@ export function LandingScreen() {
   const { token } = useSession();
   const dashboardHref = token ? "/devices" : "/login";
   const dashboardLabel = token ? "Dashboard" : "Sign in";
+  const previewLabel = "View product preview";
 
   return (
     <div className="landing-page">
@@ -86,7 +126,7 @@ export function LandingScreen() {
             </p>
             <div className="button-row">
               <a className="primary-button" href="#product-showcase">
-                View live demo
+                {previewLabel}
               </a>
               <Link className="secondary-button" to={dashboardHref}>
                 {dashboardLabel}
@@ -99,7 +139,10 @@ export function LandingScreen() {
 
         <section className="landing-proof-strip" aria-label="PlantLab proof points">
           {proofPoints.map((point) => (
-            <span key={point}>{point}</span>
+            <span key={point.label}>
+              <strong>{point.label}</strong>
+              <small>{point.detail}</small>
+            </span>
           ))}
         </section>
 
@@ -129,15 +172,34 @@ export function LandingScreen() {
               like a hardware console.
             </p>
           </div>
-          <div className="landing-feature-grid landing-feature-grid-four">
+          <div className="landing-capability-grid">
             {featureCards.map((feature) => (
-              <article className="landing-feature-card" key={feature.label}>
-                <span>{feature.label}</span>
-                <h3>{feature.title}</h3>
-                <p>{feature.body}</p>
+              <article className="landing-capability-card" key={feature.label}>
+                <CapabilityPreview
+                  visual={feature.visual}
+                  metric={feature.metric}
+                  state={feature.state}
+                />
+                <div>
+                  <span>{feature.label}</span>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.body}</p>
+                </div>
               </article>
             ))}
           </div>
+        </section>
+
+        <section className="landing-section landing-app-preview-section" aria-labelledby="app-preview-title">
+          <div className="section-heading landing-section-centered">
+            <div className="eyebrow">App experience</div>
+            <h2 id="app-preview-title">Glanceable on mobile. Spacious on web.</h2>
+            <p>
+              PlantLab keeps the same product story across devices: plant state, image history, controls, and health
+              signals remain visible without turning the interface into a debug console.
+            </p>
+          </div>
+          <AppExperiencePreview />
         </section>
 
         <section id="how-it-works" className="landing-band" aria-labelledby="how-title">
@@ -153,20 +215,7 @@ export function LandingScreen() {
         </section>
 
         <section className="landing-section landing-two-column landing-growth-section" aria-labelledby="growth-title">
-          <div className="landing-camera-preview" aria-label="PlantLab camera history preview">
-            <div className="landing-camera-main">
-              <span>Latest capture</span>
-              <strong>Monstera cutting</strong>
-              <small>Today, 2:20 PM</small>
-            </div>
-            <div className="landing-camera-strip" aria-label="Recent capture timeline">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
+          <GrowthShowcase />
           <div className="section-heading">
             <div className="eyebrow">Growth history</div>
             <h2 id="growth-title">A visual record of what is usually too slow to notice.</h2>
@@ -186,13 +235,26 @@ export function LandingScreen() {
               when something needs attention.
             </p>
           </div>
-          <div className="landing-reliability-list">
-            {reliabilityItems.map((item) => (
-              <div key={item}>
+          <div className="landing-reliability-showcase" aria-label="PlantLab reliability preview">
+            <div className="landing-update-card">
+              <span>Firmware</span>
+              <strong>1.0.4 ready</strong>
+              <div className="landing-progress-bar">
                 <span />
-                <strong>{item}</strong>
               </div>
-            ))}
+              <small>Update can run over the air.</small>
+            </div>
+            <div className="landing-reliability-list">
+              {reliabilityItems.map((item) => (
+                <div key={item.title}>
+                  <span />
+                  <div>
+                    <strong>{item.title}</strong>
+                    <small>{item.body}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -219,7 +281,7 @@ export function LandingScreen() {
           </div>
           <div className="button-row">
             <a className="primary-button" href="#product-showcase">
-              View live demo
+              {previewLabel}
             </a>
             <Link className="secondary-button" to={dashboardHref}>
               {dashboardLabel}
@@ -227,6 +289,122 @@ export function LandingScreen() {
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+function CapabilityPreview({ visual, metric, state }: { visual: CapabilityVisual; metric: string; state: string }) {
+  return (
+    <div className={`landing-capability-preview landing-capability-preview-${visual}`} aria-hidden="true">
+      <div className="landing-capability-visual">
+        {visual === "monitor" ? (
+          <>
+            <span />
+            <span />
+            <span />
+          </>
+        ) : null}
+        {visual === "capture" ? (
+          <div className="landing-mini-camera-strip">
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
+        {visual === "track" ? (
+          <div className="landing-mini-events">
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
+        {visual === "control" ? (
+          <div className="landing-mini-slider">
+            <span />
+          </div>
+        ) : null}
+      </div>
+      <div className="landing-capability-metric">
+        <strong>{metric}</strong>
+        <span>{state}</span>
+      </div>
+    </div>
+  );
+}
+
+function AppExperiencePreview() {
+  return (
+    <div className="landing-app-preview" aria-label="PlantLab web and mobile app preview">
+      <div className="landing-web-preview">
+        <div className="landing-preview-toolbar">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="landing-preview-body">
+          <div className="landing-preview-hero">
+            <small>Device overview</small>
+            <strong>Simulator Plant</strong>
+            <span>Healthy and connected</span>
+          </div>
+          <div className="landing-preview-grid">
+            <div>
+              <span>Air temp</span>
+              <strong>26.4 C</strong>
+            </div>
+            <div>
+              <span>Humidity</span>
+              <strong>41%</strong>
+            </div>
+            <div>
+              <span>Light</span>
+              <strong>65%</strong>
+            </div>
+          </div>
+          <div className="landing-preview-chart">
+            <span />
+          </div>
+        </div>
+      </div>
+      <div className="landing-mobile-preview">
+        <div className="landing-mobile-notch" />
+        <div className="landing-mobile-card landing-mobile-card-hero">
+          <span>PlantLab</span>
+          <strong>Healthy</strong>
+        </div>
+        <div className="landing-mobile-image" />
+        <div className="landing-mobile-card">
+          <span>Latest capture</span>
+          <strong>just now</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GrowthShowcase() {
+  return (
+    <div className="landing-growth-showcase" aria-label="PlantLab growth history preview">
+      <div className="landing-growth-before-after">
+        <div>
+          <span>Day 1</span>
+        </div>
+        <div>
+          <span>Day 7</span>
+        </div>
+      </div>
+      <div className="landing-growth-timeline" aria-label="Camera capture progression">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="landing-growth-caption">
+        <strong>30s growth story</strong>
+        <span>Camera captures become a fixed-length timelapse.</span>
+      </div>
     </div>
   );
 }
