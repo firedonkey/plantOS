@@ -130,11 +130,12 @@ export function DeviceTimelinePanel({ deviceId }: { deviceId: string }) {
     <section className="card stack-form timeline-panel">
       <div className="section-header">
         <div>
-          <h3>Diagnostics timeline</h3>
-          <p className="subtitle">Recent device events, command state, OTA progress, and runtime signals.</p>
+          <h3>Recent activity</h3>
+          <p className="subtitle">Readable device events first. Expand a row when support-level details are needed.</p>
         </div>
         <div className="header-actions">
           {usedMock ? <span className="chip chip-mock">Mock mode</span> : null}
+          <span className="timeline-count">{visibleEvents.length} shown</span>
           <button className="secondary-button" disabled={isLoading || isLoadingMore} onClick={() => void loadTimeline()} type="button">
             {isLoading ? "Loading..." : "Refresh"}
           </button>
@@ -234,6 +235,7 @@ function TimelineEventRow({
   onToggle: () => void;
 }) {
   const tone = severityTone(event.severity);
+  const category = eventCategory(event.eventType);
   const detail = {
     event_type: event.eventType,
     severity: event.severity,
@@ -246,21 +248,31 @@ function TimelineEventRow({
     data: event.data,
   };
   return (
-    <article className={`timeline-row timeline-row-${tone}`}>
+    <article className={`timeline-row timeline-row-${tone} timeline-row-category-${category.key}`}>
       <button className="timeline-row-button" onClick={onToggle} type="button" aria-expanded={expanded}>
-        <span className={`timeline-dot timeline-dot-${tone}`} aria-hidden="true" />
+        <span className={`timeline-icon timeline-icon-${category.key}`} aria-hidden="true">{category.initial}</span>
         <span className="timeline-row-content">
+          <span className="timeline-row-topline">
+            <span className="timeline-event-label">{category.label}</span>
+            <span className="timeline-event-time">{formatTimestamp(event.occurredAt)}</span>
+          </span>
           <span className="timeline-summary">{event.summary}</span>
           <span className="timeline-meta">
-            {formatTimestamp(event.occurredAt)}
-            {event.nodeRole ? ` | ${event.nodeRole}` : ""}
-            {event.hardwareDeviceId ? ` | ${event.hardwareDeviceId}` : ""}
+            {event.nodeRole ? formatLabel(event.nodeRole) : "Device"}
+            {event.correlationId ? <span className="timeline-correlation">Thread {shortCorrelation(event.correlationId)}</span> : null}
           </span>
-          {event.correlationId ? <span className="timeline-correlation">Correlation {event.correlationId}</span> : null}
         </span>
-        <span className={`chip timeline-severity timeline-severity-${tone}`}>{formatLabel(event.severity)}</span>
+        <span className={`timeline-severity severity-token-${tone === "error" ? "critical" : tone}`}>{formatLabel(event.severity)}</span>
       </button>
-      {expanded ? <pre className="timeline-details">{JSON.stringify(removeUndefined(detail), null, 2)}</pre> : null}
+      {expanded ? (
+        <div className="timeline-details-shell">
+          <div className="timeline-details-header">
+            <strong>Event details</strong>
+            <span>{event.hardwareDeviceId ?? "No hardware id"}</span>
+          </div>
+          <pre className="timeline-details">{JSON.stringify(removeUndefined(detail), null, 2)}</pre>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -284,6 +296,35 @@ function formatLabel(value: string): string {
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function eventCategory(eventType: string): { key: "heartbeat" | "command" | "ota" | "camera" | "image" | "health" | "system"; label: string; initial: string } {
+  if (eventType.includes("COMMAND")) {
+    return { key: "command", label: "Command", initial: "C" };
+  }
+  if (eventType.includes("OTA")) {
+    return { key: "ota", label: "Update", initial: "U" };
+  }
+  if (eventType.includes("CAMERA")) {
+    return { key: "camera", label: "Camera", initial: "M" };
+  }
+  if (eventType.includes("IMAGE")) {
+    return { key: "image", label: "Image", initial: "I" };
+  }
+  if (eventType.includes("HEALTH") || eventType.includes("WIFI") || eventType.includes("DIAGNOSTICS")) {
+    return { key: "health", label: "Health", initial: "H" };
+  }
+  if (eventType.includes("HEARTBEAT")) {
+    return { key: "heartbeat", label: "Heartbeat", initial: "B" };
+  }
+  return { key: "system", label: "System", initial: "S" };
+}
+
+function shortCorrelation(value: string): string {
+  if (value.length <= 18) {
+    return value;
+  }
+  return `${value.slice(0, 10)}...${value.slice(-4)}`;
 }
 
 function formatTimestamp(value: string): string {
