@@ -51,6 +51,8 @@ Implemented writers:
 - `OTA_SUCCESS`
 - `OTA_FAILED`
 - `OTA_ROLLED_BACK`
+- `IMAGE_UPLOADED`
+- `IMAGE_UPLOAD_FAILED`
 
 The backend currently stores canonical events in the existing
 `device_diagnostic_events` table to avoid a schema rewrite.
@@ -83,6 +85,8 @@ Timeline API:
   windows.
 - The backend returns concise summaries so clients can render a readable
   timeline without duplicating event interpretation logic.
+- Image summaries include successful uploads, image ids when available, upload
+  reasons, and failure reasons.
 
 Timestamp behavior:
 
@@ -96,7 +100,7 @@ Timestamp behavior:
 
 TODO:
 
-- Migrate provisioning and image events into this format.
+- Migrate provisioning events into this format.
 - Move snapshots into a dedicated state table only if event lookup becomes a
   measurable performance issue.
 - Decide whether analytics needs a separate append-only event table later.

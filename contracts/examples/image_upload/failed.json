@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "message_id": "imgmsg_01HXFAILED",
+  "device_id": 33,
+  "hardware_device_id": "pl-cam-1c1df816a398",
+  "node_role": "camera",
+  "message_type": "IMAGE_UPLOAD",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "status": "failed",
+    "source_hardware_device_id": "pl-cam-1c1df816a398",
+    "source_node_role": "camera",
+    "captured_at": "2026-05-27T11:59:58Z",
+    "upload_reason": "scheduled",
+    "content_type": "image/jpeg",
+    "upload_ms": 2400,
+    "failure_reason": "camera_timeout"
+  }
+}

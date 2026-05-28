@@ -45,8 +45,14 @@ Stage 6:
 
 Stage 7:
 
-- Migrate provisioning messages.
 - Migrate image upload metadata.
+- Emit `IMAGE_UPLOADED` and `IMAGE_UPLOAD_FAILED` canonical events while
+  preserving legacy multipart uploads.
+- Accept upload failure reports at `POST /api/hardware/image-upload/report`.
+
+Stage 8:
+
+- Migrate provisioning messages.
 - Generate Python and TypeScript types from JSON Schema.
 - Add firmware helpers to build envelopes without repeated string literals.
 

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/image_upload_payload.schema.json",
+  "title": "PlantLab Image Upload Payload",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "$ref": "../common/enums.schema.json#/$defs/ImageUploadStatus"
+    },
+    "image_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_hardware_device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "source_node_role": {
+      "$ref": "../common/enums.schema.json#/$defs/NodeRole"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "upload_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20000
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20000
+    },
+    "content_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "upload_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
+    "failure_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["failure_reason"]
+      }
+    }
+  ]
+}

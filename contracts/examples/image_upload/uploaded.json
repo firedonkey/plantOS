@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "message_id": "imgmsg_01HXUPLOAD",
+  "device_id": 33,
+  "hardware_device_id": "pl-cam-1c1df816a398",
+  "node_role": "camera",
+  "message_type": "IMAGE_UPLOAD",
+  "sent_at": "2026-05-27T12:00:00Z",
+  "payload": {
+    "status": "uploaded",
+    "source_hardware_device_id": "pl-cam-1c1df816a398",
+    "source_node_role": "camera",
+    "captured_at": "2026-05-27T11:59:58Z",
+    "upload_reason": "manual",
+    "width": 1600,
+    "height": 1200,
+    "content_type": "image/jpeg",
+    "upload_ms": 1836
+  }
+}

@@ -5,7 +5,9 @@ lives in `contracts/`.
 
 Current migration slice:
 
-- Shared JSON Schema files for the base envelope, heartbeat, diagnostics, commands, command results, OTA status, and canonical events.
+- Shared JSON Schema files for the base envelope, heartbeat, diagnostics,
+  commands, command results, OTA status, image upload reporting, and canonical
+  events.
 - Hand-written Pydantic models that mirror the schemas.
 - Mirrored TypeScript types for web/mobile.
 - ESP32-friendly string constants.
@@ -44,6 +46,7 @@ Implemented message types:
 - `COMMAND`
 - `COMMAND_RESULT`
 - `OTA_STATUS`
+- `IMAGE_UPLOAD`
 
 Current backend ingestion:
 
@@ -54,6 +57,11 @@ Current backend ingestion:
 - `GET /api/hardware/commands/poll` returns contract-native `COMMAND` envelopes.
 - `POST /api/hardware/commands/{id}/result` accepts legacy command results and new `COMMAND_RESULT` envelopes.
 - `POST /api/hardware/ota/status` accepts legacy OTA status JSON and new `OTA_STATUS` envelopes.
+- `POST /api/image` still accepts legacy multipart image uploads. New firmware
+  and the simulator may include an `IMAGE_UPLOAD` envelope in the multipart
+  `metadata` form field.
+- `POST /api/hardware/image-upload/report` accepts `IMAGE_UPLOAD` envelopes for
+  upload failures or upload-complete reports that do not carry the image binary.
 - `GET /api/devices/{id}/timeline` exposes canonical device events with
   summaries, filters, and cursor pagination for diagnostics.
 - Heartbeat, diagnostics, command results, and OTA status ingestion derive
@@ -76,7 +84,18 @@ Current firmware support:
   legacy OTA status payload.
 - Legacy command polling and legacy result reporting remain as fallback paths.
 
-Future phases will migrate provisioning and image upload.
+Future phases will migrate provisioning.
+
+Image upload v1 metadata:
+
+- `status` is `uploaded` or `failed`.
+- Uploaded metadata may include `image_id`, `source_hardware_device_id`,
+  `source_node_role`, `captured_at`, `upload_reason`, `width`, `height`,
+  `content_type`, and `upload_ms`.
+- Failed metadata must include `failure_reason`.
+- The backend keeps actual image storage unchanged and emits
+  `IMAGE_UPLOADED`/`IMAGE_UPLOAD_FAILED` canonical events from validated
+  metadata.
 
 Heartbeat v1 additive state:
 

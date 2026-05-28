@@ -3,7 +3,13 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.api.deps import get_current_user, get_optional_current_user
-from app.contracts import ProtocolValidationError, parse_command_message, parse_command_result_message, parse_diagnostics_message
+from app.contracts import (
+    ProtocolValidationError,
+    parse_command_message,
+    parse_command_result_message,
+    parse_diagnostics_message,
+    parse_image_upload_message,
+)
 from app.main import app
 from app.models import Command, CommandStatus, DeviceDiagnosticEvent, DeviceDiagnosticSnapshot, DeviceNode
 from tests.test_hardware_api import build_client_with_devices, teardown_overrides
@@ -313,6 +319,38 @@ def test_missing_sent_at_is_accepted_by_diagnostics_and_command_result_contracts
 
     assert parse_diagnostics_message(diagnostics).sent_at is None
     assert parse_command_result_message(command_result).sent_at is None
+
+
+def test_valid_image_upload_contract_is_accepted():
+    message = parse_image_upload_message(_image_upload_envelope(status="uploaded"))
+
+    assert message.message_type == "IMAGE_UPLOAD"
+    assert message.payload.status == "uploaded"
+    assert message.payload.source_hardware_device_id == "camera-01"
+    assert message.payload.width == 360
+    assert message.payload.height == 240
+
+
+def test_image_upload_failure_requires_failure_reason():
+    envelope = _image_upload_envelope(status="failed")
+
+    try:
+        parse_image_upload_message(envelope)
+    except ProtocolValidationError as exc:
+        assert exc.code == "contract_validation_failed"
+    else:
+        raise AssertionError("Failed image upload without failure_reason should fail validation.")
+
+
+def test_image_upload_unknown_additive_fields_are_accepted():
+    envelope = _image_upload_envelope(status="uploaded")
+    envelope["future_envelope_field"] = "safe"
+    envelope["payload"]["future_payload_field"] = "safe"
+
+    message = parse_image_upload_message(envelope)
+
+    assert message.model_extra["future_envelope_field"] == "safe"
+    assert message.payload.model_extra["future_payload_field"] == "safe"
 
 
 def test_valid_capture_image_command_contract():
@@ -645,4 +683,30 @@ def _command_result_envelope(
             "result": result or {"image_id": 991, "upload_ms": 1836},
             "error_code": error_code,
         },
+    }
+
+
+def _image_upload_envelope(*, status: str, failure_reason: str | None = None) -> dict:
+    payload = {
+        "status": status,
+        "source_hardware_device_id": "camera-01",
+        "source_node_role": "camera",
+        "captured_at": "2026-05-27T12:09:00Z",
+        "upload_reason": "manual",
+        "width": 360,
+        "height": 240,
+        "content_type": "image/png",
+        "upload_ms": 1836,
+    }
+    if failure_reason is not None:
+        payload["failure_reason"] = failure_reason
+    return {
+        "schema_version": "1.0",
+        "message_id": "imgmsg_test",
+        "device_id": 1,
+        "hardware_device_id": "camera-01",
+        "node_role": "camera",
+        "message_type": "IMAGE_UPLOAD",
+        "sent_at": "2026-05-27T12:00:10Z",
+        "payload": payload,
     }

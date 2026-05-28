@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from typing import Any
 
@@ -160,7 +161,16 @@ def test_simulator_camera_uploads_fake_image():
     path, fields, files, token = fake.uploads[0]
     assert path == "/api/image"
     assert token == "token-owner"
-    assert fields == {"device_id": 33, "source_hardware_device_id": "sim-camera-test"}
+    assert fields["device_id"] == 33
+    assert fields["source_hardware_device_id"] == "sim-camera-test"
+    metadata = json.loads(fields["metadata"])
+    assert metadata["message_type"] == "IMAGE_UPLOAD"
+    assert metadata["payload"]["status"] == "uploaded"
+    assert metadata["payload"]["source_hardware_device_id"] == "sim-camera-test"
+    assert metadata["payload"]["source_node_role"] == "camera"
+    assert metadata["payload"]["content_type"] == "image/png"
+    assert metadata["payload"]["width"] == 360
+    assert metadata["payload"]["height"] == 240
     assert files[0].content_type == "image/png"
     assert files[0].data.startswith(b"\x89PNG\r\n\x1a\n")
 
@@ -187,6 +197,7 @@ def test_capture_command_uploads_fake_image_and_reports_image_id():
     asyncio.run(runtime.run_once())
 
     assert len(fake.uploads) == 1
+    assert json.loads(fake.uploads[0][1]["metadata"])["message_type"] == "IMAGE_UPLOAD"
     command_results = [
         payload["payload"]
         for path, payload, _ in fake.posts
@@ -194,6 +205,39 @@ def test_capture_command_uploads_fake_image_and_reports_image_id():
     ]
     completed = next(item for item in command_results if item["status"] == "completed")
     assert completed["result"]["image_id"] == 9001
+
+
+def test_image_upload_failure_scenario_reports_contract_failure_event():
+    fake = FakeApiClient([])
+    runtime = SimulatorRuntime(
+        SimulatorConfig(
+            base_url="http://testserver",
+            nodes=[
+                SimulatorNodeConfig(
+                    device_id=33,
+                    device_token="token-owner",
+                    hardware_device_id="sim-camera-test",
+                    node_role="camera",
+                    hardware_model="xiao_esp32s3_camera",
+                    capabilities=["camera", "image_capture", "diagnostics", "contract_polling"],
+                    scenarios=["image_upload_failure"],
+                )
+            ],
+        ),
+        api=fake,
+    )
+
+    asyncio.run(runtime.run_once())
+
+    reports = [
+        payload
+        for path, payload, _ in fake.posts
+        if path == "/api/hardware/image-upload/report"
+    ]
+    assert len(reports) == 1
+    assert reports[0]["message_type"] == "IMAGE_UPLOAD"
+    assert reports[0]["payload"]["status"] == "failed"
+    assert reports[0]["payload"]["failure_reason"] == "simulated_failure"
 
 
 def test_fake_images_have_visible_per_capture_variation():

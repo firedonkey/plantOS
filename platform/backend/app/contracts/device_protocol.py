@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class MessageType(str, Enum):
     COMMAND = "COMMAND"
     COMMAND_RESULT = "COMMAND_RESULT"
     OTA_STATUS = "OTA_STATUS"
+    IMAGE_UPLOAD = "IMAGE_UPLOAD"
 
 
 class DeviceStatus(str, Enum):
@@ -81,6 +82,8 @@ class EventType(str, Enum):
     PROVISIONING_SUCCESS = "PROVISIONING_SUCCESS"
     PROVISIONING_FAILED = "PROVISIONING_FAILED"
     FACTORY_RESET = "FACTORY_RESET"
+    IMAGE_UPLOADED = "IMAGE_UPLOADED"
+    IMAGE_UPLOAD_FAILED = "IMAGE_UPLOAD_FAILED"
 
 
 class CommandType(str, Enum):
@@ -172,6 +175,11 @@ class OTAInstallPhase(str, Enum):
     REBOOT = "reboot"
     COMPLETED = "completed"
     ROLLBACK = "rollback"
+
+
+class ImageUploadStatus(str, Enum):
+    UPLOADED = "uploaded"
+    FAILED = "failed"
 
 
 class ProtocolValidationError(ValueError):
@@ -296,6 +304,26 @@ class OTAStatusPayload(ContractModel):
     message: str | None = Field(default=None, max_length=240)
     failure_reason: OTAFailureReason | None = None
     release_id: str | None = Field(default=None, max_length=80)
+
+
+class ImageUploadPayload(ContractModel):
+    status: ImageUploadStatus
+    image_id: int | None = Field(default=None, ge=1)
+    source_hardware_device_id: str | None = Field(default=None, min_length=1, max_length=120)
+    source_node_role: NodeRole | None = None
+    captured_at: datetime | None = None
+    upload_reason: str | None = Field(default=None, min_length=1, max_length=80)
+    width: int | None = Field(default=None, ge=1, le=20000)
+    height: int | None = Field(default=None, ge=1, le=20000)
+    content_type: str | None = Field(default=None, min_length=1, max_length=80)
+    upload_ms: int | None = Field(default=None, ge=0, le=3_600_000)
+    failure_reason: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_failure_reason(self) -> ImageUploadPayload:
+        if self.status == ImageUploadStatus.FAILED and not self.failure_reason:
+            raise ValueError("failure_reason is required when image upload status is failed.")
+        return self
 
 
 PayloadT = TypeVar("PayloadT", bound=BaseModel)
@@ -440,6 +468,19 @@ def parse_ota_status_message(raw: dict[str, Any]) -> DeviceMessage[OTAStatusPayl
         )
     _warn_unknown_fields(message, "OTA status envelope")
     _warn_unknown_fields(message.payload, "OTA status payload")
+    return message
+
+
+def parse_image_upload_message(raw: dict[str, Any]) -> DeviceMessage[ImageUploadPayload]:
+    message = _parse_message(raw, ImageUploadPayload)
+    if message.message_type != MessageType.IMAGE_UPLOAD:
+        raise ProtocolValidationError(
+            "message_type_mismatch",
+            "Expected IMAGE_UPLOAD message_type.",
+            details={"message_type": str(message.message_type.value)},
+        )
+    _warn_unknown_fields(message, "image upload envelope")
+    _warn_unknown_fields(message.payload, "image upload payload")
     return message
 
 

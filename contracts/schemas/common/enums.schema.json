@@ -9,7 +9,7 @@
     },
     "MessageType": {
       "type": "string",
-      "enum": ["HEARTBEAT", "DIAGNOSTICS", "COMMAND", "COMMAND_RESULT", "OTA_STATUS"]
+      "enum": ["HEARTBEAT", "DIAGNOSTICS", "COMMAND", "COMMAND_RESULT", "OTA_STATUS", "IMAGE_UPLOAD"]
     },
     "DeviceStatus": {
       "type": "string",
@@ -57,7 +57,9 @@
         "PROVISIONING_STARTED",
         "PROVISIONING_SUCCESS",
         "PROVISIONING_FAILED",
-        "FACTORY_RESET"
+        "FACTORY_RESET",
+        "IMAGE_UPLOADED",
+        "IMAGE_UPLOAD_FAILED"
       ]
     },
     "CommandType": {
@@ -136,6 +138,10 @@
     "OTAInstallPhase": {
       "type": "string",
       "enum": ["check", "prepare", "download", "validate", "install", "reboot", "completed", "rollback"]
+    },
+    "ImageUploadStatus": {
+      "type": "string",
+      "enum": ["uploaded", "failed"]
     }
   }
 }

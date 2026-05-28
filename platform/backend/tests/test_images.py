@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+import json
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -13,7 +14,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import Device, Image, User
+from app.models import Device, DeviceDiagnosticEvent, Image, User
 from app.models.base import Base
 from app.services.device_nodes import upsert_device_node
 from app.services import storage as storage_service
@@ -175,6 +176,139 @@ def test_upload_image_stores_attached_camera_source(tmp_path, monkeypatch):
         payload = response.json()
         assert payload["device_id"] == device_id
         assert payload["source_hardware_device_id"] == "cam-01"
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_accepts_contract_metadata_and_emits_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        captured_at = "2026-05-27T12:10:00Z"
+        metadata = _image_upload_envelope(
+            device_id=device_id,
+            hardware_device_id="cam-01",
+            status="uploaded",
+            captured_at=captured_at,
+            upload_reason="manual",
+            width=360,
+            height=240,
+            content_type="image/png",
+            upload_ms=1380,
+        )
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "metadata": json.dumps(metadata)},
+            files={"file": ("plant.png", b"fake-png", "image/png")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["device_id"] == device_id
+        assert payload["source_hardware_device_id"] == "cam-01"
+        with next(app.dependency_overrides[get_session]()) as session:
+            event = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_UPLOADED").one()
+            data = event.metadata_json["data"]
+            assert event.hardware_device_id == "cam-01"
+            assert data["image_id"] == payload["id"]
+            assert data["captured_at"].startswith("2026-05-27T12:10:00")
+            assert data["upload_reason"] == "manual"
+            assert data["width"] == 360
+            assert data["height"] == 240
+            assert data["content_type"] == "image/png"
+            assert data["upload_ms"] == 1380
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_rejects_invalid_contract_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        metadata = _image_upload_envelope(
+            device_id=device_id,
+            hardware_device_id="cam-01",
+            status="uploaded",
+            content_type="image/jpeg",
+        )
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "metadata": json.dumps(metadata)},
+            files={"file": ("plant.png", b"fake-png", "image/png")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "image_content_type_mismatch"
+    finally:
+        teardown_overrides()
+
+
+def test_image_upload_failed_report_emits_canonical_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                node_role="camera",
+                node_index=1,
+                display_name="Camera 1",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/hardware/image-upload/report",
+            json=_image_upload_envelope(
+                device_id=device_id,
+                hardware_device_id="cam-01",
+                status="failed",
+                upload_reason="manual",
+                content_type="image/png",
+                failure_reason="camera_timeout",
+            ),
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "accepted", "event_type": "IMAGE_UPLOAD_FAILED"}
+        with next(app.dependency_overrides[get_session]()) as session:
+            event = session.query(DeviceDiagnosticEvent).filter_by(event_type="IMAGE_UPLOAD_FAILED").one()
+            data = event.metadata_json["data"]
+            assert event.severity == "warning"
+            assert data["failure_reason"] == "camera_timeout"
+            assert data["source_hardware_device_id"] == "cam-01"
     finally:
         teardown_overrides()
 
@@ -413,3 +547,40 @@ def test_image_client_url_uses_backend_proxy_for_local_storage():
     url = image_client_url(image, request, settings)
 
     assert url == "https://api.example/api/images/44/content"
+
+
+def _image_upload_envelope(
+    *,
+    device_id: int,
+    hardware_device_id: str,
+    status: str,
+    captured_at: str | None = None,
+    upload_reason: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    content_type: str | None = None,
+    upload_ms: int | None = None,
+    failure_reason: str | None = None,
+) -> dict:
+    payload = {
+        "status": status,
+        "source_hardware_device_id": hardware_device_id,
+        "source_node_role": "camera",
+        "captured_at": captured_at,
+        "upload_reason": upload_reason,
+        "width": width,
+        "height": height,
+        "content_type": content_type,
+        "upload_ms": upload_ms,
+        "failure_reason": failure_reason,
+    }
+    return {
+        "schema_version": "1.0",
+        "message_id": f"img_{hardware_device_id}_{status}",
+        "device_id": device_id,
+        "hardware_device_id": hardware_device_id,
+        "node_role": "camera",
+        "message_type": "IMAGE_UPLOAD",
+        "sent_at": "2026-05-27T12:00:00Z",
+        "payload": {key: value for key, value in payload.items() if value is not None},
+    }

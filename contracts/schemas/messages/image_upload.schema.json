@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.marspotatolab.com/messages/image_upload.schema.json",
+  "title": "PlantLab Image Upload Message",
+  "allOf": [
+    {
+      "$ref": "./base_envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "const": "IMAGE_UPLOAD"
+        },
+        "payload": {
+          "$ref": "./image_upload_payload.schema.json"
+        }
+      }
+    }
+  ]
+}

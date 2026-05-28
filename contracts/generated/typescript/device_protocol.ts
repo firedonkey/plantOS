@@ -2,7 +2,7 @@ export const PLANTLAB_SCHEMA_VERSION = "1.0" as const;
 
 export type NodeRole = "master" | "camera" | "sensor" | "actuator";
 
-export type MessageType = "HEARTBEAT" | "DIAGNOSTICS" | "COMMAND" | "COMMAND_RESULT" | "OTA_STATUS";
+export type MessageType = "HEARTBEAT" | "DIAGNOSTICS" | "COMMAND" | "COMMAND_RESULT" | "OTA_STATUS" | "IMAGE_UPLOAD";
 
 export type DeviceStatus = "online" | "degraded" | "offline" | "provisioning" | "updating" | "error";
 
@@ -44,7 +44,9 @@ export type EventType =
   | "PROVISIONING_STARTED"
   | "PROVISIONING_SUCCESS"
   | "PROVISIONING_FAILED"
-  | "FACTORY_RESET";
+  | "FACTORY_RESET"
+  | "IMAGE_UPLOADED"
+  | "IMAGE_UPLOAD_FAILED";
 
 export type CommandType =
   | "SET_LIGHT_BRIGHTNESS"
@@ -108,6 +110,8 @@ export type OTAInstallPhase =
   | "reboot"
   | "completed"
   | "rollback";
+
+export type ImageUploadStatus = "uploaded" | "failed";
 
 export type DeviceMessage<TPayload extends Record<string, unknown>> = {
   schema_version: string;
@@ -217,6 +221,20 @@ export type OTAStatusPayload = {
   release_id?: string;
 } & Record<string, unknown>;
 
+export type ImageUploadPayload = {
+  status: ImageUploadStatus;
+  image_id?: number;
+  source_hardware_device_id?: string;
+  source_node_role?: NodeRole;
+  captured_at?: string;
+  upload_reason?: string;
+  width?: number;
+  height?: number;
+  content_type?: string;
+  upload_ms?: number;
+  failure_reason?: string;
+} & Record<string, unknown>;
+
 export type CommandMessage = DeviceMessage<CommandPayload>;
 
 export type CommandPollResponse = {
@@ -227,6 +245,8 @@ export type CommandPollResponse = {
 export type CommandResultMessage = DeviceMessage<CommandResultPayload>;
 
 export type OTAStatusMessage = DeviceMessage<OTAStatusPayload>;
+
+export type ImageUploadMessage = DeviceMessage<ImageUploadPayload>;
 
 export type CanonicalEvent = {
   schema_version: string;

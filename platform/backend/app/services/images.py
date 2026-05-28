@@ -23,6 +23,7 @@ def save_uploaded_image(
     device_id: int,
     source_hardware_device_id: str | None,
     settings: Settings,
+    captured_at: datetime | None = None,
 ) -> Image:
     suffix = ALLOWED_IMAGE_TYPES.get(upload_file.content_type or "")
     if suffix is None:
@@ -33,6 +34,7 @@ def save_uploaded_image(
         device_id=device_id,
         source_hardware_device_id=source_hardware_device_id,
         path=stored_file.path,
+        timestamp=captured_at or datetime.now(timezone.utc),
     )
     session.add(image)
     session.commit()

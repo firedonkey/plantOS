@@ -14,6 +14,7 @@ It uses the same hardware APIs as firmware:
 - `POST /api/hardware/commands/{id}/result`
 - `POST /api/hardware/ota/status`
 - `POST /api/image`
+- `POST /api/hardware/image-upload/report`
 
 It does not bypass the contract protocol layer.
 
@@ -181,13 +182,19 @@ The values drift over time instead of staying flat:
 - light state and brightness
 
 Camera nodes upload a generated PNG to `/api/image` at startup and then every
-`--image-interval` seconds. `CAPTURE_IMAGE` commands also upload a generated
-PNG when the backend image endpoint is available. The image is generated locally
-with the Python standard library and uses the real multipart upload path, so the
-web dashboard gallery should populate without physical camera hardware.
+`--image-interval` seconds. The multipart request includes an `IMAGE_UPLOAD`
+contract envelope in the `metadata` form field. `CAPTURE_IMAGE` commands also
+upload a generated PNG when the backend image endpoint is available. The image
+is generated locally with the Python standard library and uses the real
+multipart upload path, so the web dashboard gallery should populate without
+physical camera hardware.
 
 Each generated image includes a visible capture counter and small visual changes
 so repeated captures are easy to distinguish.
+
+The `image_upload_failure` scenario skips the binary upload and posts an
+`IMAGE_UPLOAD` failure envelope to `/api/hardware/image-upload/report`, which
+should appear in the diagnostics timeline as `IMAGE_UPLOAD_FAILED`.
 
 ## OTA Flow
 
@@ -219,6 +226,7 @@ should show realistic entries:
 - diagnostics events
 - command queued/sent/acked/completed/failed events
 - OTA progress events
+- image upload and image upload failure events
 - degraded states from failure scenarios
 - state-change events such as `ACTUATOR_STATE_CHANGED`,
   `WIFI_SIGNAL_DEGRADED`, `WIFI_SIGNAL_RECOVERED`,

@@ -148,6 +148,17 @@ def summarize_timeline_event(event: DeviceDiagnosticEvent) -> str:
     if event_type == "DIAGNOSTICS_RECEIVED":
         severity = _string(data.get("severity")) or _string(event.severity)
         return f"Diagnostics received ({_humanize(severity)})" if severity else "Diagnostics received"
+    if event_type == "IMAGE_UPLOADED":
+        image_id = data.get("image_id")
+        reason = _string(data.get("upload_reason"))
+        if isinstance(image_id, int) and reason:
+            return f"Image uploaded #{image_id} ({_humanize(reason)})"
+        if isinstance(image_id, int):
+            return f"Image uploaded #{image_id}"
+        return "Image uploaded"
+    if event_type == "IMAGE_UPLOAD_FAILED":
+        reason = _string(data.get("failure_reason")) or _string(event.code)
+        return f"Image upload failed: {_humanize(reason)}" if reason else "Image upload failed"
     if event_type == "DEVICE_ONLINE":
         return "Device online"
     if event_type == "DEVICE_OFFLINE":

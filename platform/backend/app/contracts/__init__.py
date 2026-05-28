@@ -16,6 +16,8 @@ from app.contracts.device_protocol import (
     DiagnosticsPayload,
     EventType,
     HeartbeatPayload,
+    ImageUploadPayload,
+    ImageUploadStatus,
     MessageType,
     NodeRole,
     OTAChannel,
@@ -32,6 +34,7 @@ from app.contracts.device_protocol import (
     parse_command_result_message,
     parse_diagnostics_message,
     parse_heartbeat_message,
+    parse_image_upload_message,
     parse_ota_status_message,
 )
 
@@ -53,6 +56,8 @@ __all__ = [
     "DiagnosticsPayload",
     "EventType",
     "HeartbeatPayload",
+    "ImageUploadPayload",
+    "ImageUploadStatus",
     "MessageType",
     "NodeRole",
     "OTAChannel",
@@ -69,5 +74,6 @@ __all__ = [
     "parse_command_result_message",
     "parse_diagnostics_message",
     "parse_heartbeat_message",
+    "parse_image_upload_message",
     "parse_ota_status_message",
 ]

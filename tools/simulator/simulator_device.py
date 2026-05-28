@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import random
@@ -129,12 +130,24 @@ class SimulatedDeviceNode:
             self.last_error_code = "IMAGE_UPLOAD_FAILED"
             self.last_error_message = "Simulated image upload failure."
             self.error_counters["image_upload_failures"] = self.error_counters.get("image_upload_failures", 0) + 1
+            await self.report_image_upload_failure("simulated_failure")
             logger.warning("[%s] simulated image upload failure", self.config.hardware_device_id)
             return None
         self.image_counter += 1
+        captured_at = utc_now()
+        upload_started_at = time.monotonic()
         png = make_plant_png(
             seed=abs(hash(self.config.hardware_device_id)) % 10000,
             frame_index=self.image_counter,
+        )
+        metadata = self.image_upload_envelope(
+            status="uploaded",
+            captured_at=captured_at,
+            upload_reason="scheduled" if self.config.is_camera else "manual",
+            width=360,
+            height=240,
+            content_type="image/png",
+            upload_ms=max(1, int((time.monotonic() - upload_started_at) * 1000)),
         )
         try:
             response = await self._post_multipart(
@@ -142,6 +155,7 @@ class SimulatedDeviceNode:
                 fields={
                     "device_id": self.config.device_id,
                     "source_hardware_device_id": self.config.hardware_device_id,
+                    "metadata": json.dumps(metadata),
                 },
                 files=[
                     MultipartFile(
@@ -160,6 +174,30 @@ class SimulatedDeviceNode:
             raise
         logger.info("[%s] uploaded fake image id=%s", self.config.hardware_device_id, response.get("id", "unknown"))
         return response
+
+    async def report_image_upload_failure(self, failure_reason: str) -> None:
+        if "/api/hardware/image-upload/report" in self.disabled_optional_paths:
+            return
+        try:
+            await self._post_optional_json(
+                "/api/hardware/image-upload/report",
+                self.image_upload_envelope(
+                    status="failed",
+                    captured_at=utc_now(),
+                    upload_reason="manual",
+                    content_type="image/png",
+                    failure_reason=failure_reason,
+                ),
+            )
+        except SimulatorApiError as exc:
+            if exc.status == 404:
+                self.disabled_optional_paths.add("/api/hardware/image-upload/report")
+                logger.warning(
+                    "[%s] image upload report endpoint is unavailable; failure event simulation is disabled.",
+                    self.config.hardware_device_id,
+                )
+                return
+            raise
 
     async def poll_commands(self) -> None:
         if not self.should_transmit_now("poll"):
@@ -466,6 +504,34 @@ class SimulatedDeviceNode:
             "sent_at": utc_now(),
             "payload": payload,
         }
+
+    def image_upload_envelope(
+        self,
+        *,
+        status: str,
+        captured_at: str | None,
+        upload_reason: str,
+        width: int | None = None,
+        height: int | None = None,
+        content_type: str | None = None,
+        upload_ms: int | None = None,
+        failure_reason: str | None = None,
+    ) -> dict[str, Any]:
+        payload = _without_none(
+            {
+                "status": status,
+                "source_hardware_device_id": self.config.hardware_device_id,
+                "source_node_role": self.config.node_role,
+                "captured_at": captured_at,
+                "upload_reason": upload_reason,
+                "width": width,
+                "height": height,
+                "content_type": content_type,
+                "upload_ms": upload_ms,
+                "failure_reason": failure_reason,
+            }
+        )
+        return self.envelope("IMAGE_UPLOAD", payload, "img")
 
     def capabilities_payload(self) -> dict[str, Any]:
         return {
