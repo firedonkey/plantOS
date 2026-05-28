@@ -1,4 +1,6 @@
-import { LatestImage } from "@/types";
+import { useMemo, useState } from "react";
+
+import type { LatestImage } from "@/types";
 
 type RecentImageGalleryProps = {
   images: LatestImage[];
@@ -13,16 +15,30 @@ export function RecentImageGallery({
   captureLabel = "Capture image",
   onCapture,
 }: RecentImageGalleryProps) {
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const latestImage = images[0];
-  const olderImages = images.slice(1, 4);
+  const recentImages = images.slice(0, 7);
+  const selectedImage = useMemo(
+    () => images.find((image) => image.id === selectedImageId) ?? latestImage,
+    [images, latestImage, selectedImageId],
+  );
+
+  const markImageFailed = (imageId: string) => {
+    setFailedImageIds((current) => {
+      const next = new Set(current);
+      next.add(imageId);
+      return next;
+    });
+  };
 
   return (
-    <div className="card stack-form">
+    <div className="card stack-form image-gallery-panel">
       <div className="section-header">
         <div>
-          <h3>Camera</h3>
+          <h3>Plant camera</h3>
           <p className="subtitle">
-            {latestImage ? `Latest capture ${formatImageAge(latestImage.capturedAt)}` : "Latest device captures appear here."}
+            {latestImage ? `Latest capture ${formatImageAge(latestImage.capturedAt)}` : "Watch new captures appear as the camera uploads them."}
           </p>
         </div>
         {onCapture ? (
@@ -33,23 +49,71 @@ export function RecentImageGallery({
       </div>
 
       {!images.length ? (
-        <p className="subtitle">The gallery will populate after the device uploads its next capture.</p>
+        <div className="image-gallery-empty">
+          <div className="image-gallery-empty-mark" aria-hidden="true" />
+          <div>
+            <h4>No captures yet</h4>
+            <p className="subtitle">The gallery will populate after the device uploads its next image.</p>
+          </div>
+        </div>
       ) : (
-        <div className="image-gallery-stack">
-          <figure className="image-gallery-card image-gallery-card-primary">
-            <img alt="Recent PlantLab capture" className="capture-image gallery-image gallery-image-primary" src={latestImage.url} />
-            <figcaption className="meta-text">Captured {new Date(latestImage.capturedAt).toLocaleString()}</figcaption>
+        <div className="image-gallery-layout">
+          <figure className="image-gallery-hero">
+            {selectedImage && !failedImageIds.has(selectedImage.id) ? (
+              <img
+                alt="Selected PlantLab capture"
+                src={selectedImage.url}
+                onError={() => markImageFailed(selectedImage.id)}
+              />
+            ) : (
+              <div className="image-gallery-fallback">
+                <strong>Image unavailable</strong>
+                <span>The capture metadata is still available.</span>
+              </div>
+            )}
+            <figcaption>
+              <div>
+                <span>{selectedImage?.id === latestImage?.id ? "Latest capture" : "Selected capture"}</span>
+                <strong>{selectedImage ? formatImageAge(selectedImage.capturedAt) : "Waiting"}</strong>
+              </div>
+              <small>{selectedImage ? new Date(selectedImage.capturedAt).toLocaleString() : "No capture time"}</small>
+            </figcaption>
           </figure>
-          {olderImages.length ? (
-            <div className="image-gallery-grid">
-              {olderImages.map((image) => (
-                <figure className="image-gallery-card" key={image.id}>
-                  <img alt="Recent PlantLab capture" className="capture-image gallery-image" src={image.url} />
-                  <figcaption className="meta-text">Captured {new Date(image.capturedAt).toLocaleString()}</figcaption>
-                </figure>
-              ))}
+
+          <aside className="image-gallery-rail" aria-label="Recent captures">
+            <div className="image-gallery-rail-header">
+              <strong>Recent captures</strong>
+              <span>{images.length} image{images.length === 1 ? "" : "s"}</span>
             </div>
-          ) : null}
+            <div className="image-gallery-thumbs">
+              {recentImages.map((image) => {
+                const active = selectedImage?.id === image.id;
+                return (
+                  <button
+                    className={`image-gallery-thumb ${active ? "image-gallery-thumb-active" : ""}`}
+                    key={image.id}
+                    onClick={() => setSelectedImageId(image.id)}
+                    type="button"
+                  >
+                    {!failedImageIds.has(image.id) ? (
+                      <img alt="PlantLab capture thumbnail" src={image.url} onError={() => markImageFailed(image.id)} />
+                    ) : (
+                      <span>Unavailable</span>
+                    )}
+                    <small>{formatImageAge(image.capturedAt)}</small>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedImage ? (
+              <div className="image-gallery-details">
+                <span>Capture ID</span>
+                <strong>{selectedImage.id}</strong>
+                <span>Captured</span>
+                <strong>{new Date(selectedImage.capturedAt).toLocaleString()}</strong>
+              </div>
+            ) : null}
+          </aside>
         </div>
       )}
     </div>
