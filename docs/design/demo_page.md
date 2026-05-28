@@ -8,7 +8,7 @@ call backend APIs, require a device token, or depend on the simulator process.
 
 ## Demo Images
 
-The current demo uses existing repo-local rose mock images copied into:
+The current demo uses web-owned rose demo images stored in:
 
 - `platform/web/src/assets/demo/rose-01-seedling.jpg`
 - `platform/web/src/assets/demo/rose-02-young-leaves.jpg`
@@ -17,15 +17,15 @@ The current demo uses existing repo-local rose mock images copied into:
 - `platform/web/src/assets/demo/rose-05-bloom.jpg`
 - `platform/web/src/assets/demo/CREDITS.md`
 
-Original source files live under:
+Do not store public demo assets under legacy board folders such as
+`device/raspberry_pi/`. The web demo should remain self-contained under
+`platform/web/src/assets/demo` so it is independent of obsolete hardware
+experiments.
 
-- `device/raspberry_pi/dashboard/static/mock/`
-
-The copied `CREDITS.md` includes the source URLs already present in the repo.
-These images are acceptable for local/product-demo development because they are
-existing project assets with source attribution. Before a public launch, replace
-them with user-owned PlantLab growth photos or verify the exact license for each
-source image.
+`CREDITS.md` includes the current source URLs. These images are acceptable for
+local/product-demo development because they are repo-local assets with source
+attribution. Before a public launch, replace them with user-owned PlantLab
+growth photos or verify the exact license for each source image.
 
 ## Replacement Plan
 
