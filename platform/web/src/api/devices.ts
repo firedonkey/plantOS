@@ -952,7 +952,7 @@ export async function getDeviceDashboard(
         }
         throw error;
       }),
-      apiRequest<ApiDeviceTimelapse>(`/api/devices/${deviceId}/timelapse?days=7&interval_minutes=60&max_frames=168`, {}, token).catch((error) => {
+      apiRequest<ApiDeviceTimelapse>(`/api/devices/${deviceId}/timelapse?days=7&interval_minutes=5&max_frames=168`, {}, token).catch((error) => {
         if (error instanceof ApiError && error.status === 404) {
           return undefined;
         }

@@ -73,7 +73,7 @@ export function TimelapsePlayer({ timelapse }: TimelapsePlayerProps) {
 
 function subtitleForTimelapse(timelapse?: DeviceTimelapse): string {
   if (!timelapse || timelapse.frameCount === 0) {
-    return "Sampled hourly from the last week of camera captures.";
+    return "Sampled from the last week of camera captures.";
   }
   const imageWord = timelapse.totalImageCount === 1 ? "capture" : "captures";
   const frameWord = timelapse.frameCount === 1 ? "frame" : "frames";
