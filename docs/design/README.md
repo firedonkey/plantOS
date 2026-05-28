@@ -18,6 +18,11 @@ If you only read one file first, start with:
   - website/platform behavior for one logical device with multiple hardware nodes
   - staged implementation notes
 
+- [UX/UI Redesign Plan](/Users/gary/plantOS/docs/design/ux_ui_redesign_plan.md)
+  - web and mobile UX audit
+  - product design direction
+  - information architecture and phased redesign roadmap
+
 - [API Contract](/Users/gary/plantOS/docs/design/api_contract.md)
   - device/platform HTTP contract
 
