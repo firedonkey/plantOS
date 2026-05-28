@@ -2,8 +2,12 @@ import { useMemo, useState } from "react";
 
 import type { LatestImage } from "@/types";
 
+type GalleryImage = Omit<LatestImage, "url"> & {
+  url?: string;
+};
+
 type RecentImageGalleryProps = {
-  images: LatestImage[];
+  images: GalleryImage[];
   captureDisabled?: boolean;
   captureLabel?: string;
   onCapture?: () => void;
@@ -59,7 +63,7 @@ export function RecentImageGallery({
       ) : (
         <div className="image-gallery-layout">
           <figure className="image-gallery-hero">
-            {selectedImage && !failedImageIds.has(selectedImage.id) ? (
+            {selectedImage?.url && !failedImageIds.has(selectedImage.id) ? (
               <img
                 alt="Selected PlantLab capture"
                 src={selectedImage.url}
@@ -67,8 +71,8 @@ export function RecentImageGallery({
               />
             ) : (
               <div className="image-gallery-fallback">
-                <strong>Image unavailable</strong>
-                <span>The capture metadata is still available.</span>
+                <strong>{selectedImage?.url ? "Image unavailable" : "Loading image"}</strong>
+                <span>{selectedImage?.url ? "The capture metadata is still available." : "Preparing the secure image preview."}</span>
               </div>
             )}
             <figcaption>
@@ -95,10 +99,10 @@ export function RecentImageGallery({
                     onClick={() => setSelectedImageId(image.id)}
                     type="button"
                   >
-                    {!failedImageIds.has(image.id) ? (
+                    {image.url && !failedImageIds.has(image.id) ? (
                       <img alt="PlantLab capture thumbnail" src={image.url} onError={() => markImageFailed(image.id)} />
                     ) : (
-                      <span>Unavailable</span>
+                      <span>{image.url ? "Unavailable" : "Loading"}</span>
                     )}
                     <small>{formatImageAge(image.capturedAt)}</small>
                   </button>

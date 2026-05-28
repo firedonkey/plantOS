@@ -6,11 +6,10 @@ import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { TimelapsePlayer } from "@/components/TimelapsePlayer";
 import { DeviceOverviewHero } from "@/components/DeviceOverviewHero";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
-import { useSession } from "@/hooks/useSession";
+import type { LatestImage } from "@/types";
 
 export function DeviceDashboardScreen() {
   const { deviceId = "" } = useParams();
-  const { session } = useSession();
   const {
     dashboard,
     usedMock,
@@ -58,7 +57,13 @@ export function DeviceDashboardScreen() {
         ? "Working..."
         : "Capture image";
   const latestHeroImage = dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
-  const latestHeroImageUrl = latestHeroImage ? protectedImageUrls[latestHeroImage.id] ?? latestHeroImage.url : undefined;
+  const resolveImageUrl = (image: LatestImage): string | undefined => {
+    if (imageAuthHeaders && shouldUseImageAuthHeaders(image.url)) {
+      return protectedImageUrls[image.id];
+    }
+    return protectedImageUrls[image.id] ?? image.url;
+  };
+  const latestHeroImageUrl = latestHeroImage ? resolveImageUrl(latestHeroImage) : undefined;
 
   useEffect(() => {
     if (!lightIntensityActive) {
@@ -88,7 +93,7 @@ export function DeviceDashboardScreen() {
       return;
     }
 
-    if (session?.mode !== "api" || !imageAuthHeaders) {
+    if (!imageAuthHeaders) {
       setProtectedImageUrls(
         Object.fromEntries(imageCandidates.map((image) => [image.id, image.url])),
       );
@@ -106,6 +111,8 @@ export function DeviceDashboardScreen() {
       setProtectedImageUrls(Object.fromEntries(directEntries));
       return;
     }
+
+    setProtectedImageUrls(Object.fromEntries(directEntries));
 
     Promise.all(
       protectedImages.map(async (image) => {
@@ -134,7 +141,7 @@ export function DeviceDashboardScreen() {
       cancelled = true;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders, session?.mode]);
+  }, [dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders]);
 
   if (!deviceId) {
     return <p className="error-text">Missing device id.</p>;
@@ -222,7 +229,7 @@ export function DeviceDashboardScreen() {
           <RecentImageGallery
             images={dashboard.recentImages.map((image) => ({
               ...image,
-              url: protectedImageUrls[image.id] ?? image.url,
+              url: resolveImageUrl(image),
             }))}
             captureDisabled={captureDisabled}
             captureLabel={captureLabel}
@@ -234,10 +241,12 @@ export function DeviceDashboardScreen() {
               dashboard.timelapse
                 ? {
                     ...dashboard.timelapse,
-                    frames: dashboard.timelapse.frames.map((frame) => ({
-                      ...frame,
-                      url: protectedImageUrls[frame.id] ?? frame.url,
-                    })),
+                    frames: dashboard.timelapse.frames
+                      .map((frame) => ({
+                        ...frame,
+                        url: resolveImageUrl(frame),
+                      }))
+                      .filter((frame): frame is LatestImage => Boolean(frame.url)),
                   }
                 : undefined
             }
