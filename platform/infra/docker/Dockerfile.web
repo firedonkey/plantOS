@@ -6,6 +6,7 @@ COPY platform/web/package*.json ./
 RUN npm ci
 
 COPY platform/web ./
+COPY contracts /app/contracts
 
 ARG VITE_API_BASE_URL=http://localhost:8000
 ARG VITE_AUTH_MODE=dev
