@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { DeviceCard } from "@/components/DeviceCard";
 import { useDevices } from "@/hooks/useDevices";
 
 export function DeviceListScreen() {
@@ -55,25 +56,7 @@ export function DeviceListScreen() {
 
       <div className="card-grid">
         {devices.map((device) => (
-          <Link className="device-card" key={device.id} to={`/devices/${device.id}`}>
-            <div className="device-card-header">
-              <div>
-                <h3>{device.name}</h3>
-                <p>{device.location ?? "No location set"}</p>
-              </div>
-              <span className={`chip chip-${device.status}`}>{device.status}</span>
-            </div>
-            <p className="meta-text">
-              {device.latestReading
-                ? `Reading from ${new Date(device.latestReading.timestamp).toLocaleString()}`
-                : "No reading received yet."}
-            </p>
-            <p className="metric-summary">
-              {device.latestReading
-                ? `Air ${device.latestReading.temperatureC?.toFixed(1) ?? "--"} C • Water ${device.latestReading.waterTemperatureC?.toFixed(1) ?? "--"} C • Level ${device.latestReading.waterLevelState ?? "--"}`
-                : "Latest sensor summary unavailable."}
-            </p>
-          </Link>
+          <DeviceCard device={device} key={device.id} />
         ))}
       </div>
     </section>
