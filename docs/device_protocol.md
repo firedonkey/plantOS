@@ -29,6 +29,9 @@ New device messages use this envelope:
 Rules:
 
 - New firmware should include the envelope.
+- `sent_at` is recommended on every envelope. Backend validation tolerates it
+  being missing during early boot, but current firmware sends an epoch fallback
+  before NTP sync and real UTC after sync.
 - Existing firmware may continue sending legacy heartbeat payloads during migration.
 - The backend accepts additive unknown fields on new contract messages and logs a warning.
 - The backend rejects unsupported major schema versions.
@@ -53,6 +56,8 @@ Current backend ingestion:
 - `POST /api/hardware/ota/status` accepts legacy OTA status JSON and new `OTA_STATUS` envelopes.
 - `GET /api/devices/{id}/timeline` exposes canonical device events with
   summaries, filters, and cursor pagination for diagnostics.
+- Heartbeat, diagnostics, command results, and OTA status ingestion derive
+  state-change events when meaningful values change.
 
 Current firmware support:
 
@@ -60,6 +65,11 @@ Current firmware support:
   `COMMAND` envelopes.
 - Master firmware sends contract `HEARTBEAT` envelopes with optional
   `hardware_model`, `hardware_version`, `actuators`, and `runtime` fields.
+- Firmware attempts non-blocking SNTP after Wi-Fi connection and uses UTC
+  ISO8601 `sent_at` timestamps after synchronization.
+- NTP servers and retry timing are firmware build-time configuration values;
+  defaults are `pool.ntp.org`, `time.google.com`, 15 seconds per attempt, and a
+  five-minute retry interval.
 - Master firmware sends `COMMAND_RESULT` envelopes for acknowledged, completed,
   failed, and rejected contract commands.
 - OTA status reporting emits `OTA_STATUS` envelopes first and falls back to the
@@ -73,8 +83,14 @@ Heartbeat v1 additive state:
 - `actuators.ambient_light.enabled` and `brightness_percent` represent the grow
   LED state.
 - `runtime.capture_interval_seconds`, `ota_status`, `provisioning_status`,
-  `camera_node_status`, `last_command_id`, and `last_command_status` are
-  optional runtime details. Firmware omits fields that are not known.
+  `camera_node_status`, `last_command_id`, `last_command_status`,
+  `time_sync_status`, and `last_ntp_sync_at` are optional runtime details.
+  Firmware omits fields that are not known.
 - The backend stores the full contract heartbeat payload in the canonical
   `HEARTBEAT_RECEIVED` event data and maps ambient light state into the current
   device status for existing dashboards.
+- The backend compares heartbeat state against the latest canonical heartbeat
+  for the same hardware node to emit actuator, camera-node, OTA runtime, device
+  health, and Wi-Fi signal state-change events.
+- RSSI state uses hysteresis: degraded at `<= -80 dBm`, recovered at
+  `>= -70 dBm`.

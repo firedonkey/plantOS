@@ -49,8 +49,30 @@ interpretation. Examples:
 - `COMMAND_COMPLETED`: `CAPTURE_IMAGE completed`
 - `OTA_DOWNLOADING`: `OTA downloading 42%`
 - `OTA_FAILED`: `OTA failed: checksum mismatch`
+- `ACTUATOR_STATE_CHANGED`: `Ambient light changed: off -> 65%`
+- `CAMERA_NODE_DISCONNECTED`: `Camera node disconnected`
+- `CAMERA_NODE_CONNECTED`: `Camera node connected`
+- `OTA_STATE_CHANGED`: `OTA state changed: idle -> downloading`
+- `DEVICE_HEALTH_CHANGED`: `Device health changed: online -> degraded`
+- `WIFI_SIGNAL_DEGRADED`: `Wi-Fi signal degraded: -58 -> -82 dBm`
+- `WIFI_SIGNAL_RECOVERED`: `Wi-Fi signal recovered: -82 -> -60 dBm`
 
 Unknown event types fall back to a safe humanized label.
+
+## State Changes
+
+The backend derives state-change events during heartbeat, diagnostics,
+command-result, and OTA status ingestion. It compares the incoming payload with
+the latest known canonical event for the same hardware node, then writes a
+separate concise event when a meaningful transition happens.
+
+Current thresholds and dedupe behavior:
+
+- Wi-Fi degraded: RSSI crosses to `<= -80 dBm`.
+- Wi-Fi recovered: after degradation, RSSI reaches `>= -70 dBm`.
+- OTA progress-only updates do not emit `OTA_STATE_CHANGED`.
+- Repeated identical actuator and health states do not emit duplicate state
+  events.
 
 ## UI
 
@@ -65,9 +87,18 @@ The web dashboard includes a diagnostics timeline panel with:
 Expanded details include the compact event data, correlation id, hardware id,
 node role, code, and message when present.
 
+## Timestamp Behavior
+
+Timeline row ordering uses backend canonical `occurred_at` timestamps. Firmware
+contract `sent_at` values remain available in expanded details when present and
+are useful for command, OTA, and heartbeat causality debugging. Firmware sends an
+epoch fallback before NTP sync, then real UTC timestamps after SNTP succeeds.
+
 ## Current Limitations
 
 - Event grouping is not implemented yet. OTA progress events may appear as
   individual rows.
 - Large JSON payloads are compacted by the API rather than fetched lazily.
 - Offline detection events depend on the existing backend detection logic.
+- State comparison currently uses recent canonical event data instead of a
+  dedicated state snapshot table.

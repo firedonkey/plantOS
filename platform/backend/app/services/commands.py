@@ -7,6 +7,7 @@ from app.models import Command, CommandStatus
 from app.schemas.commands import CommandAck, CommandCreate
 from app.contracts import EventType
 from app.services.command_events import add_command_event, event_type_for_result_status
+from app.services.state_changes import emit_command_actuator_state_change
 
 
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 20
@@ -245,6 +246,10 @@ def report_command_result(
     result: dict | None = None,
 ) -> Command:
     now = datetime.now(timezone.utc)
+    previous_light_state = {
+        "enabled": command.device.current_light_on,
+        "brightness_percent": command.device.current_light_intensity_percent,
+    }
     command.status = status
     command.message = message
     command.light_on = light_on
@@ -275,5 +280,16 @@ def report_command_result(
     )
     session.add(command)
     session.commit()
+    if status == CommandStatus.COMPLETED and (light_on is not None or light_intensity_percent is not None):
+        emit_command_actuator_state_change(
+            session,
+            command=command,
+            previous=previous_light_state,
+            current={
+                "enabled": command.device.current_light_on,
+                "brightness_percent": command.device.current_light_intensity_percent,
+            },
+            occurred_at=now,
+        )
     session.refresh(command)
     return command

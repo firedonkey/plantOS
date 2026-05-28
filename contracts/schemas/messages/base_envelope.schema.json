@@ -10,7 +10,6 @@
     "hardware_device_id",
     "node_role",
     "message_type",
-    "sent_at",
     "payload"
   ],
   "properties": {

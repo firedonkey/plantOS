@@ -12,6 +12,7 @@ def test_esp32_platform_client_heartbeat_includes_software_version(tmp_path):
     envelope_builder_src = repo_root / "device/esp32/src/contracts/envelope_builder.cpp"
     envelope_parser_src = repo_root / "device/esp32/src/contracts/envelope_parser.cpp"
     ota_status_reporter_src = repo_root / "device/esp32/src/contracts/ota_status_reporter.cpp"
+    time_sync_manager_src = repo_root / "device/esp32/src/time/time_sync_manager.cpp"
     arduino_json = (
         repo_root
         / "device/esp32/.pio/libdeps/esp32-s3-devkitc-1/ArduinoJson/src"
@@ -271,6 +272,7 @@ class HTTPClient {
         str(envelope_builder_src),
         str(envelope_parser_src),
         str(ota_status_reporter_src),
+        str(time_sync_manager_src),
         "-o",
         str(output_binary),
     ]

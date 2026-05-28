@@ -18,6 +18,16 @@ def test_valid_ota_status_envelope_is_accepted_by_contract_parser():
     assert message.payload.firmware_channel == "beta"
 
 
+def test_ota_status_envelope_without_sent_at_is_accepted_for_early_boot_fallback():
+    envelope = _ota_status_envelope(status="downloading", progress_percent=42)
+    envelope.pop("sent_at")
+
+    message = parse_ota_status_message(envelope)
+
+    assert message.sent_at is None
+    assert message.payload.status == "downloading"
+
+
 def test_valid_ota_success_and_failed_status_contracts():
     success = parse_ota_status_message(
         _ota_status_envelope(status="success", progress_percent=100, phase="completed", current_version="1.2.0")

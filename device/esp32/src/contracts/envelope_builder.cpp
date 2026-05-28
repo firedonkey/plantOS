@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include "contracts/plantlab_contracts.h"
+#include "time/time_sync_manager.h"
 
 namespace plantlab {
 namespace contracts {
@@ -38,8 +39,9 @@ void addBaseEnvelope(
   doc["hardware_device_id"] = safeText(hardware_device_id);
   doc["node_role"] = safeText(node_role, PLANTLAB_NODE_ROLE_MASTER);
   doc["message_type"] = safeText(message_type);
-  // TODO: replace this boot-relative timestamp with real UTC once NTP is always available.
-  doc["sent_at"] = "1970-01-01T00:00:00Z";
+  char sent_at[32]{};
+  plantlab::time_sync::currentUtcIso8601(sent_at, sizeof(sent_at));
+  doc["sent_at"] = sent_at;
 }
 
 }  // namespace
@@ -74,7 +76,7 @@ bool buildHeartbeatEnvelope(
     return false;
   }
 
-  StaticJsonDocument<1536> doc;
+  StaticJsonDocument<1792> doc;
   addBaseEnvelope(
       doc,
       device_id,
@@ -132,7 +134,8 @@ bool buildHeartbeatEnvelope(
       (provisioning_status != nullptr && String(provisioning_status).length() > 0) ||
       (camera_node_status != nullptr && String(camera_node_status).length() > 0) ||
       (last_command_id != nullptr && String(last_command_id).length() > 0) ||
-      (last_command_status != nullptr && String(last_command_status).length() > 0)) {
+      (last_command_status != nullptr && String(last_command_status).length() > 0) ||
+      plantlab::time_sync::statusName() != nullptr) {
     JsonObject runtime = payload.createNestedObject("runtime");
     if (has_capture_interval_seconds) {
       runtime["capture_interval_seconds"] = capture_interval_seconds;
@@ -151,6 +154,11 @@ bool buildHeartbeatEnvelope(
     }
     if (last_command_status != nullptr && String(last_command_status).length() > 0) {
       runtime["last_command_status"] = last_command_status;
+    }
+    runtime["time_sync_status"] = plantlab::time_sync::statusName();
+    char last_ntp_sync_at[32]{};
+    if (plantlab::time_sync::lastSyncUtcIso8601(last_ntp_sync_at, sizeof(last_ntp_sync_at))) {
+      runtime["last_ntp_sync_at"] = last_ntp_sync_at;
     }
   }
 

@@ -35,6 +35,7 @@ from app.services.device_diagnostics import snapshot_read, upsert_diagnostic_sna
 from app.services.device_nodes import get_node_by_hardware_id, update_node_heartbeat
 from app.services.events import write_canonical_event
 from app.services.readings import create_sensor_reading
+from app.services.state_changes import emit_diagnostics_state_changes, emit_heartbeat_state_changes
 from app.services.status import update_device_status
 from app.api.routes.readings import _validate_reading_origin
 from app.schemas.status import DeviceStatusCreate
@@ -172,6 +173,7 @@ def hardware_heartbeat(
     node_role = payload.node_role
     diagnostics_snapshot = None
     updated_node = None
+    previous_node_status = None
 
     if payload.hardware_device_id:
         node = get_node_by_hardware_id(session, payload.hardware_device_id)
@@ -179,6 +181,7 @@ def hardware_heartbeat(
             raise HTTPException(status_code=404, detail="Device node not found.")
         if payload.node_role and node.node_role != payload.node_role:
             raise HTTPException(status_code=409, detail="Device node role does not match registration.")
+        previous_node_status = node.status
         updated_node = update_node_heartbeat(
             session,
             payload.hardware_device_id,
@@ -210,6 +213,15 @@ def hardware_heartbeat(
         ),
     )
     if payload.hardware_device_id and updated_node is not None:
+        emit_heartbeat_state_changes(
+            session,
+            device_id=device.id,
+            hardware_device_id=updated_node.hardware_device_id,
+            node_role=updated_node.node_role,
+            current=contract_data,
+            correlation_id=correlation_id,
+            occurred_at=last_seen_at,
+        )
         write_canonical_event(
             session,
             event_type=EventType.HEARTBEAT_RECEIVED,
@@ -221,11 +233,23 @@ def hardware_heartbeat(
             data=contract_data,
             occurred_at=last_seen_at,
         )
-        if payload.status == "online":
+        if payload.status == "online" and previous_node_status != "online":
             write_canonical_event(
                 session,
                 event_type=EventType.DEVICE_ONLINE,
                 severity=DiagnosticSeverity.INFO,
+                device_id=device.id,
+                hardware_device_id=updated_node.hardware_device_id,
+                node_role=updated_node.node_role,
+                correlation_id=correlation_id,
+                data={"source": "heartbeat"},
+                occurred_at=last_seen_at,
+            )
+        if payload.status == "offline" and previous_node_status != "offline":
+            write_canonical_event(
+                session,
+                event_type=EventType.DEVICE_OFFLINE,
+                severity=DiagnosticSeverity.WARNING,
                 device_id=device.id,
                 hardware_device_id=updated_node.hardware_device_id,
                 node_role=updated_node.node_role,
@@ -304,6 +328,16 @@ def hardware_diagnostics(
         diagnostics=diagnostics_snapshot_payload(message.payload),
         reported_at=updated_node.last_seen_at,
     )
+    diagnostic_data = message.payload.model_dump(mode="json", exclude_none=True)
+    emit_diagnostics_state_changes(
+        session,
+        device_id=device.id,
+        hardware_device_id=updated_node.hardware_device_id,
+        node_role=updated_node.node_role,
+        current=diagnostic_data,
+        correlation_id=message.message_id,
+        occurred_at=updated_node.last_seen_at,
+    )
     write_canonical_event(
         session,
         event_type=EventType.DIAGNOSTICS_RECEIVED,
@@ -312,7 +346,7 @@ def hardware_diagnostics(
         hardware_device_id=updated_node.hardware_device_id,
         node_role=updated_node.node_role,
         correlation_id=message.message_id,
-        data=message.payload.model_dump(mode="json", exclude_none=True),
+        data=diagnostic_data,
         occurred_at=updated_node.last_seen_at,
     )
     return snapshot_read(snapshot)

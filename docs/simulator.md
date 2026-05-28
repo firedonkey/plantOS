@@ -220,6 +220,10 @@ should show realistic entries:
 - command queued/sent/acked/completed/failed events
 - OTA progress events
 - degraded states from failure scenarios
+- state-change events such as `ACTUATOR_STATE_CHANGED`,
+  `WIFI_SIGNAL_DEGRADED`, `WIFI_SIGNAL_RECOVERED`,
+  `CAMERA_NODE_DISCONNECTED`, `CAMERA_NODE_CONNECTED`, and
+  `OTA_STATE_CHANGED`
 
 Validation flow:
 
@@ -230,6 +234,17 @@ Validation flow:
 5. Toggle Grow LED or capture an image.
 6. Open the diagnostics timeline and confirm heartbeat, command, diagnostics,
    OTA, or failure events appear.
+
+Useful simulator scenarios for state-change validation:
+
+- `unstable_wifi`: validates Wi-Fi degraded/recovered transitions when RSSI
+  crosses the backend thresholds.
+- `camera_disconnect` or `camera_flapping`: validates camera node
+  disconnected/connected transitions.
+- `ota_failure` or `ota_checksum_failure`: validates OTA state-change and
+  failure timeline rows.
+- Grow LED commands validate actuator state changes when the simulator reports
+  the new light state.
 
 For command and OTA timeline validation, use a rebuilt backend that includes
 the contract-native endpoints. Older local backends still support basic

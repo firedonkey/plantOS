@@ -30,6 +30,7 @@
 #include "sensors/water_temperature_sensor.h"
 #include "system/power_button.h"
 #include "system/status_led.h"
+#include "time/time_sync_manager.h"
 
 bool reportPlatformCommandResult(
     const PlatformCommand& command,
@@ -3479,6 +3480,7 @@ void setup() {
   Serial.println("[water-level] touch sensor initialized");
   Serial.println("[growing-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
+  plantlab::time_sync::begin();
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
@@ -3523,6 +3525,7 @@ void loop() {
   }
 
   connectToWiFi();
+  plantlab::time_sync::service(g_wifi_ready, now);
   if (g_wifi_ready) {
     setupEspNow();
   }

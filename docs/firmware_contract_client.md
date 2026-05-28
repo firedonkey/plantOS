@@ -17,8 +17,8 @@ Current flow:
    long work starts.
 5. Firmware sends a second result envelope for `completed`, `failed`, or
    `rejected`.
-6. Firmware heartbeat reporting sends `HEARTBEAT` envelopes with actuator and
-   runtime state when required fields are available.
+6. Firmware heartbeat reporting sends `HEARTBEAT` envelopes with actuator,
+   runtime, and time-sync state when required fields are available.
 7. OTA status reporting first sends `OTA_STATUS` envelopes and falls back to the
    legacy OTA status payload when needed.
 
@@ -62,12 +62,27 @@ Rejection cases:
 Memory/runtime notes:
 
 - Command polling uses a bounded `StaticJsonDocument<4096>`.
-- Heartbeat envelopes use a bounded `StaticJsonDocument<1536>`.
+- Heartbeat envelopes use a bounded `StaticJsonDocument<1792>`.
 - Command result and OTA status envelopes use bounded
   `StaticJsonDocument<768>`.
 - Unknown additive fields are ignored by the parser.
 - Unsupported schema major versions are rejected before dispatch.
 - There is no durable offline queue yet.
+
+Time synchronization:
+
+- Firmware starts a lightweight SNTP sync attempt after Wi-Fi is connected.
+- Default NTP servers are `pool.ntp.org` and `time.google.com`; firmware builds
+  can override them with `PLANTLAB_NTP_SERVER_1` and `PLANTLAB_NTP_SERVER_2`.
+- Sync is non-blocking; boot, provisioning, polling, OTA, and readings continue
+  if time is not available.
+- Before sync, contract envelopes still include `sent_at` with the fallback
+  value `1970-01-01T00:00:00Z`.
+- After sync, `HEARTBEAT`, `COMMAND_RESULT`, and `OTA_STATUS` envelopes use UTC
+  ISO8601 timestamps such as `2026-05-27T12:00:00Z`.
+- Failed sync attempts retry every five minutes while Wi-Fi is connected.
+- The sync timeout and retry interval are controlled by
+  `PLANTLAB_NTP_SYNC_TIMEOUT_MS` and `PLANTLAB_NTP_RETRY_INTERVAL_MS`.
 
 Heartbeat state:
 
@@ -82,14 +97,17 @@ Heartbeat state:
   camera runtime/provisioning state.
 - `runtime.last_command_id` and `runtime.last_command_status` are included
   after the first command result is recorded.
+- `runtime.time_sync_status` reports `unsynchronized`, `synchronizing`,
+  `synchronized`, or `sync_failed`.
+- `runtime.last_ntp_sync_at` is included after successful synchronization.
 
 Current limitations:
 
 - `REBOOT`, `ENTER_PAIRING_MODE`, `FACTORY_RESET`, and
   `UPDATE_CAPTURE_INTERVAL` are parsed but rejected until product behavior is
   finalized.
-- Timestamps in firmware-generated envelopes are boot-relative placeholders
-  until NTP is guaranteed.
+- There is no RTC hardware requirement. After power loss, wall-clock time is
+  approximate until SNTP succeeds again.
 
 Future work:
 

@@ -118,6 +118,33 @@ def summarize_timeline_event(event: DeviceDiagnosticEvent) -> str:
         return "Camera node disconnected"
     if event_type == "CAMERA_NODE_CONNECTED":
         return "Camera node connected"
+    if event_type == "ACTUATOR_STATE_CHANGED":
+        actuator = _humanize(_string(data.get("actuator")) or "actuator")
+        previous = _ambient_light_label(data.get("previous"))
+        current = _ambient_light_label(data.get("current"))
+        if actuator == "ambient light":
+            return f"Ambient light changed: {previous} -> {current}"
+        return f"{actuator.title()} changed: {previous} -> {current}"
+    if event_type == "OTA_STATE_CHANGED":
+        previous = _string(data.get("previous")) or "unknown"
+        current = _string(data.get("current")) or "unknown"
+        return f"OTA state changed: {_humanize(previous)} -> {_humanize(current)}"
+    if event_type == "DEVICE_HEALTH_CHANGED":
+        previous = _health_label(data.get("previous"))
+        current = _health_label(data.get("current"))
+        return f"Device health changed: {previous} -> {current}"
+    if event_type == "WIFI_SIGNAL_DEGRADED":
+        previous = data.get("previous")
+        current = data.get("current")
+        if isinstance(previous, int) and isinstance(current, int):
+            return f"Wi-Fi signal degraded: {previous} -> {current} dBm"
+        return "Wi-Fi signal degraded"
+    if event_type == "WIFI_SIGNAL_RECOVERED":
+        previous = data.get("previous")
+        current = data.get("current")
+        if isinstance(previous, int) and isinstance(current, int):
+            return f"Wi-Fi signal recovered: {previous} -> {current} dBm"
+        return "Wi-Fi signal recovered"
     if event_type == "DIAGNOSTICS_RECEIVED":
         severity = _string(data.get("severity")) or _string(event.severity)
         return f"Diagnostics received ({_humanize(severity)})" if severity else "Diagnostics received"
@@ -165,6 +192,36 @@ def _normalize_filter(value: str) -> str:
 def _string(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _ambient_light_label(value: Any) -> str:
+    if not isinstance(value, dict) or not value:
+        return "unknown"
+    enabled = value.get("enabled")
+    brightness = value.get("brightness_percent")
+    if enabled is False:
+        return "off"
+    if enabled is True and isinstance(brightness, int):
+        return f"{brightness}%"
+    if enabled is True:
+        return "on"
+    if isinstance(brightness, int):
+        return f"{brightness}%"
+    return "unknown"
+
+
+def _health_label(value: Any) -> str:
+    if isinstance(value, dict):
+        status = _string(value.get("status"))
+        severity = _string(value.get("severity"))
+        if status and severity:
+            return f"{_humanize(status)} ({_humanize(severity)})"
+        if status:
+            return _humanize(status)
+        if severity:
+            return _humanize(severity)
+        return "unknown"
+    return _humanize(_string(value) or "unknown")
 
 
 def _humanize(value: str | None) -> str:

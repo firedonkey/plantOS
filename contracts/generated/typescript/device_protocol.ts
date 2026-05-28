@@ -14,8 +14,13 @@ export type EventType =
   | "HEARTBEAT_RECEIVED"
   | "DIAGNOSTICS_RECEIVED"
   | "SENSOR_ERROR"
+  | "ACTUATOR_STATE_CHANGED"
   | "CAMERA_NODE_CONNECTED"
   | "CAMERA_NODE_DISCONNECTED"
+  | "OTA_STATE_CHANGED"
+  | "DEVICE_HEALTH_CHANGED"
+  | "WIFI_SIGNAL_DEGRADED"
+  | "WIFI_SIGNAL_RECOVERED"
   | "OTA_AVAILABLE"
   | "OTA_STARTED"
   | "OTA_PROGRESS"
@@ -111,7 +116,7 @@ export type DeviceMessage<TPayload extends Record<string, unknown>> = {
   hardware_device_id: string;
   node_role: NodeRole;
   message_type: MessageType;
-  sent_at: string;
+  sent_at?: string;
   payload: TPayload;
 } & Record<string, unknown>;
 
@@ -143,6 +148,8 @@ export type HeartbeatRuntimeState = {
   camera_node_status?: DeviceStatus;
   last_command_id?: string;
   last_command_status?: string;
+  time_sync_status?: string;
+  last_ntp_sync_at?: string;
 } & Record<string, unknown>;
 
 export type DiagnosticsPayload = {

@@ -6,8 +6,25 @@
 #include <string>
 
 #include "HTTPClient.h"
+#include "config.h"
+#include "time/time_sync_manager.h"
 
 int main() {
+  plantlab::time_sync::resetForTesting();
+  plantlab::time_sync::service(false, 1000);
+  assert(plantlab::time_sync::status() == plantlab::time_sync::TimeSyncStatus::kUnsynchronized);
+  assert(plantlab::time_sync::syncAttemptCount() == 0);
+  plantlab::time_sync::service(true, 1000);
+  assert(plantlab::time_sync::status() == plantlab::time_sync::TimeSyncStatus::kSynchronizing);
+  assert(plantlab::time_sync::syncAttemptCount() == 1);
+  plantlab::time_sync::service(true, 1000 + PLANTLAB_NTP_SYNC_TIMEOUT_MS);
+  assert(plantlab::time_sync::status() == plantlab::time_sync::TimeSyncStatus::kSyncFailed);
+  plantlab::time_sync::service(true, 1001 + PLANTLAB_NTP_SYNC_TIMEOUT_MS);
+  assert(plantlab::time_sync::syncAttemptCount() == 1);
+  plantlab::time_sync::service(true, 1000 + PLANTLAB_NTP_SYNC_TIMEOUT_MS + PLANTLAB_NTP_RETRY_INTERVAL_MS);
+  assert(plantlab::time_sync::status() == plantlab::time_sync::TimeSyncStatus::kSynchronizing);
+  assert(plantlab::time_sync::syncAttemptCount() == 2);
+  plantlab::time_sync::resetForTesting();
   platform_client_host_test::reset_http_capture();
 
   PlatformClient client("https://api.example.test/base", 42, "device-token");
@@ -71,6 +88,7 @@ int main() {
   assert(std::string(doc["hardware_device_id"] | "") == "master-01");
   assert(std::string(doc["node_role"] | "") == "master");
   assert(std::string(doc["message_type"] | "") == "HEARTBEAT");
+  assert(std::string(doc["sent_at"] | "") == "1970-01-01T00:00:00Z");
   assert((doc["device_id"] | 0) == 42);
   assert((doc["payload"]["uptime_seconds"] | 0) == 3661);
   assert((doc["payload"]["wifi_rssi_dbm"] | 0) == -67);
@@ -88,6 +106,17 @@ int main() {
   assert(std::string(doc["payload"]["runtime"]["camera_node_status"] | "") == "online");
   assert(std::string(doc["payload"]["runtime"]["last_command_id"] | "") == "cmd_12");
   assert(std::string(doc["payload"]["runtime"]["last_command_status"] | "") == "completed");
+  assert(std::string(doc["payload"]["runtime"]["time_sync_status"] | "") == "unsynchronized");
+
+  plantlab::time_sync::setSynchronizedTimeForTesting(1767225600);
+  platform_client_host_test::reset_http_capture();
+  assert(client.send_hardware_heartbeat(status, &error));
+  StaticJsonDocument<2048> synced_doc;
+  json_error = deserializeJson(synced_doc, platform_client_host_test::last_post_body);
+  assert(!json_error);
+  assert(std::string(synced_doc["sent_at"] | "") == "2026-01-01T00:00:00Z");
+  assert(std::string(synced_doc["payload"]["runtime"]["time_sync_status"] | "") == "synchronized");
+  assert(std::string(synced_doc["payload"]["runtime"]["last_ntp_sync_at"] | "") == "2026-01-01T00:00:00Z");
 
   platform_client_host_test::reset_http_capture();
   PlatformStatus legacy_status;
@@ -213,6 +242,7 @@ int main() {
   assert(!json_error);
   assert(std::string(result_doc["schema_version"] | "") == "1.0");
   assert(std::string(result_doc["message_type"] | "") == "COMMAND_RESULT");
+  assert(std::string(result_doc["sent_at"] | "") == "2026-01-01T00:00:00Z");
   assert(std::string(result_doc["hardware_device_id"] | "") == "master-01");
   assert(std::string(result_doc["node_role"] | "") == "master");
   assert(std::string(result_doc["payload"]["command_id"] | "") == "cmd_88");
@@ -242,6 +272,7 @@ int main() {
   json_error = deserializeJson(ota_doc, platform_client_host_test::last_post_body);
   assert(!json_error);
   assert(std::string(ota_doc["message_type"] | "") == "OTA_STATUS");
+  assert(std::string(ota_doc["sent_at"] | "") == "2026-01-01T00:00:00Z");
   assert(std::string(ota_doc["payload"]["command_id"] | "") == "ota_release-1");
   assert(std::string(ota_doc["payload"]["status"] | "") == "downloading");
   assert((ota_doc["payload"]["progress_percent"] | 0) == 42);

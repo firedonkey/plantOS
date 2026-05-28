@@ -110,6 +110,15 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 80
+                },
+                "time_sync_status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "last_ntp_sync_at": {
+                  "type": "string",
+                  "format": "date-time"
                 }
               }
             }

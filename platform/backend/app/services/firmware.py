@@ -16,6 +16,7 @@ from app.core.settings import Settings
 from app.models import DeviceNode, FirmwareRelease
 from app.schemas.firmware import FirmwareManifestRead, FirmwareOtaStatusCreate, FirmwareOtaStatusRead
 from app.services.events import write_canonical_event
+from app.services.state_changes import emit_ota_state_change
 
 
 OTA_STATUSES = {
@@ -150,6 +151,15 @@ def update_ota_status(
     session.add(node)
     session.commit()
     session.refresh(node)
+    emit_ota_state_change(
+        session,
+        node=node,
+        previous_status=previous_status,
+        current_status=payload.status,
+        correlation_id=correlation_id or payload.release_id,
+        data=_ota_event_data(node, payload, release, contract_data),
+        occurred_at=now,
+    )
     if _should_emit_started(previous_status, payload.status):
         _write_ota_event(
             session,

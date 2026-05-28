@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.api.deps import get_current_user, get_optional_current_user
-from app.contracts import ProtocolValidationError, parse_command_message, parse_command_result_message
+from app.contracts import ProtocolValidationError, parse_command_message, parse_command_result_message, parse_diagnostics_message
 from app.main import app
 from app.models import Command, CommandStatus, DeviceDiagnosticEvent, DeviceDiagnosticSnapshot, DeviceNode
 from tests.test_hardware_api import build_client_with_devices, teardown_overrides
@@ -239,6 +239,80 @@ def test_unknown_additive_field_does_not_break_contract_validation():
         assert response.status_code == 200
     finally:
         teardown_overrides()
+
+
+def test_heartbeat_envelope_without_sent_at_is_accepted_for_early_boot_fallback():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id)
+        _use_device_token_auth()
+        envelope = _heartbeat_envelope(device_id=device_id)
+        envelope.pop("sent_at")
+
+        response = client.post(
+            "/api/hardware/heartbeat",
+            json=envelope,
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+    finally:
+        teardown_overrides()
+
+
+def test_heartbeat_epoch_fallback_sent_at_uses_server_event_time():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id)
+        _use_device_token_auth()
+        envelope = _heartbeat_envelope(device_id=device_id)
+        envelope["sent_at"] = "1970-01-01T00:00:00Z"
+
+        response = client.post(
+            "/api/hardware/heartbeat",
+            json=envelope,
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+        with client.testing_session_local() as session:
+            event = (
+                session.query(DeviceDiagnosticEvent)
+                .filter(DeviceDiagnosticEvent.event_type == "HEARTBEAT_RECEIVED")
+                .one()
+            )
+            assert event.occurred_at.year >= 2024
+    finally:
+        teardown_overrides()
+
+
+def test_diagnostics_envelope_without_sent_at_is_accepted_for_early_boot_fallback():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id)
+        _use_device_token_auth()
+        envelope = _diagnostics_envelope(device_id=device_id)
+        envelope.pop("sent_at")
+
+        response = client.post(
+            "/api/hardware/diagnostics",
+            json=envelope,
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+    finally:
+        teardown_overrides()
+
+
+def test_missing_sent_at_is_accepted_by_diagnostics_and_command_result_contracts():
+    diagnostics = _diagnostics_envelope(device_id=1)
+    diagnostics.pop("sent_at")
+    command_result = _command_result_envelope(status="completed")
+    command_result.pop("sent_at")
+
+    assert parse_diagnostics_message(diagnostics).sent_at is None
+    assert parse_command_result_message(command_result).sent_at is None
 
 
 def test_valid_capture_image_command_contract():

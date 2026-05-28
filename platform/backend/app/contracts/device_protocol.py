@@ -50,8 +50,13 @@ class EventType(str, Enum):
     HEARTBEAT_RECEIVED = "HEARTBEAT_RECEIVED"
     DIAGNOSTICS_RECEIVED = "DIAGNOSTICS_RECEIVED"
     SENSOR_ERROR = "SENSOR_ERROR"
+    ACTUATOR_STATE_CHANGED = "ACTUATOR_STATE_CHANGED"
     CAMERA_NODE_CONNECTED = "CAMERA_NODE_CONNECTED"
     CAMERA_NODE_DISCONNECTED = "CAMERA_NODE_DISCONNECTED"
+    OTA_STATE_CHANGED = "OTA_STATE_CHANGED"
+    DEVICE_HEALTH_CHANGED = "DEVICE_HEALTH_CHANGED"
+    WIFI_SIGNAL_DEGRADED = "WIFI_SIGNAL_DEGRADED"
+    WIFI_SIGNAL_RECOVERED = "WIFI_SIGNAL_RECOVERED"
     OTA_AVAILABLE = "OTA_AVAILABLE"
     OTA_STARTED = "OTA_STARTED"
     OTA_PROGRESS = "OTA_PROGRESS"
@@ -197,6 +202,8 @@ class HeartbeatRuntimeState(ContractModel):
     camera_node_status: DeviceStatus | None = None
     last_command_id: str | None = Field(default=None, min_length=1, max_length=120)
     last_command_status: str | None = Field(default=None, min_length=1, max_length=80)
+    time_sync_status: str | None = Field(default=None, min_length=1, max_length=80)
+    last_ntp_sync_at: datetime | None = None
 
 
 class HeartbeatPayload(ContractModel):
@@ -301,7 +308,7 @@ class DeviceMessage(ContractModel, Generic[PayloadT]):
     hardware_device_id: str = Field(min_length=1, max_length=120)
     node_role: NodeRole
     message_type: MessageType
-    sent_at: datetime
+    sent_at: datetime | None = None
     payload: PayloadT
 
     @field_validator("schema_version")
