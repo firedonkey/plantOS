@@ -140,6 +140,26 @@ export type DeviceDashboard = {
   history: SensorReading[];
 };
 
+export type DeviceTimelineEvent = {
+  id: string;
+  eventType: string;
+  severity: string;
+  occurredAt: string;
+  hardwareDeviceId?: string;
+  nodeRole?: string;
+  correlationId?: string;
+  summary: string;
+  code?: string;
+  message?: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type DeviceTimeline = {
+  events: DeviceTimelineEvent[];
+  nextBefore?: string;
+};
+
 export type AuthSession = {
   token: string;
   email: string;

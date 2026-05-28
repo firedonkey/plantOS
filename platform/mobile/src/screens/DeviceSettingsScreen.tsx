@@ -5,6 +5,7 @@ import { Link, router } from "expo-router";
 import { deleteDevice, getDeviceSettingsDetails, releaseDeviceForTransfer, updateDeviceSettings } from "@/api/devices";
 import type { DeviceSettingsDetails } from "@/api/devices";
 import { Card } from "@/components/Card";
+import { DeviceTimelinePanel } from "@/components/DeviceTimelinePanel";
 import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -239,6 +240,8 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       </Card>
 
       <HardwareHealthPanel health={details?.hardwareHealth} />
+
+      <DeviceTimelinePanel deviceId={deviceId} />
 
       <Card variant="inset">
         <Text style={styles.sectionTitle}>Recovery</Text>

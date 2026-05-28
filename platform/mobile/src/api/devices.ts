@@ -1,6 +1,18 @@
 import { ApiError, apiRequest, shouldUseMockFallback } from "./client";
 import { mockDashboards, mockDevices } from "@/mock/data";
-import { Device, DeviceCommand, DeviceDashboard, DeviceTimelapse, FriendlyHardwareStatus, HardwareDiagnostics, HardwareHealth, HardwareNodeHealth, SensorReading } from "@/types";
+import {
+  Device,
+  DeviceCommand,
+  DeviceDashboard,
+  DeviceTimeline,
+  DeviceTimelineEvent,
+  DeviceTimelapse,
+  FriendlyHardwareStatus,
+  HardwareDiagnostics,
+  HardwareHealth,
+  HardwareNodeHealth,
+  SensorReading,
+} from "@/types";
 import type { RangeKey } from "@/components/ReadingTrendSection";
 import type { BleDeviceIdentity } from "@/ble/bleProvisioning";
 
@@ -180,6 +192,26 @@ type ApiDeviceTimelapse = {
   frames: ApiDeviceImage[];
 };
 
+type ApiDeviceTimelineEvent = {
+  id: number;
+  event_type: string;
+  severity: string;
+  occurred_at: string;
+  hardware_device_id?: string | null;
+  node_role?: string | null;
+  correlation_id?: string | null;
+  summary: string;
+  code?: string | null;
+  message?: string | null;
+  data?: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type ApiDeviceTimeline = {
+  events?: ApiDeviceTimelineEvent[] | null;
+  next_before?: string | null;
+};
+
 type ApiSetupCodeResponse = {
   serial_number?: string | null;
   setup_code?: string | null;
@@ -265,6 +297,16 @@ export type DeviceSettingsDetails = {
   hardwareIdentifiers: { label: string; value: string }[];
   onboardingStatus: string;
   onboardingGuidance: string;
+};
+
+export type DeviceTimelineFilters = {
+  limit?: number;
+  before?: string;
+  after?: string;
+  eventType?: string;
+  severity?: string;
+  nodeRole?: string;
+  correlationId?: string;
 };
 
 function mapCommandStatus(status?: string | null): DeviceCommand["status"] {
@@ -478,6 +520,133 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
   };
 }
 
+function mapTimelineEvent(event: ApiDeviceTimelineEvent): DeviceTimelineEvent {
+  return {
+    id: String(event.id),
+    eventType: event.event_type,
+    severity: event.severity,
+    occurredAt: event.occurred_at,
+    hardwareDeviceId: event.hardware_device_id ?? undefined,
+    nodeRole: event.node_role ?? undefined,
+    correlationId: event.correlation_id ?? undefined,
+    summary: event.summary,
+    code: event.code ?? undefined,
+    message: event.message ?? undefined,
+    data: event.data ?? {},
+    createdAt: event.created_at,
+  };
+}
+
+function buildMockDeviceTimeline(deviceId: string): DeviceTimeline {
+  const mockDashboard = mockDashboards[deviceId] ?? mockDashboards["1"];
+  const now = new Date();
+  const health = mockDashboard.hardwareHealth;
+  const latestReading = mockDashboard.device.latestReading;
+  const lightOn = mockDashboard.device.currentLightOn ?? latestReading?.lightOn ?? false;
+  const lightBrightness = mockDashboard.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent ?? 0;
+  const primaryHardwareId = health?.primary?.hardwareDeviceId;
+  const cameraHardwareId = health?.cameras[0]?.hardwareDeviceId;
+  const events: DeviceTimelineEvent[] = [
+    {
+      id: "mock-timeline-image",
+      eventType: "IMAGE_UPLOADED",
+      severity: "info",
+      occurredAt: new Date(now.getTime() - 60 * 1000).toISOString(),
+      hardwareDeviceId: cameraHardwareId,
+      nodeRole: "camera",
+      correlationId: "mock-image-upload",
+      summary: "Image uploaded #1 (manual)",
+      data: {
+        image_id: 1,
+        upload_reason: "manual",
+        source_hardware_device_id: cameraHardwareId,
+      },
+      createdAt: new Date(now.getTime() - 60 * 1000).toISOString(),
+    },
+    {
+      id: "mock-timeline-command",
+      eventType: "COMMAND_COMPLETED",
+      severity: "info",
+      occurredAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+      hardwareDeviceId: primaryHardwareId,
+      nodeRole: "master",
+      correlationId: "mock-command-light",
+      summary: "SET_LIGHT_BRIGHTNESS completed",
+      data: {
+        command_id: "mock-command-light",
+        command_type: "SET_LIGHT_BRIGHTNESS",
+        status: "completed",
+        actuator_state: {
+          ambient_light: {
+            enabled: lightOn,
+            brightness_percent: lightBrightness,
+          },
+        },
+      },
+      createdAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+    },
+    {
+      id: "mock-timeline-heartbeat",
+      eventType: "HEARTBEAT_RECEIVED",
+      severity: "info",
+      occurredAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+      hardwareDeviceId: primaryHardwareId,
+      nodeRole: "master",
+      correlationId: "mock-heartbeat",
+      summary: `Heartbeat received${health?.primary?.diagnostics?.wifiRssiDbm ? ` (RSSI ${health.primary.diagnostics.wifiRssiDbm} dBm)` : ""}`,
+      data: {
+        wifi_rssi_dbm: health?.primary?.diagnostics?.wifiRssiDbm,
+        firmware_version: health?.primary?.diagnostics?.firmwareVersion,
+        runtime: {
+          camera_node_status: health?.cameraStatus,
+          last_command_status: health?.lastCommand?.status,
+        },
+      },
+      createdAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+    },
+    {
+      id: "mock-timeline-diagnostics",
+      eventType: "DIAGNOSTICS_RECEIVED",
+      severity: health?.friendlyStatus === "needs_attention" ? "warning" : "info",
+      occurredAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+      hardwareDeviceId: primaryHardwareId,
+      nodeRole: "master",
+      summary: health?.friendlyStatus === "needs_attention" ? "Diagnostics received (warning)" : "Diagnostics received (info)",
+      data: {
+        status: health?.overallStatus,
+        attention_reasons: health?.attentionReasons ?? [],
+      },
+      createdAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+    },
+  ];
+  return { events };
+}
+
+function filterMockTimeline(timeline: DeviceTimeline, filters: DeviceTimelineFilters): DeviceTimeline {
+  const events = timeline.events.filter((event) => {
+    if (filters.eventType && event.eventType !== filters.eventType) {
+      return false;
+    }
+    if (filters.severity && event.severity !== filters.severity) {
+      return false;
+    }
+    if (filters.nodeRole && event.nodeRole !== filters.nodeRole) {
+      return false;
+    }
+    if (filters.correlationId && event.correlationId !== filters.correlationId) {
+      return false;
+    }
+    if (filters.before && new Date(event.occurredAt).getTime() >= new Date(filters.before).getTime()) {
+      return false;
+    }
+    if (filters.after && new Date(event.occurredAt).getTime() < new Date(filters.after).getTime()) {
+      return false;
+    }
+    return true;
+  });
+  return { events: events.slice(0, filters.limit ?? 30) };
+}
+
 function normalizeFriendlyStatus(status?: string | null): FriendlyHardwareStatus | undefined {
   const normalized = status?.toLowerCase();
   if (normalized === "online" || normalized === "recently_seen" || normalized === "offline" || normalized === "needs_attention") {
@@ -656,6 +825,51 @@ export async function getDeviceDashboard(
         ...mockDashboard,
         history: filterMockHistory(mockDashboard.history, range),
       },
+    };
+  }
+}
+
+export async function getDeviceTimeline(
+  deviceId: string,
+  filters: DeviceTimelineFilters = {},
+  token?: string,
+): Promise<{ timeline: DeviceTimeline; usedMock: boolean }> {
+  try {
+    const params = new URLSearchParams({ limit: String(filters.limit ?? 30) });
+    if (filters.eventType) {
+      params.set("event_type", filters.eventType);
+    }
+    if (filters.severity) {
+      params.set("severity", filters.severity);
+    }
+    if (filters.nodeRole) {
+      params.set("node_role", filters.nodeRole);
+    }
+    if (filters.correlationId) {
+      params.set("correlation_id", filters.correlationId);
+    }
+    if (filters.before) {
+      params.set("before", filters.before);
+    }
+    if (filters.after) {
+      params.set("after", filters.after);
+    }
+
+    const payload = await apiRequest<ApiDeviceTimeline>(`/api/devices/${deviceId}/timeline?${params.toString()}`, {}, token);
+    return {
+      usedMock: false,
+      timeline: {
+        events: (payload.events ?? []).map(mapTimelineEvent),
+        nextBefore: payload.next_before ?? undefined,
+      },
+    };
+  } catch (error) {
+    if (!shouldUseMockFallback(error)) {
+      throw error;
+    }
+    return {
+      usedMock: true,
+      timeline: filterMockTimeline(buildMockDeviceTimeline(deviceId), filters),
     };
   }
 }

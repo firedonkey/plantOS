@@ -76,6 +76,17 @@ test("mobile dashboard mapping tolerates partial hardware diagnostics", async ()
           cameras: [],
         },
       };
+    } else if (url.includes("/api/devices/7/timelapse?")) {
+      payload = {
+        device_id: 7,
+        window_start: "2026-05-27T00:00:00Z",
+        window_end: "2026-05-27T01:00:00Z",
+        interval_minutes: 60,
+        playback_frame_ms: 150,
+        total_image_count: 0,
+        frame_count: 0,
+        frames: [],
+      };
     } else if (url.includes("/api/devices/7/readings?") || url.endsWith("/api/devices/7/commands") || url.includes("/api/devices/7/images?")) {
       payload = [];
     } else {
