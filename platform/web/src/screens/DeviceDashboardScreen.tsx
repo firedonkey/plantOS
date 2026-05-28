@@ -4,7 +4,6 @@ import { Link, useParams } from "react-router-dom";
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { TimelapsePlayer } from "@/components/TimelapsePlayer";
-import { DeviceTimelinePanel } from "@/components/DeviceTimelinePanel";
 import { DeviceOverviewHero } from "@/components/DeviceOverviewHero";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
@@ -260,8 +259,6 @@ export function DeviceDashboardScreen() {
             onRangeChange={setSelectedRange}
             loading={isLoading}
           />
-
-          <DeviceTimelinePanel deviceId={deviceId} />
 
           <Link className="primary-button dashboard-action-button" to={`/devices/${deviceId}/settings`}>
             Device settings
