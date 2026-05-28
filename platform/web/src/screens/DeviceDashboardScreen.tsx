@@ -5,6 +5,7 @@ import { ReadingTrendSection } from "@/components/ReadingTrendSection";
 import { RecentImageGallery } from "@/components/RecentImageGallery";
 import { TimelapsePlayer } from "@/components/TimelapsePlayer";
 import { DeviceTimelinePanel } from "@/components/DeviceTimelinePanel";
+import { DeviceOverviewHero } from "@/components/DeviceOverviewHero";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 
@@ -51,6 +52,15 @@ export function DeviceDashboardScreen() {
         : growLedOn
           ? "Turn off"
           : "Turn on";
+  const captureDisabled = isCommandRunning || isActionBlocked("capture_image");
+  const captureLabel =
+    activeCommandAction === "capture_image" || isActionBlocked("capture_image")
+      ? "Capture pending"
+      : isCommandRunning
+        ? "Working..."
+        : "Capture image";
+  const latestHeroImage = dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
+  const latestHeroImageUrl = latestHeroImage ? protectedImageUrls[latestHeroImage.id] ?? latestHeroImage.url : undefined;
 
   useEffect(() => {
     if (!lightIntensityActive) {
@@ -136,24 +146,20 @@ export function DeviceDashboardScreen() {
     <section className="page-section">
       {dashboard ? (
         <>
-          <div className="page-header">
-            <div>
-              <div className="eyebrow">DEVICE DASHBOARD</div>
-              <h2>{dashboard.device.name}</h2>
-              <p className="subtitle">
-                {dashboard.device.plantType ?? "Plant type not set"} • {dashboard.device.location ?? "No location set"}
-              </p>
-              <p className="meta-text">
-                {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
-              </p>
-            </div>
-            <div className="header-actions">
-              {usedMock ? <span className="chip chip-mock">Mock mode</span> : null}
-              <button className="secondary-button" disabled={isLoading || isCommandRunning} onClick={() => void refresh()}>
-                {isLoading ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
-          </div>
+          <DeviceOverviewHero
+            dashboard={dashboard}
+            usedMock={usedMock}
+            latestImage={latestHeroImage}
+            latestImageUrl={latestHeroImageUrl}
+            lastUpdatedAt={lastUpdatedAt}
+            isLoading={isLoading}
+            isCommandRunning={isCommandRunning}
+            captureDisabled={captureDisabled}
+            captureLabel={captureLabel}
+            settingsHref={`/devices/${deviceId}/settings`}
+            onCapture={() => runCommand("capture_image")}
+            onRefresh={refresh}
+          />
 
           {error ? <p className="status-banner status-banner-error">{error}</p> : null}
           {commandMessage ? (
@@ -227,14 +233,8 @@ export function DeviceDashboardScreen() {
               ...image,
               url: protectedImageUrls[image.id] ?? image.url,
             }))}
-            captureDisabled={isCommandRunning || isActionBlocked("capture_image")}
-            captureLabel={
-              activeCommandAction === "capture_image" || isActionBlocked("capture_image")
-                ? "Capture pending"
-                : isCommandRunning
-                  ? "Working..."
-                  : "Capture image"
-            }
+            captureDisabled={captureDisabled}
+            captureLabel={captureLabel}
             onCapture={() => runCommand("capture_image")}
           />
 
