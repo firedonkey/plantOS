@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { fetchCurrentUserProfile } from "@/api/auth";
@@ -34,7 +34,9 @@ export function AppLayout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="eyebrow">PLANTLAB</div>
+          <Link to="/" className="eyebrow brand-home-link" aria-label="Open PlantLab landing page">
+            PLANTLAB
+          </Link>
           <h1>Dashboard</h1>
         </div>
         <nav className="nav">

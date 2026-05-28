@@ -7,7 +7,7 @@ import { useDevices } from "@/hooks/useDevices";
 export function DeviceListScreen() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { devices, usedMock, isLoading, error, refresh, lastUpdatedAt } = useDevices();
+  const { devices, usedMock, isLoading, error } = useDevices();
   const flashState = location.state && typeof location.state === "object" ? (location.state as { flashMessage?: string; flashTone?: "success" | "info" }) : null;
 
   useEffect(() => {
@@ -19,26 +19,6 @@ export function DeviceListScreen() {
 
   return (
     <section className="page-section">
-      <div className="page-header">
-        <div>
-          <div className="eyebrow">PLANTLAB</div>
-          <h2>Devices</h2>
-          <p className="subtitle">
-            {usedMock
-              ? "Showing bundled mock devices because the backend is unavailable."
-              : "Showing devices from your local PlantLab backend."}
-          </p>
-          <p className="meta-text">
-            {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Waiting for first refresh."}
-          </p>
-        </div>
-        <div className="header-actions">
-          <button className="secondary-button" disabled={isLoading} onClick={() => void refresh()}>
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-      </div>
-
       {usedMock ? <p className="chip chip-mock">Mock data mode</p> : null}
       {flashState?.flashMessage ? (
         <p className={`status-banner ${flashState.flashTone === "info" ? "status-banner-info" : "status-banner-success"}`}>
