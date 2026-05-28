@@ -28,6 +28,11 @@ If you only read one file first, start with:
   - messaging framework
   - landing information architecture, demo strategy, and phased implementation plan
 
+- [Public Demo Page](/Users/gary/plantOS/docs/design/demo_page.md)
+  - `/demo` route intent
+  - static demo data model
+  - demo image source and replacement guidance
+
 - [Design System Tokens](/Users/gary/plantOS/docs/design/design_system_tokens.md)
   - shared web/mobile visual tokens
   - status, severity, health, spacing, typography, radius, and elevation rules

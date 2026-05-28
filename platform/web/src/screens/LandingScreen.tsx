@@ -97,7 +97,7 @@ export function LandingScreen() {
   const { token } = useSession();
   const dashboardHref = token ? "/devices" : "/login";
   const dashboardLabel = token ? "Dashboard" : "Sign in";
-  const previewLabel = "View product preview";
+  const previewLabel = "View live demo";
 
   return (
     <div className="landing-page">
@@ -125,9 +125,9 @@ export function LandingScreen() {
               and device health visibility across mobile and web.
             </p>
             <div className="button-row">
-              <a className="primary-button" href="#product-showcase">
+              <Link className="primary-button" to="/demo">
                 {previewLabel}
-              </a>
+              </Link>
               <Link className="secondary-button" to={dashboardHref}>
                 {dashboardLabel}
               </Link>
@@ -277,12 +277,12 @@ export function LandingScreen() {
           <div>
             <div className="eyebrow">Ready to look closer?</div>
             <h2 id="final-title">See PlantLab as a product, not a prototype.</h2>
-            <p>Start with the product preview now, or sign in to manage your own PlantLab device.</p>
+            <p>Start with the public demo now, or sign in to manage your own PlantLab device.</p>
           </div>
           <div className="button-row">
-            <a className="primary-button" href="#product-showcase">
+            <Link className="primary-button" to="/demo">
               {previewLabel}
-            </a>
+            </Link>
             <Link className="secondary-button" to={dashboardHref}>
               {dashboardLabel}
             </Link>
