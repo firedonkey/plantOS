@@ -38,6 +38,7 @@ class DeviceTimelapseRead(BaseModel):
     window_start: datetime
     window_end: datetime
     interval_minutes: int
+    target_duration_seconds: int
     playback_frame_ms: int
     total_image_count: int
     frame_count: int

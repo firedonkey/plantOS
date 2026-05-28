@@ -49,6 +49,7 @@ export type DeviceTimelapse = {
   frameCount: number;
   totalImageCount: number;
   intervalMinutes: number;
+  targetDurationSeconds: number;
   playbackFrameMs: number;
   windowStart: string;
   windowEnd: string;

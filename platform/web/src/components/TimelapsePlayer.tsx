@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DeviceTimelapse } from "@/types";
 
@@ -10,12 +10,13 @@ export function TimelapsePlayer({ timelapse }: TimelapsePlayerProps) {
   const frames = timelapse?.frames ?? [];
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const frameSignature = useMemo(() => frames.map((frame) => frame.id).join("|"), [frames]);
   const currentFrame = frames[Math.min(frameIndex, Math.max(frames.length - 1, 0))];
 
   useEffect(() => {
     setFrameIndex(0);
     setPlaying(false);
-  }, [timelapse?.windowStart, timelapse?.windowEnd, frames.length]);
+  }, [frameSignature]);
 
   useEffect(() => {
     if (!playing || frames.length < 2) {
@@ -77,13 +78,13 @@ function subtitleForTimelapse(timelapse?: DeviceTimelapse): string {
   }
   const imageWord = timelapse.totalImageCount === 1 ? "capture" : "captures";
   const frameWord = timelapse.frameCount === 1 ? "frame" : "frames";
-  return `${timelapse.frameCount} ${frameWord} from ${timelapse.totalImageCount} ${imageWord}, sampled every ${formatInterval(timelapse.intervalMinutes)}.`;
+  return `${timelapse.frameCount} ${frameWord} from ${timelapse.totalImageCount} ${imageWord}, played as a ${formatDuration(timelapse.targetDurationSeconds)} timelapse.`;
 }
 
-function formatInterval(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes} min`;
+function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
   }
-  const hours = minutes / 60;
-  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+  const minutes = seconds / 60;
+  return Number.isInteger(minutes) ? `${minutes} min` : `${minutes.toFixed(1)} min`;
 }

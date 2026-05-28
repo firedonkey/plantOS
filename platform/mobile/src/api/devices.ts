@@ -186,6 +186,7 @@ type ApiDeviceTimelapse = {
   window_start: string;
   window_end: string;
   interval_minutes: number;
+  target_duration_seconds?: number;
   playback_frame_ms: number;
   total_image_count: number;
   frame_count: number;
@@ -762,7 +763,11 @@ export async function getDeviceDashboard(
         }
         throw error;
       }),
-      apiRequest<ApiDeviceTimelapse>(`/api/devices/${deviceId}/timelapse?days=7&interval_minutes=5&max_frames=168`, {}, token).catch((error) => {
+      apiRequest<ApiDeviceTimelapse>(
+        `/api/devices/${deviceId}/timelapse?days=7&interval_minutes=5&max_frames=168&target_duration_seconds=30`,
+        {},
+        token
+      ).catch((error) => {
         if (error instanceof ApiError && error.status === 404) {
           return undefined;
         }
@@ -884,6 +889,7 @@ function mapTimelapse(timelapse: ApiDeviceTimelapse): DeviceTimelapse {
     frameCount: timelapse.frame_count,
     totalImageCount: timelapse.total_image_count,
     intervalMinutes: timelapse.interval_minutes,
+    targetDurationSeconds: timelapse.target_duration_seconds ?? 30,
     playbackFrameMs: timelapse.playback_frame_ms,
     windowStart: timelapse.window_start,
     windowEnd: timelapse.window_end,

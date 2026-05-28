@@ -23,6 +23,11 @@ If you only read one file first, start with:
   - product design direction
   - information architecture and phased redesign roadmap
 
+- [Marketing Landing Plan](/Users/gary/plantOS/docs/design/marketing_landing_plan.md)
+  - public website audit
+  - messaging framework
+  - landing information architecture, demo strategy, and phased implementation plan
+
 - [Design System Tokens](/Users/gary/plantOS/docs/design/design_system_tokens.md)
   - shared web/mobile visual tokens
   - status, severity, health, spacing, typography, radius, and elevation rules

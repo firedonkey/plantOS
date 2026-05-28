@@ -450,6 +450,8 @@ def test_device_timelapse_returns_sampled_owned_frames(tmp_path, monkeypatch):
         payload = response.json()
         assert payload["device_id"] == device_id
         assert payload["interval_minutes"] == 60
+        assert payload["target_duration_seconds"] == 30
+        assert payload["playback_frame_ms"] == 10000
         assert payload["total_image_count"] == 6
         assert payload["frame_count"] == 3
         assert [frame["timestamp"] for frame in payload["frames"]] == sorted(

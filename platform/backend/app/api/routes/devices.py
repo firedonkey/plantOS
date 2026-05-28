@@ -66,6 +66,8 @@ READING_STALE_AFTER = timedelta(minutes=2)
 READING_OFFLINE_AFTER = timedelta(minutes=15)
 IMAGE_STALE_AFTER = timedelta(minutes=5)
 IMAGE_OFFLINE_AFTER = timedelta(minutes=20)
+TIMELAPSE_MIN_FRAME_MS = 50
+TIMELAPSE_MAX_FRAME_MS = 30_000
 
 
 @dataclass(frozen=True)
@@ -494,7 +496,8 @@ def get_device_timelapse(
     days: int = Query(default=7, ge=1, le=30),
     interval_minutes: int = Query(default=60, ge=5, le=24 * 60),
     max_frames: int = Query(default=168, ge=2, le=720),
-    playback_frame_ms: int = Query(default=450, ge=100, le=2000),
+    target_duration_seconds: int = Query(default=30, ge=5, le=120),
+    playback_frame_ms: int | None = Query(default=None, ge=50, le=30_000),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -527,11 +530,19 @@ def get_device_timelapse(
         window_start=window_start,
         window_end=window_end,
         interval_minutes=interval_minutes,
-        playback_frame_ms=playback_frame_ms,
+        target_duration_seconds=target_duration_seconds,
+        playback_frame_ms=playback_frame_ms
+        if playback_frame_ms is not None
+        else _timelapse_playback_frame_ms(len(frames), target_duration_seconds),
         total_image_count=total_image_count,
         frame_count=len(frames),
         frames=frames,
     )
+
+
+def _timelapse_playback_frame_ms(frame_count: int, target_duration_seconds: int) -> int:
+    desired_frame_ms = round((target_duration_seconds * 1000) / max(frame_count, 1))
+    return min(TIMELAPSE_MAX_FRAME_MS, max(TIMELAPSE_MIN_FRAME_MS, desired_frame_ms))
 
 
 @router.post("/{device_id}/commands/light", response_model=DeviceCommandEnvelopeRead, status_code=201)

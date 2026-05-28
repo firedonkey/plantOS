@@ -54,8 +54,8 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           if (matchingCommand.status === "completed") {
             if (trackedCommand.action === "capture_image") {
               if (hasNewCaptureImage) {
-                setCommandTone("success");
-                setCommandMessage(matchingCommand.detail ?? "Image captured and uploaded.");
+                setCommandTone(null);
+                setCommandMessage(null);
                 setTrackedCommand(null);
               } else {
                 setCommandTone("info");
@@ -93,8 +93,8 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         ) {
           if (trackedCommand.action === "capture_image") {
             if (hasNewCaptureImage) {
-              setCommandMessage("Image capture completed.");
-              setCommandTone("success");
+              setCommandMessage(null);
+              setCommandTone(null);
               setTrackedCommand(null);
             } else {
               setCommandMessage("Image captured. Waiting for gallery refresh.");
@@ -174,8 +174,10 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setCommandMessage(null);
         const result = await sendDeviceCommand(deviceId, action, options, token ?? undefined);
         if (result.usedMock) {
-          setCommandTone("success");
-          setCommandMessage(`Simulated ${friendlyCommandLabel(action)} in mock mode.`);
+          if (action !== "capture_image") {
+            setCommandTone("success");
+            setCommandMessage(`Simulated ${friendlyCommandLabel(action)} in mock mode.`);
+          }
         }
         setTrackedCommand(
           result.usedMock

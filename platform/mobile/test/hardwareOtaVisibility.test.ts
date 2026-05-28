@@ -130,6 +130,7 @@ test("mobile dashboard mapping tolerates hardware health nodes without OTA field
         window_start: "2026-05-27T00:00:00Z",
         window_end: "2026-05-27T01:00:00Z",
         interval_minutes: 60,
+        target_duration_seconds: 30,
         playback_frame_ms: 150,
         total_image_count: 0,
         frame_count: 0,

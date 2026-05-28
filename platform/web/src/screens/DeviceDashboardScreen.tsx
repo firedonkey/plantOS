@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ReadingTrendSection } from "@/components/ReadingTrendSection";
@@ -27,6 +27,7 @@ export function DeviceDashboardScreen() {
     activeCommandAction,
   } = useDeviceDashboard(deviceId);
   const [protectedImageUrls, setProtectedImageUrls] = useState<Record<string, string>>({});
+  const protectedImageUrlCacheRef = useRef<Record<string, { sourceUrl: string; objectUrl: string }>>({});
   const latestReading = dashboard?.device.latestReading;
   const growLedOn = (dashboard?.device.currentLightOn ?? latestReading?.lightOn) === true;
   const growLedIntensityPercent = dashboard?.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent;
@@ -89,59 +90,88 @@ export function DeviceDashboardScreen() {
     ];
 
     if (!imageCandidates.length) {
-      setProtectedImageUrls({});
+      revokeProtectedImageUrls(protectedImageUrlCacheRef.current);
+      protectedImageUrlCacheRef.current = {};
+      updateProtectedImageUrls(setProtectedImageUrls, {});
       return;
     }
 
     if (!imageAuthHeaders) {
-      setProtectedImageUrls(
-        Object.fromEntries(imageCandidates.map((image) => [image.id, image.url])),
-      );
+      revokeProtectedImageUrls(protectedImageUrlCacheRef.current);
+      protectedImageUrlCacheRef.current = {};
+      updateProtectedImageUrls(setProtectedImageUrls, Object.fromEntries(imageCandidates.map((image) => [image.id, image.url])));
       return;
     }
 
     let cancelled = false;
-    const objectUrls: string[] = [];
+    const candidateIds = new Set(imageCandidates.map((image) => image.id));
     const directEntries = imageCandidates
       .filter((image) => !shouldUseImageAuthHeaders(image.url))
       .map((image) => [image.id, image.url] as const);
     const protectedImages = imageCandidates.filter((image) => shouldUseImageAuthHeaders(image.url));
+    const cachedEntries = protectedImages
+      .map((image) => {
+        const cached = protectedImageUrlCacheRef.current[image.id];
+        return cached && cached.sourceUrl === image.url ? ([image.id, cached.objectUrl] as const) : null;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry));
 
     if (!protectedImages.length) {
-      setProtectedImageUrls(Object.fromEntries(directEntries));
+      revokeProtectedImageUrls(protectedImageUrlCacheRef.current);
+      protectedImageUrlCacheRef.current = {};
+      updateProtectedImageUrls(setProtectedImageUrls, Object.fromEntries(directEntries));
       return;
     }
 
-    setProtectedImageUrls(Object.fromEntries(directEntries));
+    updateProtectedImageUrls(setProtectedImageUrls, Object.fromEntries([...directEntries, ...cachedEntries]));
 
     Promise.all(
       protectedImages.map(async (image) => {
+        const cached = protectedImageUrlCacheRef.current[image.id];
+        if (cached && cached.sourceUrl === image.url) {
+          return [image.id, cached.objectUrl] as const;
+        }
         const response = await fetch(image.url, { headers: imageAuthHeaders });
         if (!response.ok) {
           throw new Error(`Unable to load image: ${response.status}`);
         }
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
-        objectUrls.push(objectUrl);
+        if (cached && cached.objectUrl !== objectUrl) {
+          URL.revokeObjectURL(cached.objectUrl);
+        }
+        protectedImageUrlCacheRef.current[image.id] = { sourceUrl: image.url, objectUrl };
         return [image.id, objectUrl] as const;
       }),
     )
       .then((entries) => {
         if (!cancelled) {
-          setProtectedImageUrls(Object.fromEntries([...directEntries, ...entries]));
+          for (const [id, cached] of Object.entries(protectedImageUrlCacheRef.current)) {
+            if (!candidateIds.has(id)) {
+              URL.revokeObjectURL(cached.objectUrl);
+              delete protectedImageUrlCacheRef.current[id];
+            }
+          }
+          updateProtectedImageUrls(setProtectedImageUrls, Object.fromEntries([...directEntries, ...entries]));
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setProtectedImageUrls(Object.fromEntries(directEntries));
+          updateProtectedImageUrls(setProtectedImageUrls, Object.fromEntries([...directEntries, ...cachedEntries]));
         }
       });
 
     return () => {
       cancelled = true;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders]);
+
+  useEffect(() => {
+    return () => {
+      revokeProtectedImageUrls(protectedImageUrlCacheRef.current);
+      protectedImageUrlCacheRef.current = {};
+    };
+  }, []);
 
   if (!deviceId) {
     return <p className="error-text">Missing device id.</p>;
@@ -277,6 +307,26 @@ export function DeviceDashboardScreen() {
 function shouldUseImageAuthHeaders(url: string): boolean {
   const path = url.replace(/^https?:\/\/[^/]+/i, "");
   return path.startsWith("/api/images/") && path.split("?")[0].endsWith("/content");
+}
+
+function updateProtectedImageUrls(
+  setProtectedImageUrls: Dispatch<SetStateAction<Record<string, string>>>,
+  nextUrls: Record<string, string>,
+) {
+  setProtectedImageUrls((current) => (sameStringRecord(current, nextUrls) ? current : nextUrls));
+}
+
+function sameStringRecord(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
+}
+
+function revokeProtectedImageUrls(cache: Record<string, { objectUrl: string }>) {
+  Object.values(cache).forEach((entry) => URL.revokeObjectURL(entry.objectUrl));
 }
 
 function formatWaterLevel(state?: string, raw?: number) {
