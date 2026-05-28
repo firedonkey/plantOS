@@ -26,20 +26,15 @@ const styles = StyleSheet.create({
 const variantStyles = StyleSheet.create({
   default: {},
   inset: {
-    backgroundColor: theme.colors.surfaceMuted,
-    borderColor: theme.colors.borderSoft,
+    ...theme.surfaces.muted,
   },
   elevated: {
-    borderColor: theme.colors.borderSoft,
-    shadowColor: "#000000",
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    borderColor: theme.surfaces.hero.borderColor,
+    ...theme.elevation.card,
   },
   hero: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderSoft,
+    ...theme.surfaces.hero,
+    ...theme.elevation.hero,
     padding: theme.spacing.xl,
   },
 });

@@ -23,6 +23,10 @@ If you only read one file first, start with:
   - product design direction
   - information architecture and phased redesign roadmap
 
+- [Design System Tokens](/Users/gary/plantOS/docs/design/design_system_tokens.md)
+  - shared web/mobile visual tokens
+  - status, severity, health, spacing, typography, radius, and elevation rules
+
 - [API Contract](/Users/gary/plantOS/docs/design/api_contract.md)
   - device/platform HTTP contract
 
