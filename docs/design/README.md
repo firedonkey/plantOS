@@ -23,6 +23,11 @@ If you only read one file first, start with:
   - product design direction
   - information architecture and phased redesign roadmap
 
+- [Onboarding & Provisioning Redesign Plan](/Users/gary/plantOS/docs/design/onboarding_provisioning_redesign_plan.md)
+  - mobile onboarding audit
+  - BLE/Wi-Fi provisioning state review
+  - recovery, transfer, factory-reset, and phased UX roadmap
+
 - [Marketing Landing Plan](/Users/gary/plantOS/docs/design/marketing_landing_plan.md)
   - public website audit
   - messaging framework
