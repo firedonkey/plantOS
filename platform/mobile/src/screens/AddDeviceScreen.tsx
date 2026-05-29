@@ -20,6 +20,7 @@ import {
 } from "@/ble/bleProvisioning";
 import { Card } from "@/components/Card";
 import { OnboardingProgress, type OnboardingProgressStep } from "@/components/onboarding/OnboardingProgress";
+import { RecoveryScreen } from "@/components/onboarding/RecoveryScreen";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
@@ -37,6 +38,7 @@ const DEVICE_OWNERSHIP_CONFLICT =
   "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here.";
 type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online";
 type OnboardingStageId = "connect" | "send_wifi" | "connect_wifi" | "setup_device" | "ready";
+type OnboardingRecoveryKind = "wifi" | "timeout" | "connection" | "ownership" | "setup_check" | "mismatch" | "generic";
 
 // Phase 1 keeps the existing provisioning flow, but maps coarse internal states
 // into a small user-facing progress model so setup does not feel stalled.
@@ -107,6 +109,7 @@ export function AddDeviceScreen() {
   const [bleProvisioningMessage, setBleProvisioningMessage] = useState<string | null>(null);
   const [bleProvisioningTone, setBleProvisioningTone] = useState<"idle" | "success" | "error">("idle");
   const [onboardingStage, setOnboardingStage] = useState<OnboardingStageId>("connect");
+  const [onboardingRecoveryKind, setOnboardingRecoveryKind] = useState<OnboardingRecoveryKind>("generic");
   const [step, setStep] = useState<AddDeviceStep>("find_device");
   const [showSerialFallback, setShowSerialFallback] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -122,6 +125,7 @@ export function AddDeviceScreen() {
     bleProvisioningTone === "success"
       ? "Your device is connected and ready to monitor your plant."
       : onboardingProgressDescription(onboardingStage);
+  const showFindDeviceRecovery = Boolean(error && step === "find_device" && showSerialFallback);
 
   useEffect(() => {
     if (!isRecoveryFlow) {
@@ -161,6 +165,7 @@ export function AddDeviceScreen() {
       setSelectedBleDevice(null);
       setBleProvisioningMessage(null);
       setBleProvisioningTone("idle");
+      setOnboardingRecoveryKind("generic");
       setOnboardingStage("connect");
       setStep("wifi_provisioning");
     } catch (err) {
@@ -177,6 +182,7 @@ export function AddDeviceScreen() {
     setWifiScanMessage(null);
     setBleProvisioningMessage(null);
     setBleProvisioningTone("idle");
+    setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
     setShowSerialFallback(false);
     setIsFindingBleDevice(true);
@@ -198,6 +204,7 @@ export function AddDeviceScreen() {
       await createClaimTokenFromBleDevice(devices[0]);
     } catch (err) {
       setShowSerialFallback(true);
+      setOnboardingRecoveryKind(recoveryKindForError(err));
       setError(err instanceof BleProvisioningError ? friendlyProvisioningErrorMessage(err) : "Could not find a nearby PlantLab.");
     } finally {
       setIsFindingBleDevice(false);
@@ -229,6 +236,7 @@ export function AddDeviceScreen() {
       setSelectedBleDevice(deviceWithIdentity);
       setBleProvisioningTone("idle");
       setBleProvisioningMessage(`Connected to ${deviceWithIdentity.name}.`);
+      setOnboardingRecoveryKind("generic");
       setOnboardingStage("connect");
       setStep("wifi_provisioning");
       void loadSelectedBleDeviceWifiNetworks(deviceWithIdentity);
@@ -237,6 +245,7 @@ export function AddDeviceScreen() {
       setHandoff(null);
       setSelectedBleDevice(null);
       setShowSerialFallback(true);
+      setOnboardingRecoveryKind(recoveryKindForError(err));
       setError(err instanceof BleProvisioningError ? friendlyProvisioningErrorMessage(err) : "Unable to identify this PlantLab.");
     } finally {
       setIsSubmitting(false);
@@ -346,6 +355,7 @@ export function AddDeviceScreen() {
     Keyboard.dismiss();
     setBleProvisioningTone("idle");
     setBleProvisioningMessage(null);
+    setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
     setIsProvisioningOverBle(true);
     try {
@@ -371,6 +381,7 @@ export function AddDeviceScreen() {
     } catch (err) {
       const message = provisioningErrorMessage(err);
       setBleProvisioningTone("error");
+      setOnboardingRecoveryKind(recoveryKindForError(err));
       setBleProvisioningMessage(message);
       if (isWifiCredentialProvisioningError(err)) {
         Alert.alert("Wi-Fi did not connect", message);
@@ -389,6 +400,7 @@ export function AddDeviceScreen() {
     setStep("waiting_online");
     setIsWaitingForOnline(true);
     setBleProvisioningTone("idle");
+    setOnboardingRecoveryKind("generic");
     setOnboardingStage("setup_device");
     setBleProvisioningMessage("PlantLab is joining Wi-Fi and checking in. This can take a moment.");
     try {
@@ -406,12 +418,14 @@ export function AddDeviceScreen() {
           );
           if (claimFailureMessage) {
             setBleProvisioningTone("error");
+            setOnboardingRecoveryKind("ownership");
             setBleProvisioningMessage(claimFailureMessage);
             Alert.alert("PlantLab already connected", claimFailureMessage);
             return;
           }
           if (claimStatusResult.status.expired && !claimStatusResult.status.used) {
             setBleProvisioningTone("error");
+            setOnboardingRecoveryKind("timeout");
             setBleProvisioningMessage("Setup took too long. Restart setup so PlantLab can create a fresh secure connection.");
             return;
           }
@@ -443,6 +457,7 @@ export function AddDeviceScreen() {
           heartbeatIsAfterStart(result.status.lastHeartbeatAt, startedAt)
         ) {
           setBleProvisioningTone("error");
+          setOnboardingRecoveryKind("wifi");
           setBleProvisioningMessage(RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG);
           Alert.alert("Wi-Fi did not connect", RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG);
           return;
@@ -454,6 +469,7 @@ export function AddDeviceScreen() {
           }
           if (!claimUsedByExpectedDevice) {
             setBleProvisioningTone("error");
+            setOnboardingRecoveryKind("mismatch");
             setBleProvisioningMessage("Setup finished for a different PlantLab. Start recovery again and choose the matching device.");
             return;
           }
@@ -470,9 +486,11 @@ export function AddDeviceScreen() {
         await sleep(ONLINE_POLL_INTERVAL_MS);
       }
       setBleProvisioningTone("error");
+      setOnboardingRecoveryKind("timeout");
       setBleProvisioningMessage(ONLINE_CONFIRMATION_TIMEOUT);
     } catch (err) {
       setBleProvisioningTone("error");
+      setOnboardingRecoveryKind(err instanceof ApiError ? "setup_check" : "timeout");
       setBleProvisioningMessage(err instanceof ApiError ? "Could not check setup status. Keep PlantLab powered on and try again." : ONLINE_CONFIRMATION_TIMEOUT);
     } finally {
       setIsWaitingForOnline(false);
@@ -545,8 +563,62 @@ export function AddDeviceScreen() {
   function returnToWifiDetails() {
     setBleProvisioningTone("idle");
     setBleProvisioningMessage(null);
+    setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
     setStep("wifi_provisioning");
+  }
+
+  function restartSetup() {
+    setError(null);
+    setWifiScanMessage(null);
+    setBleProvisioningMessage(null);
+    setBleProvisioningTone("idle");
+    setOnboardingRecoveryKind("generic");
+    setOnboardingStage("connect");
+    setHandoff(null);
+    setSelectedBleDevice(null);
+    setShowSerialFallback(false);
+    setStep("find_device");
+  }
+
+  function retryCurrentRecovery() {
+    if (step === "waiting_online") {
+      void waitForProvisionedDeviceOnline(selectedBleDevice);
+      return;
+    }
+    if (step === "wifi_provisioning") {
+      void sendProvisioningOverBle();
+      return;
+    }
+    void startBleIdentityOnboarding();
+  }
+
+  function renderRecovery(kind: OnboardingRecoveryKind, message?: string | null) {
+    const copy = recoveryContentForKind(kind, message);
+    const primary =
+      kind === "timeout" || kind === "setup_check"
+        ? { label: "Keep waiting", onPress: () => { void waitForProvisionedDeviceOnline(selectedBleDevice); }, disabled: isWaitingForOnline }
+        : { label: kind === "connection" ? "Reconnect" : "Try again", onPress: retryCurrentRecovery, disabled: isProvisioningOverBle || isWaitingForOnline };
+    const secondary =
+      step === "find_device"
+        ? { label: "Restart setup", onPress: restartSetup }
+        : { label: "Change Wi-Fi details", onPress: returnToWifiDetails };
+    const tertiary =
+      kind === "ownership" || kind === "timeout" || kind === "setup_check" || kind === "wifi"
+        ? { label: "Reset device instructions", onPress: showResetDeviceHelp }
+        : undefined;
+
+    return (
+      <RecoveryScreen
+        title={copy.title}
+        explanation={copy.explanation}
+        likelyCauses={copy.likelyCauses}
+        recommendedActions={copy.recommendedActions}
+        primaryAction={primary}
+        secondaryAction={secondary}
+        tertiaryAction={tertiary}
+      />
+    );
   }
 
   async function ensureRecoveryDeviceIdentity(device: BleProvisioningDevice): Promise<BleProvisioningDevice> {
@@ -596,7 +668,7 @@ export function AddDeviceScreen() {
       </View>
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error && !showFindDeviceRecovery ? <Text style={styles.error}>{error}</Text> : null}
 
       {step === "find_device" ? (
         <Card>
@@ -631,6 +703,7 @@ export function AddDeviceScreen() {
         <Card>
           <Text style={styles.cardTitle}>QR or serial backup</Text>
           <Text style={styles.cardSubtitle}>Use this only when the app cannot find or read the device automatically.</Text>
+          {showFindDeviceRecovery ? renderRecovery(onboardingRecoveryKind, error) : null}
           <LabeledInput label="Serial number" value={serialNumber} onChangeText={setSerialNumber} placeholder="SN-ESP32-001" />
           <PrimaryButton label="Scan QR code" tone="secondary" onPress={openScanner} />
           {scanError ? <Text style={styles.error}>{scanError}</Text> : null}
@@ -683,11 +756,12 @@ export function AddDeviceScreen() {
           ) : null}
           {!canConfirmWifiDetails ? <Text style={styles.meta}>Select or type your Wi-Fi name, then enter the Wi-Fi password to continue.</Text> : null}
           {!blePlatformUrl ? <Text style={styles.error}>A reachable platform URL is required before setup can finish.</Text> : null}
-          {!isProvisioningOverBle && bleProvisioningMessage ? (
-            <Text style={bleProvisioningTone === "success" ? styles.success : bleProvisioningTone === "error" ? styles.error : styles.meta}>
+          {!isProvisioningOverBle && bleProvisioningTone !== "error" && bleProvisioningMessage ? (
+            <Text style={bleProvisioningTone === "success" ? styles.success : styles.meta}>
               {bleProvisioningMessage}
             </Text>
           ) : null}
+          {!isProvisioningOverBle && bleProvisioningTone === "error" ? renderRecovery(onboardingRecoveryKind, bleProvisioningMessage) : null}
         </Card>
       ) : null}
 
@@ -700,16 +774,10 @@ export function AddDeviceScreen() {
             currentStepId={onboardingStage}
             completedStepIds={progressCompletedStepIds}
             loading={isWaitingForOnline && bleProvisioningTone !== "error"}
-            errorMessage={bleProvisioningTone === "error" ? bleProvisioningMessage : null}
+            errorMessage={null}
             successMessage={bleProvisioningTone === "success" ? bleProvisioningMessage : null}
           />
-          {bleProvisioningTone === "error" ? (
-            <>
-              <PrimaryButton label="Try again" tone="secondary" onPress={() => waitForProvisionedDeviceOnline(selectedBleDevice)} disabled={isWaitingForOnline} />
-              <PrimaryButton label="Change Wi-Fi details" tone="secondary" onPress={returnToWifiDetails} />
-              <PrimaryButton label="Reset device instructions" tone="secondary" onPress={showResetDeviceHelp} />
-            </>
-          ) : null}
+          {bleProvisioningTone === "error" ? renderRecovery(onboardingRecoveryKind, bleProvisioningMessage) : null}
         </Card>
       ) : null}
 
@@ -1121,6 +1189,85 @@ function onboardingProgressDescription(stage: OnboardingStageId): string {
       return "PlantLab is finishing setup and checking in with your account.";
     case "ready":
       return "PlantLab is online and ready.";
+  }
+}
+
+function recoveryKindForError(err: unknown): OnboardingRecoveryKind {
+  if (!(err instanceof BleProvisioningError)) {
+    return "generic";
+  }
+  if (["wifi_connect_failed", "wifi_connect_timeout", "wifi_network_not_found"].includes(err.code)) {
+    return "wifi";
+  }
+  if (["no_devices", "connect_failed", "read_failed", "write_failed", "scan_failed", "scan_notify_failed", "scan_request_failed"].includes(err.code)) {
+    return "connection";
+  }
+  if (err.code === "provisioning_timeout") {
+    return "timeout";
+  }
+  if (err.code === "identity_mismatch") {
+    return "mismatch";
+  }
+  return "generic";
+}
+
+function recoveryContentForKind(kind: OnboardingRecoveryKind, message?: string | null): {
+  title: string;
+  explanation: string;
+  likelyCauses: string[];
+  recommendedActions: string[];
+} {
+  switch (kind) {
+    case "wifi":
+      return {
+        title: "PlantLab could not connect to your Wi-Fi",
+        explanation: message || "The device could not join the selected network.",
+        likelyCauses: ["The Wi-Fi password may be incorrect.", "The network may be out of range.", "The router may be temporarily unavailable."],
+        recommendedActions: ["Check the password.", "Move PlantLab closer to the router.", "Try the same network again or choose another one."],
+      };
+    case "timeout":
+      return {
+        title: "PlantLab is taking longer than expected",
+        explanation: message || "Setup may still be finishing in the background.",
+        likelyCauses: ["PlantLab may be restarting.", "Wi-Fi may be weak.", "Your network may be slow to let a new device check in."],
+        recommendedActions: ["Keep PlantLab powered on.", "Wait a little longer, then try again.", "Change Wi-Fi details if this keeps happening."],
+      };
+    case "connection":
+      return {
+        title: "Connection to PlantLab was interrupted",
+        explanation: message || "The app lost contact with the device during setup.",
+        likelyCauses: ["Your phone may be too far from PlantLab.", "Bluetooth may have disconnected.", "PlantLab may no longer be in setup mode."],
+        recommendedActions: ["Keep your phone close to PlantLab.", "Make sure the status light is blinking.", "Reconnect and continue setup."],
+      };
+    case "ownership":
+      return {
+        title: "This PlantLab is already connected to another account",
+        explanation: "If you recently reset the device, wait a moment and try again. If it belongs to someone else, ask them to remove it first.",
+        likelyCauses: ["The device is still linked to another account.", "The reset may not have completed yet."],
+        recommendedActions: ["Try again after the device restarts.", "Ask the previous owner to remove it.", "Use reset instructions only if this is your device."],
+      };
+    case "setup_check":
+      return {
+        title: "PlantLab could not confirm setup",
+        explanation: message || "The app could not confirm that the device checked in.",
+        likelyCauses: ["Your phone or backend connection may be temporarily unavailable.", "PlantLab may still be restarting.", "Wi-Fi may be weak."],
+        recommendedActions: ["Keep PlantLab powered on.", "Keep waiting for another check.", "Change Wi-Fi details if the device never appears online."],
+      };
+    case "mismatch":
+      return {
+        title: "This is not the selected PlantLab",
+        explanation: message || "The app found a different PlantLab than the one selected for recovery.",
+        likelyCauses: ["More than one PlantLab may be nearby.", "The wrong device may be in setup mode."],
+        recommendedActions: ["Restart setup.", "Choose the matching device.", "Use the strongest signal if only one device is nearby."],
+      };
+    case "generic":
+    default:
+      return {
+        title: "Setup needs attention",
+        explanation: message || "PlantLab could not finish setup.",
+        likelyCauses: ["The connection may have been interrupted.", "PlantLab may still be restarting.", "Your network may need another try."],
+        recommendedActions: ["Try again.", "Change Wi-Fi details if setup keeps failing.", "Use reset instructions if the device is stuck."],
+      };
   }
 }
 

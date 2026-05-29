@@ -197,7 +197,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
         <View style={{ flex: 1, gap: 8 }}>
           <Text style={styles.eyebrow}>DEVICE SETTINGS</Text>
           <Text style={styles.title}>{details?.device.name ?? "Device settings"}</Text>
-          <Text style={styles.subtitle}>Edit labels, recover Wi-Fi setup, and review provisioning state.</Text>
+          <Text style={styles.subtitle}>Edit labels, change Wi-Fi, and review device health.</Text>
         </View>
         {usedMock ? <StatusChip label="Mock mode" tone="mock" /> : null}
       </View>
@@ -244,14 +244,14 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       <DeviceTimelinePanel deviceId={deviceId} />
 
       <Card variant="inset">
-        <Text style={styles.sectionTitle}>Recovery</Text>
-        <Text style={styles.meta}>{details?.onboardingGuidance ?? "Use this page to keep the operational labels in sync with the real device."}</Text>
+        <Text style={styles.sectionTitle}>Wi-Fi and setup</Text>
+        <Text style={styles.meta}>{details?.onboardingGuidance ?? "Use these actions when PlantLab moves to a new Wi-Fi network or needs setup help."}</Text>
         <View style={styles.stack}>
-          <PrimaryButton label="Reconnect Wi-Fi" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("wifi")} />
-          <PrimaryButton label="Re-provision / repair setup" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("repair")} />
+          <PrimaryButton label="Change Wi-Fi" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("wifi")} />
+          <PrimaryButton label="Reconnect PlantLab" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("repair")} />
           <PrimaryButton label={isReleasing ? "Releasing..." : "Prepare device for transfer"} tone="secondary" disabled={isLoading || isReleasing} onPress={onTransferPress} />
           <PrimaryButton label="Factory reset this device" tone="danger" disabled={isLoading} onPress={onFactoryResetPress} />
-          <Text style={styles.meta}>For Wi-Fi recovery, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 20 seconds.</Text>
+          <Text style={styles.meta}>To change Wi-Fi, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 20 seconds.</Text>
         </View>
       </Card>
 
