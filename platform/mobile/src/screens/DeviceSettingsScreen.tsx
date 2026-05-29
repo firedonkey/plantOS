@@ -8,6 +8,7 @@ import { Card } from "@/components/Card";
 import { DeviceTimelinePanel } from "@/components/DeviceTimelinePanel";
 import { FeedbackBanner } from "@/components/FeedbackBanner";
 import { HardwareHealthPanel } from "@/components/HardwareHealthPanel";
+import { OwnershipTransferInfo } from "@/components/onboarding/OwnershipTransferInfo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SkeletonCard } from "@/components/Skeleton";
@@ -157,7 +158,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       });
       Alert.alert(
         "Device released",
-        `${result.message} Hold the device button for 20 seconds before the next owner adds it.`,
+        `${result.message} Hold the setup button for 20 seconds until the light blinks quickly before the next owner adds it.`,
         [{ text: "Back to devices", onPress: goBackToDevices }],
       );
     } catch (err) {
@@ -169,7 +170,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
 
   const onTransferPress = () => {
     const deviceName = details?.device.name ?? "this device";
-    Alert.alert("Prepare for transfer?", `${deviceName} will stop syncing to this account. Historical data is kept here, and the next owner can add it after you hold the device button for 20 seconds.`, [
+    Alert.alert("Prepare for transfer?", `${deviceName} will stop syncing to this account. Historical data stays here. After release, hold the setup button for 20 seconds so the next owner can add it.`, [
       { text: "Cancel", style: "cancel" },
       { text: "Release device", style: "destructive", onPress: releaseForTransfer },
     ]);
@@ -178,7 +179,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
   const onFactoryResetPress = () => {
     Alert.alert(
       "Factory reset this device",
-      "Hold the device button for 20 seconds until the light blinks rapidly. This clears local Wi-Fi and device tokens. Backend ownership stays with this account unless you prepare it for transfer first.",
+      "Hold the setup button for 20 seconds until the light blinks quickly. This clears saved Wi-Fi on the physical device. This account keeps its existing history unless you prepare the device for transfer first.",
       [{ text: "OK" }],
     );
   };
@@ -244,14 +245,24 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       <DeviceTimelinePanel deviceId={deviceId} />
 
       <Card variant="inset">
-        <Text style={styles.sectionTitle}>Wi-Fi and setup</Text>
+        <Text style={styles.sectionTitle}>Connectivity</Text>
         <Text style={styles.meta}>{details?.onboardingGuidance ?? "Use these actions when PlantLab moves to a new Wi-Fi network or needs setup help."}</Text>
+        <OwnershipTransferInfo variant="reconnect" compact />
         <View style={styles.stack}>
           <PrimaryButton label="Change Wi-Fi" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("wifi")} />
           <PrimaryButton label="Reconnect PlantLab" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("repair")} />
+          <Text style={styles.meta}>For Wi-Fi changes, hold the setup button for 5 seconds until the status light blinks slowly.</Text>
+        </View>
+      </Card>
+
+      <Card variant="inset">
+        <Text style={styles.sectionTitle}>Ownership and reset</Text>
+        <Text style={styles.meta}>Use this section when giving PlantLab to someone else or clearing the physical device for setup.</Text>
+        <OwnershipTransferInfo variant="transfer" compact />
+        <View style={styles.stack}>
           <PrimaryButton label={isReleasing ? "Releasing..." : "Prepare device for transfer"} tone="secondary" disabled={isLoading || isReleasing} onPress={onTransferPress} />
-          <PrimaryButton label="Factory reset this device" tone="danger" disabled={isLoading} onPress={onFactoryResetPress} />
-          <Text style={styles.meta}>To change Wi-Fi, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 20 seconds.</Text>
+          <PrimaryButton label="Factory reset instructions" tone="secondary" disabled={isLoading} onPress={onFactoryResetPress} />
+          <Text style={styles.meta}>For a full reset, hold the setup button for 20 seconds until the status light blinks quickly.</Text>
         </View>
       </Card>
 

@@ -20,6 +20,7 @@ import {
 } from "@/ble/bleProvisioning";
 import { Card } from "@/components/Card";
 import { OnboardingProgress, type OnboardingProgressStep } from "@/components/onboarding/OnboardingProgress";
+import { OwnershipTransferInfo } from "@/components/onboarding/OwnershipTransferInfo";
 import { RecoveryScreen } from "@/components/onboarding/RecoveryScreen";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -34,8 +35,7 @@ const ONLINE_CONFIRMATION_TIMEOUT =
   "PlantLab is taking longer than expected. Keep it powered on and close to your router, then try again.";
 const RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG =
   "The new Wi-Fi details did not connect, so the device restored its previous connection. Check the Wi-Fi password and try reconnecting.";
-const DEVICE_OWNERSHIP_CONFLICT =
-  "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here.";
+const DEVICE_OWNERSHIP_CONFLICT = "This PlantLab is already connected to another account.";
 type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online";
 type OnboardingStageId = "connect" | "send_wifi" | "connect_wifi" | "setup_device" | "ready";
 type OnboardingRecoveryKind = "wifi" | "timeout" | "connection" | "ownership" | "setup_check" | "mismatch" | "generic";
@@ -110,6 +110,7 @@ export function AddDeviceScreen() {
   const [bleProvisioningTone, setBleProvisioningTone] = useState<"idle" | "success" | "error">("idle");
   const [onboardingStage, setOnboardingStage] = useState<OnboardingStageId>("connect");
   const [onboardingRecoveryKind, setOnboardingRecoveryKind] = useState<OnboardingRecoveryKind>("generic");
+  const [isPostResetWaiting, setIsPostResetWaiting] = useState(false);
   const [step, setStep] = useState<AddDeviceStep>("find_device");
   const [showSerialFallback, setShowSerialFallback] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -184,6 +185,7 @@ export function AddDeviceScreen() {
     setBleProvisioningTone("idle");
     setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
+    setIsPostResetWaiting(false);
     setShowSerialFallback(false);
     setIsFindingBleDevice(true);
     try {
@@ -357,6 +359,7 @@ export function AddDeviceScreen() {
     setBleProvisioningMessage(null);
     setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
+    setIsPostResetWaiting(false);
     setIsProvisioningOverBle(true);
     try {
       const discoveredDevice = selectedBleDevice ?? (await findSingleBleProvisioningDevice());
@@ -555,8 +558,11 @@ export function AddDeviceScreen() {
   function showResetDeviceHelp() {
     Alert.alert(
       "Reset PlantLab",
-      "Hold the setup button for 20 seconds until the light blinks quickly. This clears saved Wi-Fi on the device. After it restarts, start setup again.",
-      [{ text: "OK" }],
+      "Hold the setup button for 20 seconds. Release when the light blinks quickly, then wait for PlantLab to restart before setup again.",
+      [
+        { text: "Close", style: "cancel" },
+        { text: "I reset PlantLab", onPress: () => setIsPostResetWaiting(true) },
+      ],
     );
   }
 
@@ -565,6 +571,7 @@ export function AddDeviceScreen() {
     setBleProvisioningMessage(null);
     setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
+    setIsPostResetWaiting(false);
     setStep("wifi_provisioning");
   }
 
@@ -575,6 +582,7 @@ export function AddDeviceScreen() {
     setBleProvisioningTone("idle");
     setOnboardingRecoveryKind("generic");
     setOnboardingStage("connect");
+    setIsPostResetWaiting(false);
     setHandoff(null);
     setSelectedBleDevice(null);
     setShowSerialFallback(false);
@@ -590,6 +598,11 @@ export function AddDeviceScreen() {
       void sendProvisioningOverBle();
       return;
     }
+    void startBleIdentityOnboarding();
+  }
+
+  function lookForDeviceAfterReset() {
+    restartSetup();
     void startBleIdentityOnboarding();
   }
 
@@ -609,15 +622,18 @@ export function AddDeviceScreen() {
         : undefined;
 
     return (
-      <RecoveryScreen
-        title={copy.title}
-        explanation={copy.explanation}
-        likelyCauses={copy.likelyCauses}
-        recommendedActions={copy.recommendedActions}
-        primaryAction={primary}
-        secondaryAction={secondary}
-        tertiaryAction={tertiary}
-      />
+      <>
+        <RecoveryScreen
+          title={copy.title}
+          explanation={copy.explanation}
+          likelyCauses={copy.likelyCauses}
+          recommendedActions={copy.recommendedActions}
+          primaryAction={primary}
+          secondaryAction={secondary}
+          tertiaryAction={tertiary}
+        />
+        {kind === "ownership" ? <OwnershipTransferInfo variant="conflict" /> : null}
+      </>
     );
   }
 
@@ -669,6 +685,17 @@ export function AddDeviceScreen() {
 
       {usedMock ? <StatusChip label="Mock data mode" tone="mock" /> : null}
       {error && !showFindDeviceRecovery ? <Text style={styles.error}>{error}</Text> : null}
+
+      {isPostResetWaiting ? (
+        <Card>
+          <OwnershipTransferInfo variant="postReset" />
+          <PrimaryButton
+            label={isFindingBleDevice || isSubmitting ? "Looking for PlantLab..." : "Look for PlantLab again"}
+            onPress={lookForDeviceAfterReset}
+            disabled={isFindingBleDevice || isSubmitting}
+          />
+        </Card>
+      ) : null}
 
       {step === "find_device" ? (
         <Card>
@@ -1242,9 +1269,13 @@ function recoveryContentForKind(kind: OnboardingRecoveryKind, message?: string |
     case "ownership":
       return {
         title: "This PlantLab is already connected to another account",
-        explanation: "If you recently reset the device, wait a moment and try again. If it belongs to someone else, ask them to remove it first.",
-        likelyCauses: ["The device is still linked to another account.", "The reset may not have completed yet."],
-        recommendedActions: ["Try again after the device restarts.", "Ask the previous owner to remove it.", "Use reset instructions only if this is your device."],
+        explanation: "If you recently reset it, wait a moment and try again. If it belongs to someone else, ask them to remove it first.",
+        likelyCauses: ["The device may still be connected to another account.", "The full reset may not have completed yet."],
+        recommendedActions: [
+          "Try again after PlantLab restarts.",
+          "Ask the previous owner to remove it from their account.",
+          "Use full reset instructions only if this is your device.",
+        ],
       };
     case "setup_check":
       return {
