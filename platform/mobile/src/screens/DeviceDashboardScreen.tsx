@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocalSearchParams } from "expo-router";
-import { Animated, GestureResponderEvent, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
@@ -70,11 +70,11 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
       : isCommandRunning
         ? "Working..."
         : "Capture image";
-  const latestImage = dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
   const health = dashboard ? resolveMobileHealth(dashboard) : null;
   const wifi = dashboard ? resolveWifiState(dashboard) : null;
   const camera = dashboard ? resolveCameraState(dashboard) : null;
   const light = dashboard ? resolveLightState(dashboard) : null;
+  const deviceContext = dashboard ? formatDeviceContext(dashboard.device.plantType, dashboard.device.location) : null;
 
   if (!deviceId) {
     return (
@@ -96,22 +96,8 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
                 </View>
                 <Text style={styles.eyebrow}>PLANTLAB DEVICE</Text>
                 <Text style={styles.title}>{dashboard.device.name}</Text>
-                <Text style={styles.subtitle}>
-                  {dashboard.device.plantType ?? "Plant type not set"} | {dashboard.device.location ?? "No location set"}
-                </Text>
+                {deviceContext ? <Text style={styles.subtitle}>{deviceContext}</Text> : null}
                 <Text style={styles.overviewSummary}>{health?.summary ?? "Pull to refresh for the latest device state."}</Text>
-              </View>
-              <View style={styles.overviewImageFrame}>
-                {latestImage ? (
-                  <Image
-                    source={imageSource(latestImage.url, token)}
-                    style={styles.overviewImage}
-                  />
-                ) : (
-                  <View style={styles.overviewImageEmpty}>
-                    <Text style={styles.overviewImageEmptyText}>No image</Text>
-                  </View>
-                )}
               </View>
             </View>
 
@@ -415,7 +401,7 @@ function resolveMobileHealth(dashboard: DeviceDashboard): { label: string; tone:
   const status = health?.friendlyStatus ?? health?.overallStatus ?? dashboard.device.status;
   const attentionReason = health?.attentionReasons?.[0];
   if (status === "online" || status === "recently_seen") {
-    return { label: "Healthy", tone: "online", summary: "Everything looks steady. The device is reporting normally." };
+    return { label: "Healthy", tone: "online", summary: "Everything looks steady." };
   }
   if (status === "offline" || dashboard.device.status === "offline") {
     return { label: "Offline", tone: "offline", summary: "Recent data stays visible while the device reconnects." };
@@ -424,6 +410,13 @@ function resolveMobileHealth(dashboard: DeviceDashboard): { label: string; tone:
     return { label: "Setting up", tone: "waiting", summary: "Setup is still in progress. Keep the planter powered and nearby." };
   }
   return { label: "Needs attention", tone: "degraded", summary: formatStatusReason(attentionReason) ?? "A device state may need review." };
+}
+
+function formatDeviceContext(plantType?: string, location?: string) {
+  const parts = [plantType, location]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  return parts.length ? parts.join(" | ") : null;
 }
 
 function resolveWifiState(dashboard: DeviceDashboard): { label: string; meta: string } {
@@ -489,11 +482,6 @@ function formatCode(value: string): string {
     .join(" ");
 }
 
-function imageSource(url: string, token: string | null) {
-  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-  return headers ? { uri: url, headers } : { uri: url };
-}
-
 function clampLightIntensity(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
@@ -542,22 +530,10 @@ function formatAge(timestamp?: string) {
 const styles = StyleSheet.create({
   header: { flexDirection: "row", gap: theme.spacing.md, alignItems: "flex-start" },
   overviewCard: { gap: theme.spacing.lg },
-  overviewTop: { flexDirection: "row", gap: theme.spacing.md, alignItems: "stretch" },
-  overviewCopy: { flex: 1, gap: theme.spacing.sm },
+  overviewTop: { gap: theme.spacing.md },
+  overviewCopy: { gap: theme.spacing.sm },
   overviewChips: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
   overviewSummary: { color: theme.colors.textPrimary, fontSize: theme.typography.bodyLarge, lineHeight: 23 },
-  overviewImageFrame: {
-    width: 112,
-    minHeight: 132,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceInset,
-    borderColor: theme.colors.borderSoft,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  overviewImage: { width: "100%", height: "100%" },
-  overviewImageEmpty: { flex: 1, alignItems: "center", justifyContent: "center", padding: theme.spacing.sm },
-  overviewImageEmptyText: { color: theme.colors.textMuted, fontSize: theme.typography.meta, fontWeight: "700", textAlign: "center" },
   overviewStats: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
   overviewStat: {
     ...theme.surfaces.muted,

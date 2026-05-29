@@ -1,4 +1,6 @@
+import json
 import re
+import secrets
 from urllib.parse import urlencode, urlparse
 
 from authlib.integrations.starlette_client import OAuth
@@ -36,6 +38,8 @@ from app.services.users import delete_user_account, get_or_create_local_dev_user
 router = APIRouter(tags=["auth"])
 oauth = OAuth()
 STANDALONE_AUTH_SESSION_KEY = "standalone_auth"
+STANDALONE_APPLE_AUTH_SESSION_KEY = "standalone_apple_auth"
+APPLE_AUTHORIZATION_URL = "https://appleid.apple.com/auth/authorize"
 
 
 def _register_google_client() -> None:
@@ -120,6 +124,36 @@ def _mobile_callback_url(*, handoff_code: str | None = None, error: str | None =
 def _redirect_with_query(url: str, **params: str) -> RedirectResponse:
     separator = "&" if "?" in url else "?"
     return RedirectResponse(url=f"{url}{separator}{urlencode(params)}", status_code=303)
+
+
+def _apple_authorize_url(*, client_id: str, redirect_uri: str, state: str, nonce: str) -> str:
+    params = {
+        "response_type": "code id_token",
+        "response_mode": "form_post",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "name email",
+        "state": state,
+        "nonce": nonce,
+    }
+    return f"{APPLE_AUTHORIZATION_URL}?{urlencode(params)}"
+
+
+def _apple_display_name(raw_user: str | None) -> str | None:
+    if not raw_user:
+        return None
+    try:
+        payload = json.loads(raw_user)
+    except (TypeError, ValueError):
+        return None
+    name = payload.get("name") if isinstance(payload, dict) else None
+    if not isinstance(name, dict):
+        return None
+    parts = [
+        str(name.get("firstName") or "").strip(),
+        str(name.get("lastName") or "").strip(),
+    ]
+    return " ".join(part for part in parts if part) or None
 
 
 def _refresh_read(
@@ -238,6 +272,83 @@ async def standalone_google_callback(request: Request, session: Session = Depend
         return _redirect_with_query(return_to, handoff_code=handoff_code)
 
     refresh_bundle = create_refresh_session(get_settings(), session, user.id)
+    response = _redirect_with_query(return_to, auth="complete")
+    _set_refresh_cookie(response, refresh_bundle.token)
+    return response
+
+
+@router.get("/api/auth/apple/start")
+async def standalone_apple_start(request: Request, client: str = "web", return_to: str | None = None):
+    settings = get_settings()
+    if not settings.apple_web_auth_configured:
+        raise api_error(
+            503,
+            "apple_auth_not_configured",
+            "Apple sign-in is not configured for standalone web auth.",
+        )
+
+    normalized_client = client.strip().lower()
+    if normalized_client != "web":
+        raise api_error(400, "invalid_auth_client", "Apple web auth only supports the web client.")
+
+    redirect_target = _validated_return_to(request, normalized_client, return_to)
+    state = secrets.token_urlsafe(24)
+    nonce = secrets.token_urlsafe(24)
+    request.session[STANDALONE_APPLE_AUTH_SESSION_KEY] = {
+        "client": normalized_client,
+        "return_to": redirect_target,
+        "state": state,
+        "nonce": nonce,
+    }
+    redirect_uri = str(request.url_for("standalone_apple_callback"))
+    return RedirectResponse(
+        url=_apple_authorize_url(
+            client_id=settings.apple_web_client_id or "",
+            redirect_uri=redirect_uri,
+            state=state,
+            nonce=nonce,
+        ),
+        status_code=303,
+    )
+
+
+@router.post("/api/auth/apple/callback", name="standalone_apple_callback")
+async def standalone_apple_callback(request: Request, session: Session = Depends(get_session)):
+    settings = get_settings()
+    auth_state = request.session.pop(STANDALONE_APPLE_AUTH_SESSION_KEY, {}) or {}
+    return_to = auth_state.get("return_to") or "/login"
+
+    form = await request.form()
+    if form.get("error"):
+        raise api_error(401, "apple_auth_failed", "Apple sign-in was cancelled or failed.")
+
+    expected_state = str(auth_state.get("state") or "")
+    returned_state = str(form.get("state") or "")
+    if not expected_state or not returned_state or not secrets.compare_digest(expected_state, returned_state):
+        raise api_error(400, "invalid_apple_state", "Apple sign-in state did not match.")
+
+    identity_token = str(form.get("id_token") or "")
+    if not identity_token:
+        raise api_error(400, "apple_identity_missing", "Apple sign-in did not return an identity token.")
+
+    try:
+        identity = verify_apple_identity_token(
+            identity_token,
+            audience=settings.apple_web_client_id or "",
+            nonce=str(auth_state.get("nonce") or ""),
+        )
+    except Exception:
+        raise api_error(401, "invalid_apple_identity", "Apple sign-in did not return a valid identity token.")
+
+    user = upsert_apple_user(
+        session,
+        apple_sub=identity.sub,
+        email=identity.email,
+        name=_apple_display_name(str(form.get("user") or "") or None),
+    )
+    request.session["user_id"] = user.id
+
+    refresh_bundle = create_refresh_session(settings, session, user.id)
     response = _redirect_with_query(return_to, auth="complete")
     _set_refresh_cookie(response, refresh_bundle.token)
     return response

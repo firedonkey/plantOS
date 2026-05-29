@@ -157,7 +157,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
       });
       Alert.alert(
         "Device released",
-        `${result.message} Hold the device button for 15 seconds before the next owner adds it.`,
+        `${result.message} Hold the device button for 20 seconds before the next owner adds it.`,
         [{ text: "Back to devices", onPress: goBackToDevices }],
       );
     } catch (err) {
@@ -169,7 +169,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
 
   const onTransferPress = () => {
     const deviceName = details?.device.name ?? "this device";
-    Alert.alert("Prepare for transfer?", `${deviceName} will stop syncing to this account. Historical data is kept here, and the next owner can add it after you hold the device button for 15 seconds.`, [
+    Alert.alert("Prepare for transfer?", `${deviceName} will stop syncing to this account. Historical data is kept here, and the next owner can add it after you hold the device button for 20 seconds.`, [
       { text: "Cancel", style: "cancel" },
       { text: "Release device", style: "destructive", onPress: releaseForTransfer },
     ]);
@@ -178,7 +178,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
   const onFactoryResetPress = () => {
     Alert.alert(
       "Factory reset this device",
-      "Hold the device button for 15 seconds until the light blinks rapidly. This clears local Wi-Fi and device tokens. Backend ownership stays with this account unless you prepare it for transfer first.",
+      "Hold the device button for 20 seconds until the light blinks rapidly. This clears local Wi-Fi and device tokens. Backend ownership stays with this account unless you prepare it for transfer first.",
       [{ text: "OK" }],
     );
   };
@@ -251,7 +251,7 @@ export function DeviceSettingsScreen({ deviceId }: DeviceSettingsScreenProps) {
           <PrimaryButton label="Re-provision / repair setup" tone="secondary" disabled={isLoading || !primaryHardwareId} onPress={() => startRecoveryFlow("repair")} />
           <PrimaryButton label={isReleasing ? "Releasing..." : "Prepare device for transfer"} tone="secondary" disabled={isLoading || isReleasing} onPress={onTransferPress} />
           <PrimaryButton label="Factory reset this device" tone="danger" disabled={isLoading} onPress={onFactoryResetPress} />
-          <Text style={styles.meta}>For Wi-Fi recovery, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 15 seconds.</Text>
+          <Text style={styles.meta}>For Wi-Fi recovery, hold the setup button for 5 seconds until the status light blinks. For transfer or full local reset, hold it for 20 seconds.</Text>
         </View>
       </Card>
 

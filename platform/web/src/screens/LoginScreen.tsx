@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
-import { getGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
+import { getAppleAuthStartUrl, getGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
 import { useSession } from "@/hooks/useSession";
 
 export function LoginScreen() {
@@ -48,6 +48,15 @@ export function LoginScreen() {
     }
   };
 
+  const startAppleAuth = () => {
+    setError(null);
+    try {
+      window.location.href = getAppleAuthStartUrl();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start Apple sign-in.");
+    }
+  };
+
   return (
     <div className="centered-page">
       <div className="auth-card">
@@ -57,6 +66,9 @@ export function LoginScreen() {
           <p className="subtitle">Sign in to sync and manage your PlantLab devices.</p>
           <button className="primary-button" type="button" onClick={startGoogleAuth}>
             Continue with Google
+          </button>
+          <button className="apple-auth-button" type="button" onClick={startAppleAuth}>
+            Continue with Apple
           </button>
         </div>
         {authMode === "dev" ? (

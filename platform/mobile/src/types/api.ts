@@ -164,6 +164,7 @@ export type DeviceTimeline = {
 export type AuthSession = {
   token: string;
   email: string;
+  name?: string;
   mode: "mock" | "api" | "production";
   expiresAt?: string;
   refreshToken?: string;

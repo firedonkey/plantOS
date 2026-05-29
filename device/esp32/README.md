@@ -20,12 +20,13 @@ Current status:
 - Sensor and actuator validation over serial logs
 - Power button behavior:
   - Short press: enter deep sleep
-  - Long press: enter provisioning placeholder mode
+  - Hold 5s: enter BLE provisioning mode
+  - Hold 20s: factory reset local Wi-Fi/device tokens; the next provisioning registration includes a factory-reset transfer flag
 - Capacitive touch button behavior on GPIO14:
   - Short tap: toggle light
   - Double tap: camera capture request log
   - Long press 5s: provisioning trigger requested log
-  - Long press 15s: factory reset requested log
+  - Long press 20s: factory reset requested log
 
 ## Current Test
 

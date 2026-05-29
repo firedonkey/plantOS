@@ -810,6 +810,23 @@ select {
   color: #1f2a24;
 }
 
+.apple-auth-button {
+  align-items: center;
+  background: #111111;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  padding: 12px 14px;
+}
+
+.apple-auth-button:hover {
+  background: #000000;
+}
+
 .danger-button {
   background: #b42318;
   color: white;

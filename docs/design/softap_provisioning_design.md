@@ -354,7 +354,9 @@ Factory reset should:
 - delete stored Wi-Fi credentials
 - delete stored device access token
 - clear provisioning state
-- restart into `ap_mode`
+- restart into provisioning mode
+- include a factory-reset transfer flag on the next backend registration when
+  no previous local provisioning info remains
 
 This is important for:
 - testing

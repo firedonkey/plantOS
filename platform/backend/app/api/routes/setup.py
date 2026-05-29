@@ -154,6 +154,9 @@ async def get_claim_token_status(
         expected_device_id=upstream_payload.get("expected_device_id"),
         expires_at=upstream_payload.get("expires_at"),
         expired=bool(upstream_payload.get("expired")),
+        failure_code=upstream_payload.get("failure_code"),
+        failure_message=upstream_payload.get("failure_message"),
+        failed_at=upstream_payload.get("failed_at"),
     )
 
 

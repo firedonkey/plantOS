@@ -65,6 +65,7 @@ test("device dashboard has polished loading, setup, controls, and empty states",
     "<Text style={styles.sectionTitle}>Grow LED</Text>",
     "Capture image",
     "Sensor trends",
+    "formatDeviceContext",
   ]) {
     assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -72,6 +73,50 @@ test("device dashboard has polished loading, setup, controls, and empty states",
   assert.doesNotMatch(source, /runPump|label="Pump"|soilMoisturePercent/);
   assert.doesNotMatch(source, /FreshnessStrip|Operational controls stay disabled|>Controls<|MetricCard label="Grow LED"/);
   assert.doesNotMatch(source, /HardwareHealthPanel|CommandActivityPanel/);
+  assert.doesNotMatch(source, /overviewImageFrame|overviewImageEmpty|No latest image yet/);
+  assert.doesNotMatch(source, /Plant type not set|No location set/);
+});
+
+test("mobile login keeps local development sign-in available when dev auth is enabled", async () => {
+  const source = await readText("../src/screens/LoginScreen.tsx");
+
+  for (const requiredText of [
+    'const showProductionAuth = authMode === "production";',
+    "const showLocalLogin = isDevAuthEnabled();",
+    "Local development sign-in",
+    "dev@plantlab.local",
+    "Continue locally",
+    "keyboardType=\"email-address\"",
+    "styles.localLoginPanel",
+    "Continue with Google",
+    "AppleAuthentication.AppleAuthenticationButton",
+  ]) {
+    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  assert.doesNotMatch(source, /showLocalLogin = authMode === "dev"/);
+  assert.doesNotMatch(source, /Google sign-in stays off while AUTH_MODE is dev/);
+});
+
+test("mobile settings surfaces the signed-in user name", async () => {
+  const [settingsSource, authSource, typeSource] = await Promise.all([
+    readText("../src/screens/SettingsScreen.tsx"),
+    readText("../src/api/auth.ts"),
+    readText("../src/types/api.ts"),
+  ]);
+
+  for (const requiredText of [
+    "const userName = session?.name?.trim() || session?.email || \"Signed out\";",
+    "<Text style={styles.label}>User name</Text>",
+    "<Text style={styles.value}>{userName}</Text>",
+    "{userEmail && userEmail !== userName ? <Text style={styles.note}>{userEmail}</Text> : null}",
+  ]) {
+    assert.match(settingsSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  assert.match(typeSource, /name\?: string/);
+  assert.match(authSource, /name: session\.user\?\.name \?\? undefined/);
+  assert.match(authSource, /name: payload\.user\.name \?\? undefined/);
 });
 
 test("device settings owns hardware health review", async () => {

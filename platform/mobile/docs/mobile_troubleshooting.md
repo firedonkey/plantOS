@@ -188,6 +188,50 @@ eas build --profile development --platform ios
 
 Use `--check-only` to validate setup without starting a cloud build.
 
+## Local Backend Build Flow
+
+If a previously installed app is still pointed at GCP, build/start the local
+development workflow instead:
+
+```bash
+cd platform/mobile
+npm run build:ios:local -- --api-url http://YOUR_MAC_LAN_IP:8000
+npm run start:dev:local -- --api-url http://YOUR_MAC_LAN_IP:8000
+```
+
+The local script writes `platform/mobile/.env` with:
+
+```text
+EXPO_PUBLIC_API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
+EXPO_PUBLIC_AUTH_MODE=dev
+EXPO_PUBLIC_ENABLE_DEV_AUTH=true
+EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false
+```
+
+For the iOS simulator only, `http://127.0.0.1:8000` is valid. A physical iPhone
+needs the Mac's LAN IP and must be able to reach the local Docker backend.
+
+## Device Already Registered To Another Account
+
+Symptom:
+
+```text
+This PlantLab is already registered to another account.
+```
+
+This means the ESP32 reached the backend, but the backend refused the setup
+claim because the hardware ID is already attached to a different user account.
+PlantLab transfers ownership only when the ESP32 reports that it was locally
+factory reset before the new provisioning attempt.
+
+Recovery options:
+
+- Sign in as the account that currently owns the device and release/remove it.
+- Hold the device button for 20 seconds to factory reset it, wait for reboot,
+  then add it again from the new account.
+- For local-only test data, fix or clear the stale local DB ownership before
+  retrying setup.
+
 ## Start Dev Client
 
 After installing the native development build on the iPhone:

@@ -20,10 +20,19 @@ test("native iOS development build configuration is present", async () => {
     packageConfig.scripts["start:dev"],
     "bash scripts/mobile/start_dev_client.sh --host lan",
   );
+  assert.equal(
+    packageConfig.scripts["start:dev:local"],
+    "bash scripts/mobile/start_local_dev_client.sh --host lan",
+  );
   assert.equal(packageConfig.scripts["build:ios:dev"], "bash scripts/mobile/build_ios_dev.sh");
+  assert.equal(packageConfig.scripts["build:ios:local"], "bash scripts/mobile/build_ios_local.sh");
   assert.equal(
     packageConfig.scripts["build:ios:sim"],
     "bash scripts/mobile/build_ios_dev.sh --profile development-simulator",
+  );
+  assert.equal(
+    packageConfig.scripts["build:ios:local:sim"],
+    "bash scripts/mobile/build_ios_local.sh --profile development-local-simulator",
   );
   assert.equal(packageConfig.scripts["clean:metro"], "bash scripts/mobile/clean_metro_cache.sh");
   assert.equal(packageConfig.scripts["register:ios"], "bash scripts/mobile/register_ios_device.sh");
@@ -31,7 +40,10 @@ test("native iOS development build configuration is present", async () => {
   for (const scriptPath of [
     "../scripts/mobile/build_ios_dev.sh",
     "../scripts/mobile/start_dev_client.sh",
+    "../scripts/mobile/start_local_dev_client.sh",
     "../scripts/mobile/clean_metro_cache.sh",
+    "../scripts/mobile/write_local_env.sh",
+    "../scripts/mobile/build_ios_local.sh",
     "../scripts/mobile/register_ios_device.sh",
   ]) {
     const scriptUrl = new URL(scriptPath, import.meta.url);
@@ -41,7 +53,7 @@ test("native iOS development build configuration is present", async () => {
 
   assert.equal(appConfig.expo.scheme, "plantlab");
   assert.equal(appConfig.expo.ios.bundleIdentifier, "com.plantlab.mobile");
-  assert.equal(appConfig.expo.ios.buildNumber, "1");
+  assert.match(appConfig.expo.ios.buildNumber, /^\d+$/);
   assert.match(
     appConfig.expo.ios.infoPlist.NSBluetoothAlwaysUsageDescription,
     /Bluetooth/,
@@ -55,11 +67,23 @@ test("native iOS development build configuration is present", async () => {
     developmentClient: true,
     distribution: "internal",
   });
+  assert.deepEqual(easConfig.build["development-local"], {
+    developmentClient: true,
+    distribution: "internal",
+    env: {
+      EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:8000",
+      EXPO_PUBLIC_AUTH_MODE: "dev",
+      EXPO_PUBLIC_ENABLE_DEV_AUTH: "true",
+      EXPO_PUBLIC_ENABLE_MOCK_FALLBACK: "false",
+    },
+  });
   assert.equal(
     easConfig.build["development-simulator"].developmentClient,
     true,
   );
   assert.equal(easConfig.build["development-simulator"].ios.simulator, true);
+  assert.equal(easConfig.build["development-local-simulator"].developmentClient, true);
+  assert.equal(easConfig.build["development-local-simulator"].ios.simulator, true);
 });
 
 test("README documents native iOS build workflow and validation", async () => {
@@ -71,6 +95,9 @@ test("README documents native iOS build workflow and validation", async () => {
     "First-time EAS setup",
     "npm run register:ios",
     "Build and install on a real iPhone",
+    "Local backend iPhone build",
+    "npm run build:ios:local",
+    "npm run start:dev:local",
     "npm run clean:metro",
     "docs/mobile_troubleshooting.md",
     "EXPO_PUBLIC_API_BASE_URL",

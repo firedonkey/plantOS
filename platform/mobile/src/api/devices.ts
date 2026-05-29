@@ -241,6 +241,9 @@ type ApiClaimTokenStatusResponse = {
   expected_device_id?: string | null;
   expires_at?: string | null;
   expired?: boolean;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  failed_at?: string | null;
 };
 
 type ApiDeleteResponse = {
@@ -289,6 +292,9 @@ export type ClaimTokenStatusResult = {
   expectedDeviceId?: string;
   expiresAt?: string;
   expired: boolean;
+  failureCode?: string;
+  failureMessage?: string;
+  failedAt?: string;
 };
 
 export type DeviceSettingsDetails = {
@@ -1178,6 +1184,9 @@ export async function getClaimTokenStatus(
         expectedDeviceId: response.expected_device_id ?? undefined,
         expiresAt: response.expires_at ?? undefined,
         expired: response.expired ?? false,
+        failureCode: response.failure_code ?? undefined,
+        failureMessage: response.failure_message ?? undefined,
+        failedAt: response.failed_at ?? undefined,
       },
     };
   } catch (error) {

@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS device_claim_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
   used_at TIMESTAMPTZ,
-  used_by_device_id INTEGER REFERENCES devices(id)
+  used_by_device_id INTEGER REFERENCES devices(id),
+  failure_code TEXT,
+  failure_message TEXT,
+  failed_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_device_claim_tokens_user_id

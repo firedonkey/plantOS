@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -74,6 +75,50 @@ def test_standalone_google_start_reports_missing_config(monkeypatch):
             "details": {},
         }
     }
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_apple_start_reports_missing_config(monkeypatch):
+    monkeypatch.delenv("PLANTLAB_APPLE_WEB_CLIENT_ID", raising=False)
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client = TestClient(app)
+    response = client.get("/api/auth/apple/start?client=web&return_to=/login")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "apple_auth_not_configured",
+            "message": "Apple sign-in is not configured for standalone web auth.",
+            "details": {},
+        }
+    }
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+
+def test_standalone_apple_start_redirects_to_apple(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_APPLE_WEB_CLIENT_ID", "com.plantlab.web")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client = TestClient(app)
+    response = client.get("/api/auth/apple/start?client=web&return_to=/login", follow_redirects=False)
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    parsed = urlparse(location)
+    params = parse_qs(parsed.query)
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "https://appleid.apple.com/auth/authorize"
+    assert params["client_id"] == ["com.plantlab.web"]
+    assert params["response_type"] == ["code id_token"]
+    assert params["response_mode"] == ["form_post"]
+    assert params["scope"] == ["name email"]
+    assert params["redirect_uri"] == ["http://testserver/api/auth/apple/callback"]
+    assert params["state"][0]
+    assert params["nonce"][0]
     get_settings.cache_clear()
     auth_routes.get_settings.cache_clear()
 
@@ -367,6 +412,74 @@ def test_mobile_apple_login_does_not_reuse_google_account_with_same_email(monkey
             assert apple_user.google_sub is None
             assert apple_user.name == "Apple Grower"
             assert apple_user.devices == []
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_web_apple_callback_sets_refresh_cookie_and_redirects(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_APPLE_WEB_CLIENT_ID", "com.plantlab.web")
+    monkeypatch.setenv("PLANTLAB_STANDALONE_REFRESH_COOKIE_SECURE", "false")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, override_session = make_test_client()
+    try:
+        start_response = client.get("/api/auth/apple/start?client=web&return_to=/login", follow_redirects=False)
+        query = parse_qs(urlparse(start_response.headers["location"]).query)
+        state = query["state"][0]
+        nonce = query["nonce"][0]
+
+        def fake_verify_apple_identity_token(identity_token: str, *, audience: str, nonce: str | None = None):
+            assert identity_token == "apple.web.identity.token"
+            assert audience == "com.plantlab.web"
+            assert nonce == query["nonce"][0]
+            return SimpleNamespace(sub="apple-web-sub", email="web-apple@example.com", email_verified=True)
+
+        monkeypatch.setattr(auth_routes, "verify_apple_identity_token", fake_verify_apple_identity_token)
+        response = client.post(
+            "/api/auth/apple/callback",
+            data={
+                "state": state,
+                "id_token": "apple.web.identity.token",
+                "user": '{"name":{"firstName":"Apple","lastName":"Web"}}',
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login?auth=complete"
+        assert get_settings().standalone_refresh_cookie_name in response.cookies
+
+        with next(override_session()) as session:
+            user = session.query(User).filter(User.email == "web-apple@example.com").one()
+            assert user.apple_sub == "apple-web-sub"
+            assert user.name == "Apple Web"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+        auth_routes.get_settings.cache_clear()
+
+
+def test_web_apple_callback_rejects_state_mismatch(monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "standalone-test-secret")
+    monkeypatch.setenv("PLANTLAB_APPLE_WEB_CLIENT_ID", "com.plantlab.web")
+    get_settings.cache_clear()
+    auth_routes.get_settings.cache_clear()
+
+    client, _override_session = make_test_client()
+    try:
+        client.get("/api/auth/apple/start?client=web&return_to=/login", follow_redirects=False)
+        response = client.post(
+            "/api/auth/apple/callback",
+            data={"state": "wrong-state", "id_token": "apple.web.identity.token"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_apple_state"
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

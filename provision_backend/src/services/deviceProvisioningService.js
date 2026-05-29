@@ -197,7 +197,16 @@ export async function createClaimTokenForUserAndSerial(userId, serialNumber, met
 export async function getClaimTokenStatusForUser(userId, claimToken) {
   const { rows } = await pool.query(
     `
-      SELECT claim_token, user_id, expected_device_id, expires_at, used_at, used_by_device_id
+      SELECT
+        claim_token,
+        user_id,
+        expected_device_id,
+        expires_at,
+        used_at,
+        used_by_device_id,
+        failure_code,
+        failure_message,
+        failed_at
       FROM device_claim_tokens
       WHERE claim_token = $1
     `,
@@ -214,12 +223,77 @@ export async function getClaimTokenStatusForUser(userId, claimToken) {
     used_by_device_id: claim.used_by_device_id ?? null,
     expected_device_id: claim.expected_device_id ?? null,
     expires_at: new Date(claim.expires_at).toISOString(),
-    expired: new Date(claim.expires_at).getTime() <= Date.now()
+    expired: new Date(claim.expires_at).getTime() <= Date.now(),
+    failure_code: claim.failure_code ?? null,
+    failure_message: claim.failure_message ?? null,
+    failed_at: claim.failed_at ? new Date(claim.failed_at).toISOString() : null
   };
 }
 
+async function markClaimTokenFailure(client, claimToken, code, message) {
+  await client.query(
+    `
+      UPDATE device_claim_tokens
+      SET failure_code = $2,
+          failure_message = $3,
+          failed_at = NOW()
+      WHERE claim_token = $1
+        AND used_at IS NULL
+    `,
+    [claimToken, code, message]
+  );
+}
+
+async function releaseDeviceForFactoryResetTransfer(client, deviceId) {
+  await client.query(
+    `
+      UPDATE images
+      SET source_hardware_device_id = NULL
+      WHERE source_hardware_device_id IN (
+        SELECT hardware_device_id
+        FROM device_hardware_ids
+        WHERE device_id = $1
+      )
+    `,
+    [deviceId]
+  );
+  await client.query("DELETE FROM device_access_tokens WHERE device_id = $1", [deviceId]);
+  await client.query(
+    `
+      UPDATE device_serial_numbers
+      SET
+        status = 'available',
+        claimed_by_user_id = NULL,
+        claimed_by_device_id = NULL,
+        claimed_at = NULL,
+        updated_at = NOW()
+      WHERE claimed_by_device_id = $1
+    `,
+    [deviceId]
+  );
+  await client.query(
+    "UPDATE device_claim_tokens SET used_by_device_id = NULL WHERE used_by_device_id = $1",
+    [deviceId]
+  );
+  await client.query("DELETE FROM device_hardware_ids WHERE device_id = $1", [deviceId]);
+  await client.query(
+    `
+      UPDATE devices
+      SET
+        api_token = NULL,
+        released_at = NOW(),
+        archived_at = NOW(),
+        release_reason = 'device_factory_reset',
+        status_message = 'Device released by factory reset reprovisioning.',
+        status_updated_at = NOW()
+      WHERE id = $1
+    `,
+    [deviceId]
+  );
+}
+
 export async function registerDeviceFromClaim(payload) {
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const claimResult = await client.query(
       `
         SELECT
@@ -289,13 +363,32 @@ export async function registerDeviceFromClaim(payload) {
       [payload.device_id]
     );
 
-    const existingDevice = deviceResult.rows[0];
+    let existingDevice = deviceResult.rows[0];
     if (existingDevice && existingDevice.user_id !== claim.user_id) {
-      throw new ApiError(
-        409,
-        "device_owned_by_another_user",
-        "This device is already registered to another user."
-      );
+      if (payload.factory_reset) {
+        await releaseDeviceForFactoryResetTransfer(
+          client,
+          existingDevice.id
+        );
+        existingDevice = null;
+      } else {
+        const message =
+          "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here.";
+        await markClaimTokenFailure(
+          client,
+          claim.claim_token,
+          "device_owned_by_another_user",
+          message
+        );
+        return {
+          ok: false,
+          conflict: {
+            statusCode: 409,
+            code: "device_owned_by_another_user",
+            message
+          }
+        };
+      }
     }
 
     const attachDeviceId = payload.attach_to_platform_device_id || null;
@@ -441,4 +534,14 @@ export async function registerDeviceFromClaim(payload) {
       node_index: payload.node_index ?? null
     };
   });
+
+  if (result?.conflict) {
+    throw new ApiError(
+      result.conflict.statusCode,
+      result.conflict.code,
+      result.conflict.message
+    );
+  }
+
+  return result;
 }

@@ -79,7 +79,7 @@ test("web landing page remains visible for signed-in users", async () => {
 
   assert.match(appSource, escaped('<Route path="/" element={<LandingScreen />} />'));
   assert.match(landingSource, escaped('const dashboardHref = token ? "/devices" : "/login";'));
-  assert.match(landingSource, escaped('const dashboardLabel = token ? "Open dashboard" : "Sign in";'));
+  assert.match(landingSource, escaped('const dashboardLabel = token ? "Dashboard" : "Sign in";'));
   assert.doesNotMatch(landingSource, /Navigate to="\/devices"|return <Navigate/);
 });
 

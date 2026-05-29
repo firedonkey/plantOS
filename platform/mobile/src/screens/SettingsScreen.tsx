@@ -12,6 +12,8 @@ import { theme } from "@/styles/theme";
 
 export function SettingsScreen() {
   const { authMode, session, signOut, token } = useSession();
+  const userName = session?.name?.trim() || session?.email || "Signed out";
+  const userEmail = session?.email?.trim();
 
   const confirmDeleteAccount = () => {
     Alert.alert(
@@ -42,6 +44,12 @@ export function SettingsScreen() {
         <Text style={styles.eyebrow}>SETTINGS</Text>
         <Text style={styles.title}>App settings</Text>
       </View>
+
+      <Card variant="elevated">
+        <Text style={styles.label}>User name</Text>
+        <Text style={styles.value}>{userName}</Text>
+        {userEmail && userEmail !== userName ? <Text style={styles.note}>{userEmail}</Text> : null}
+      </Card>
 
       <Card variant="elevated">
         <Text style={styles.label}>API URL</Text>

@@ -25,7 +25,7 @@ export function SettingsScreen() {
 
       <div className="card">
         <h3>Notes</h3>
-        <p className="subtitle">Production standalone auth uses backend Google sign-in, an HTTP-only refresh cookie, and an in-memory access token. Dev bearer auth is shown only in explicit dev mode.</p>
+        <p className="subtitle">Production standalone auth uses backend Google/Apple sign-in, an HTTP-only refresh cookie, and an in-memory access token. Dev bearer auth is shown only in explicit dev mode.</p>
       </div>
 
       <div className="card">

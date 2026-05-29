@@ -6,10 +6,13 @@
   "scripts": {
     "start": "expo start",
     "start:dev": "bash scripts/mobile/start_dev_client.sh --host lan",
+    "start:dev:local": "bash scripts/mobile/start_local_dev_client.sh --host lan",
     "ios": "expo run:ios",
     "android": "expo run:android",
     "build:ios:dev": "bash scripts/mobile/build_ios_dev.sh",
+    "build:ios:local": "bash scripts/mobile/build_ios_local.sh",
     "build:ios:sim": "bash scripts/mobile/build_ios_dev.sh --profile development-simulator",
+    "build:ios:local:sim": "bash scripts/mobile/build_ios_local.sh --profile development-local-simulator",
     "build:ios:prod": "eas build --platform ios --profile production",
     "submit:ios:prod": "eas submit --platform ios --profile production --latest",
     "clean:metro": "bash scripts/mobile/clean_metro_cache.sh",

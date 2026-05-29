@@ -7,9 +7,32 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "development-local": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000",
+        "EXPO_PUBLIC_AUTH_MODE": "dev",
+        "EXPO_PUBLIC_ENABLE_DEV_AUTH": "true",
+        "EXPO_PUBLIC_ENABLE_MOCK_FALLBACK": "false"
+      }
+    },
     "development-simulator": {
       "developmentClient": true,
       "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "development-local-simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000",
+        "EXPO_PUBLIC_AUTH_MODE": "dev",
+        "EXPO_PUBLIC_ENABLE_DEV_AUTH": "true",
+        "EXPO_PUBLIC_ENABLE_MOCK_FALLBACK": "false"
+      },
       "ios": {
         "simulator": true
       }

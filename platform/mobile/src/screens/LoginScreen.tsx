@@ -13,21 +13,22 @@ import { theme } from "@/styles/theme";
 
 export function LoginScreen() {
   const { authMode, signIn } = useSession();
-  const [loginName, setLoginName] = useState("dev");
+  const [loginName, setLoginName] = useState("dev@plantlab.local");
   const [password, setPassword] = useState("password");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
-  const showLocalLogin = authMode === "dev" && isDevAuthEnabled();
+  const showProductionAuth = authMode === "production";
+  const showLocalLogin = isDevAuthEnabled();
 
   useEffect(() => {
-    if (showLocalLogin) {
+    if (!showProductionAuth) {
       setIsAppleAvailable(false);
       return;
     }
     AppleAuthentication.isAvailableAsync()
       .then(setIsAppleAvailable)
       .catch(() => setIsAppleAvailable(false));
-  }, [showLocalLogin]);
+  }, [showProductionAuth]);
 
   const onSubmit = async () => {
     try {
@@ -93,13 +94,13 @@ export function LoginScreen() {
         <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>
-          {showLocalLogin
-            ? "Use a local test account for this development build. Google sign-in stays off while AUTH_MODE is dev."
-            : "Sign in to sync and manage your PlantLab devices."}
+          {showProductionAuth
+            ? "Sign in to sync and manage your PlantLab devices."
+            : "Use a local test account for this development build."}
         </Text>
       </View>
 
-      {!showLocalLogin ? (
+      {showProductionAuth ? (
         <View style={styles.productVisual} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={styles.growLight} />
           <View style={styles.lightBeam} />
@@ -113,26 +114,7 @@ export function LoginScreen() {
       ) : null}
 
       <View style={styles.form}>
-        {showLocalLogin ? (
-          <>
-            <TextInput
-              value={loginName}
-              onChangeText={setLoginName}
-              style={styles.input}
-              placeholder="Username or email"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              style={styles.input}
-              placeholder="Password"
-              secureTextEntry
-            />
-            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue"} onPress={onSubmit} disabled={isSubmitting} />
-          </>
-        ) : (
+        {showProductionAuth ? (
           <>
             <Pressable
               disabled={isSubmitting}
@@ -158,7 +140,29 @@ export function LoginScreen() {
               />
             ) : null}
           </>
-        )}
+        ) : null}
+        {showLocalLogin ? (
+          <View style={[styles.localLoginFields, showProductionAuth ? styles.localLoginPanel : null]}>
+            <Text style={styles.localLoginTitle}>Local development sign-in</Text>
+            <TextInput
+              value={loginName}
+              onChangeText={setLoginName}
+              style={styles.input}
+              placeholder="Username or email"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+            />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              placeholder="Password"
+              secureTextEntry
+            />
+            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue locally"} onPress={onSubmit} disabled={isSubmitting} />
+          </View>
+        ) : null}
       </View>
     </Screen>
   );
@@ -211,6 +215,20 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
+  },
+  localLoginPanel: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderSoft,
+    marginTop: 6,
+    paddingTop: 16,
+  },
+  localLoginFields: {
+    gap: 12,
+  },
+  localLoginTitle: {
+    color: theme.colors.textSecondary,
+    fontSize: 16,
+    fontWeight: "700",
   },
   productVisual: {
     height: 132,

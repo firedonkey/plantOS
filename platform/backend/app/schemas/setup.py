@@ -66,3 +66,6 @@ class ClaimTokenStatusRead(BaseModel):
     expected_device_id: str | None = None
     expires_at: datetime | None = None
     expired: bool = False
+    failure_code: str | None = None
+    failure_message: str | None = None
+    failed_at: datetime | None = None

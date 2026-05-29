@@ -311,7 +311,7 @@ def release_device(
         status="released",
         device_id=device_id,
         released_at=device.released_at,
-        message="Device released for transfer. Hold the device button for 15 seconds to clear local Wi-Fi and tokens.",
+        message="Device released for transfer. Hold the device button for 20 seconds to clear local Wi-Fi and tokens.",
     )
 
 

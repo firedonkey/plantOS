@@ -292,6 +292,10 @@ def test_mobile_add_device_waits_for_online_status_after_ble_provisioning():
     assert "await waitForProvisionedDeviceOnline(device)" in send_over_ble
     assert 'setStep("waiting_online")' in wait_online
     assert "const expectedDeviceId = handoff.expectedDeviceId ?? device?.identity?.hardwareDeviceId" in wait_online
+    assert "handoff.setupToken" in wait_online
+    assert "claimTokenFailureMessage(" in wait_online
+    assert "Device already registered" in wait_online
+    assert "This PlantLab is already registered to another account." in screen
     assert "expectImage: false" in wait_online
     assert "result.status.deviceId && (result.status.online || result.status.ready)" in wait_online
     assert "router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`)" in wait_online
@@ -300,6 +304,8 @@ def test_mobile_add_device_waits_for_online_status_after_ble_provisioning():
     assert "Retry setup" in screen
     assert "Connecting your Smart Planter... This may take a moment." in screen
     assert "getSetupStatus" in source
+    assert "failure_code?: string | null" in source
+    assert "failureCode: response.failure_code ?? undefined" in source
     assert 'params.set("expected_device_id", expectedDeviceId)' in source
     assert "online: response.online ?? false" in source
 
@@ -366,8 +372,13 @@ def test_firmware_ble_scan_control_characteristic_contract():
 
 def test_firmware_ble_provisioning_priority_timeout_and_pause_contract():
     source = read_source(ESP32_MAIN)
+    config = read_source(REPO_ROOT / "device/esp32/include/config.h")
 
     assert "constexpr uint32_t kBleProvisioningTimeoutMs = 4UL * 60UL * 1000UL" in source
+    assert "#define POWER_BUTTON_LONG_PRESS_MS 5000" in config
+    assert "constexpr uint32_t kFactoryResetHoldMs = 20000UL" in source
+    assert "#define TOUCH_LONG_PRESS_MS 5000" in config
+    assert "#define TOUCH_FACTORY_RESET_MS 20000" in config
     assert "return g_provisioning_requested || g_provisioning_mode || g_ble_provisioning.active();" in source
     assert 'Serial.println("[provisioning] provisioning_requested");' in source
     assert 'Serial.println("[provisioning] normal_tasks_paused");' in source
@@ -377,6 +388,9 @@ def test_firmware_ble_provisioning_priority_timeout_and_pause_contract():
     assert "g_provisioning_requested = true;" in source
     assert "pauseNormalTasksForProvisioning();" in source
     assert "resumeNormalTasksAfterProvisioning();" in source
+    assert "bool shouldRegisterAsFactoryResetTransfer()" in source
+    assert 'payload["factory_reset"] = true;' in source
+    assert "configHasRuntimeRegistration(g_previous_active_config)" in source
 
     check_button = extract_function(source, "void checkProvisioningButton() {")
     assert "event == PowerButtonEvent::kLongPress" in check_button

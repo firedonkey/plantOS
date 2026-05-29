@@ -36,7 +36,10 @@ export async function ensureProvisioningSchema(pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL,
       used_at TIMESTAMPTZ,
-      used_by_device_id INTEGER REFERENCES devices(id)
+      used_by_device_id INTEGER REFERENCES devices(id),
+      failure_code TEXT,
+      failure_message TEXT,
+      failed_at TIMESTAMPTZ
     )
   `);
 
@@ -63,6 +66,21 @@ export async function ensureProvisioningSchema(pool) {
   await pool.query(`
     ALTER TABLE device_claim_tokens
       ADD COLUMN IF NOT EXISTS device_identity JSONB
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS failure_code TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS failure_message TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_claim_tokens
+      ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ
   `);
 
   await pool.query(`

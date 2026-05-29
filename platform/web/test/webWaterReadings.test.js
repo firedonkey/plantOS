@@ -36,22 +36,23 @@ test("web API maps backend water sensor fields into dashboard readings", async (
 
 test("web dashboards summarize water readings instead of stale soil moisture", async () => {
   const listSource = await readText("../src/screens/DeviceListScreen.tsx");
+  const cardSource = await readText("../src/components/DeviceCard.tsx");
   const historySource = await readText("../src/screens/HistoryScreen.tsx");
   const mockSource = await readText("../src/mock/data.ts");
 
   for (const requiredText of [
-    "Water ${device.latestReading.waterTemperatureC?.toFixed(1) ?? \"--\"} C",
-    "Level ${device.latestReading.waterLevelState ?? \"--\"}",
+    '<DeviceCardMetric label="Water" value={formatMetric(latestReading?.waterTemperatureC, "C")} />',
+    "formatMetric(latestReading?.temperatureC",
     "Water {reading.waterTemperatureC?.toFixed(1) ?? \"--\"} C",
     "Water level {reading.waterLevelState ?? \"unknown\"}",
     "waterTemperatureC: 20.4",
     "waterLevelRaw: 35200",
     'waterLevelState: "ok"',
   ]) {
-    assert.match(`${listSource}\n${historySource}\n${mockSource}`, escaped(requiredText));
+    assert.match(`${listSource}\n${cardSource}\n${historySource}\n${mockSource}`, escaped(requiredText));
   }
 
-  assert.doesNotMatch(listSource, /soilMoisturePercent/);
+  assert.doesNotMatch(`${listSource}\n${cardSource}`, /soilMoisturePercent/);
   assert.doesNotMatch(historySource, /soilMoisturePercent/);
   assert.doesNotMatch(mockSource, /waterLevelPercent/);
 });

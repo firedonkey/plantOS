@@ -11,6 +11,12 @@ type ApiLoginResponse = {
   token: string;
   email: string;
   mode: "api";
+  user?: {
+    id: number;
+    email: string;
+    name?: string | null;
+    avatar_url?: string | null;
+  };
 };
 
 type ApiRefreshResponse = {
@@ -40,7 +46,12 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    return session;
+    return {
+      token: session.token,
+      email: session.user?.email ?? session.email,
+      name: session.user?.name ?? undefined,
+      mode: session.mode,
+    };
   } catch (error) {
     if (!shouldUseMockFallback(error)) {
       throw error;
@@ -49,6 +60,7 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
     return {
       token: `mock-token:${email}`,
       email,
+      name: "Demo User",
       mode: "mock",
     };
   }
@@ -67,6 +79,7 @@ export async function loginWithAppleIdentityToken(input: AppleLoginInput): Promi
     session: {
       token: payload.access_token,
       email: payload.user.email,
+      name: payload.user.name ?? undefined,
       mode: "production",
       expiresAt: payload.expires_at,
       refreshToken: payload.refresh_token ?? undefined,
@@ -90,6 +103,7 @@ export async function refreshProductionSession(input: {
     session: {
       token: payload.access_token,
       email: payload.user.email,
+      name: payload.user.name ?? undefined,
       mode: "production",
       expiresAt: payload.expires_at,
       refreshToken: payload.refresh_token ?? undefined,

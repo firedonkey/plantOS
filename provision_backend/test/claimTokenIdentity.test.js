@@ -33,6 +33,7 @@ test("register schema still requires claim token and device id", () => {
   assert.match(source, /claim_token:[\s\S]*?min\(6, "claim_token is required\."\)/);
   assert.match(source, /hardware_version:[\s\S]*?min\(1, "hardware_version is required\."\)/);
   assert.match(source, /software_version:[\s\S]*?min\(1, "software_version is required\."\)/);
+  assert.match(source, /factory_reset: z\.boolean\(\)\.default\(false\)/);
   assert.match(source, /attach_to_platform_device_id: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
 });
 
@@ -67,6 +68,28 @@ test("provision service attaches recovery registration only to the owner's activ
   assert.match(source, /existingDevice && existingDevice\.id !== attachedDevice\.id/);
   assert.match(source, /hardware_already_attached_elsewhere/);
   assert.match(source, /api_token = \$2/);
+});
+
+test("provision service records ownership conflicts on claim token status", () => {
+  const service = readSource("src/services/deviceProvisioningService.js");
+  const schema = readSource("src/db/ensureSchema.js");
+
+  assert.match(schema, /failure_code TEXT/);
+  assert.match(schema, /failure_message TEXT/);
+  assert.match(schema, /failed_at TIMESTAMPTZ/);
+  assert.match(service, /async function markClaimTokenFailure/);
+  assert.match(service, /const result = await withTransaction/);
+  assert.match(service, /device_owned_by_another_user/);
+  assert.match(service, /This PlantLab is already registered to another account\./);
+  assert.match(service, /async function releaseDeviceForFactoryResetTransfer/);
+  assert.match(service, /payload\.factory_reset/);
+  assert.match(service, /release_reason = 'device_factory_reset'/);
+  assert.match(service, /DELETE FROM device_hardware_ids WHERE device_id = \$1/);
+  assert.match(service, /conflict:\s*\{/);
+  assert.match(service, /if \(result\?\.conflict\)/);
+  assert.match(service, /throw new ApiError\(\s*\n\s*result\.conflict\.statusCode/);
+  assert.match(service, /failure_code,\s*\n\s*failure_message,\s*\n\s*failed_at/);
+  assert.match(service, /failure_code: claim\.failure_code \?\? null/);
 });
 
 test("provision routes expose serialless claim-token response and keep setup-code fallback", () => {

@@ -40,6 +40,7 @@ class Settings:
     google_client_id: str | None = None
     google_client_secret: str | None = None
     apple_client_id: str = "com.plantlab.mobile"
+    apple_web_client_id: str | None = None
     provisioning_api_url: str = "https://plantlab-provision-api-418533861080.us-central1.run.app"
     provisioning_public_url: str | None = None
     provisioning_service_secret: str | None = None
@@ -58,6 +59,10 @@ class Settings:
     @property
     def google_auth_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def apple_web_auth_configured(self) -> bool:
+        return bool(self.apple_web_client_id)
 
     @property
     def is_production(self) -> bool:
@@ -148,6 +153,7 @@ def get_settings() -> Settings:
         google_client_secret=_optional_env("GOOGLE_OAUTH_CLIENT_SECRET", legacy_name="GOOGLE_CLIENT_SECRET"),
         apple_client_id=os.getenv("PLANTLAB_APPLE_CLIENT_ID", Settings.apple_client_id).strip()
         or Settings.apple_client_id,
+        apple_web_client_id=_optional_env("PLANTLAB_APPLE_WEB_CLIENT_ID"),
         provisioning_api_url=os.getenv("PLANTLAB_PROVISIONING_API_URL", Settings.provisioning_api_url).rstrip("/"),
         provisioning_public_url=_optional_env("PLANTLAB_PROVISIONING_PUBLIC_URL"),
         provisioning_service_secret=_optional_env("PLANTLAB_PROVISIONING_SHARED_SECRET"),

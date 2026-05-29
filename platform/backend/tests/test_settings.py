@@ -103,6 +103,27 @@ def test_google_oauth_env_vars_must_be_set_together(monkeypatch):
     clear_settings_cache()
 
 
+def test_apple_web_client_id_is_optional_and_independent(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_APPLE_CLIENT_ID", "com.plantlab.mobile")
+    monkeypatch.delenv("PLANTLAB_APPLE_WEB_CLIENT_ID", raising=False)
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.apple_client_id == "com.plantlab.mobile"
+    assert settings.apple_web_client_id is None
+    assert settings.apple_web_auth_configured is False
+
+    monkeypatch.setenv("PLANTLAB_APPLE_WEB_CLIENT_ID", "com.plantlab.web")
+    clear_settings_cache()
+    settings = get_settings()
+
+    assert settings.apple_client_id == "com.plantlab.mobile"
+    assert settings.apple_web_client_id == "com.plantlab.web"
+    assert settings.apple_web_auth_configured is True
+    clear_settings_cache()
+
+
 def test_valid_production_settings(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://plantlab:secret@localhost:5432/plantlab")

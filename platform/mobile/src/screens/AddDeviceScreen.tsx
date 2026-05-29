@@ -32,6 +32,8 @@ const ONLINE_CONFIRMATION_TIMEOUT =
   "We could not confirm your Smart Planter is online yet. Please make sure your Wi-Fi password is correct and the device is nearby.";
 const RECOVERY_WIFI_RESTORED_PREVIOUS_CONFIG =
   "The new Wi-Fi details did not connect, so the device restored its previous connection. Check the Wi-Fi password and try reconnecting.";
+const DEVICE_OWNERSHIP_CONFLICT =
+  "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here.";
 type AddDeviceStep = "find_device" | "wifi_provisioning" | "waiting_online";
 
 export function AddDeviceScreen() {
@@ -347,11 +349,21 @@ export function AddDeviceScreen() {
       const startedAt = Date.now();
       while (Date.now() - startedAt <= ONLINE_POLL_TIMEOUT_MS) {
         const { result: claimStatusResult, unavailable: claimStatusUnavailable } =
-          isRecoveryFlow && handoff.setupToken
+          handoff.setupToken
             ? await getRecoveryClaimTokenStatus(handoff.setupToken)
             : { result: null, unavailable: false };
         if (claimStatusResult) {
           setUsedMock((current) => current || claimStatusResult.usedMock);
+          const claimFailureMessage = claimTokenFailureMessage(
+            claimStatusResult.status.failureCode,
+            claimStatusResult.status.failureMessage,
+          );
+          if (claimFailureMessage) {
+            setBleProvisioningTone("error");
+            setBleProvisioningMessage(claimFailureMessage);
+            Alert.alert("Device already registered", claimFailureMessage);
+            return;
+          }
           if (claimStatusResult.status.expired && !claimStatusResult.status.used) {
             setBleProvisioningTone("error");
             setBleProvisioningMessage("Setup timed out before the device confirmed the new Wi-Fi. Start recovery again to get a fresh setup token.");
@@ -368,13 +380,15 @@ export function AddDeviceScreen() {
           token ?? undefined,
         );
         setUsedMock((current) => current || result.usedMock);
-        const claimWasUsed = claimStatusResult?.status.used ?? (claimStatusUnavailable || !isRecoveryFlow);
+        const claimWasUsed = claimStatusResult?.status.used ?? (claimStatusUnavailable || !handoff.setupToken);
+        const expectedUsedDeviceId =
+          isRecoveryFlow && recoveryPlatformDeviceId !== null ? String(recoveryPlatformDeviceId) : result.status.deviceId;
         const claimUsedByExpectedDevice =
           claimStatusUnavailable ||
-          !isRecoveryFlow ||
           !claimStatusResult ||
           !claimStatusResult.status.usedByDeviceId ||
-          claimStatusResult.status.usedByDeviceId === String(recoveryPlatformDeviceId);
+          !expectedUsedDeviceId ||
+          claimStatusResult.status.usedByDeviceId === expectedUsedDeviceId;
         if (
           isRecoveryFlow &&
           !claimWasUsed &&
@@ -979,6 +993,16 @@ function wifiScanErrorMessage(err: unknown): string {
     return err.message;
   }
   return "Could not scan nearby 2.4 GHz Wi-Fi. Type the Wi-Fi name manually or use the compatibility fallback.";
+}
+
+function claimTokenFailureMessage(failureCode?: string, failureMessage?: string): string | null {
+  if (!failureCode) {
+    return null;
+  }
+  if (failureCode === "device_owned_by_another_user") {
+    return DEVICE_OWNERSHIP_CONFLICT;
+  }
+  return failureMessage || "Device setup failed. Restart setup and try again.";
 }
 
 function provisioningErrorMessage(err: unknown): string {

@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.routes import devices as device_routes
+from app.api.routes import setup as setup_routes
 from app.api.deps import get_current_user, get_optional_current_user
 from app.core.settings import get_settings
 from app.db.session import get_session
@@ -1040,6 +1041,58 @@ def test_device_claim_token_api_proxies_ble_identity_and_returns_handoff(monkeyp
         teardown_overrides()
 
 
+def test_claim_token_status_api_forwards_registration_failure(monkeypatch):
+    client, _ = build_client_with_user()
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "used": False,
+                "used_by_device_id": None,
+                "expected_device_id": "pl-esp32-a1b2c3",
+                "expires_at": "2026-05-29T03:23:50Z",
+                "expired": False,
+                "failure_code": "device_owned_by_another_user",
+                "failure_message": "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here.",
+                "failed_at": "2026-05-29T03:16:47Z",
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json, headers):
+            assert url.endswith("/api/devices/claim-token/status")
+            assert json == {"claim_token": "claim-ble-001"}
+            assert headers["x-plantlab-user-id"] == "1"
+            return FakeResponse()
+
+    monkeypatch.setattr(setup_routes.httpx, "AsyncClient", FakeAsyncClient)
+
+    try:
+        response = client.post("/api/setup/claim-token/status", json={"setup_token": "claim-ble-001"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["used"] is False
+        assert payload["expected_device_id"] == "pl-esp32-a1b2c3"
+        assert payload["failure_code"] == "device_owned_by_another_user"
+        assert payload["failure_message"] == "This PlantLab is already registered to another account. Release it from that account or factory reset the device before adding it here."
+        assert payload["failed_at"] == "2026-05-29T03:16:47Z"
+    finally:
+        teardown_overrides()
+
+
 def test_register_provisioned_log_sanitizer_redacts_tokens_and_wifi_fields():
     sanitized = device_routes._sanitize_registration_log_payload(
         {
@@ -1208,7 +1261,7 @@ def test_release_device_api_revokes_token_detaches_hardware_and_preserves_histor
         assert payload["status"] == "released"
         assert payload["device_id"] == device_id
         assert payload["released_at"] is not None
-        assert "15 seconds" in payload["message"]
+        assert "20 seconds" in payload["message"]
 
         assert client.get("/api/devices").json() == []
         assert client.get(f"/api/devices/{device_id}").status_code == 404

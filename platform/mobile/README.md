@@ -16,8 +16,9 @@ Local dev:
 
 - Set `EXPO_PUBLIC_API_BASE_URL` to your backend base URL.
 - Use [`.env.example`](/Users/gary/plantOS/platform/mobile/.env.example) as the starting point.
+- Use [`.env.local.example`](/Users/gary/plantOS/platform/mobile/.env.local.example) when building for a local backend on your LAN.
 - Keep `EXPO_PUBLIC_AUTH_MODE=dev` for local dev bearer login.
-- Local dev builds use the username/password form when `EXPO_PUBLIC_AUTH_MODE=dev` and `EXPO_PUBLIC_ENABLE_DEV_AUTH=true`.
+- Local dev builds use the username/password form when `EXPO_PUBLIC_ENABLE_DEV_AUTH=true`; production auth builds can also show this panel for local QA if dev auth is explicitly enabled.
 - For local username login, `dev` becomes `dev@plantlab.local`; an email address is used as-is. The password must be non-empty and is only for dev-token login against a local backend.
 - Do not point dev-token login at the production backend. Production Cloud Run has `PLANTLAB_DEV_TOKEN_AUTH_ENABLED=false`, so production builds should use `EXPO_PUBLIC_AUTH_MODE=production`.
 - Sign in with Apple is available on iOS production builds and sends the native Apple identity token to the backend-owned `/api/auth/apple/mobile` endpoint.
@@ -93,6 +94,33 @@ npm run start:dev
 
 Open the installed PlantLab development build on the iPhone, not Expo Go, and connect it to the LAN Metro server. For physical-device backend QA, set `EXPO_PUBLIC_API_BASE_URL` to the Mac's LAN address, not `127.0.0.1`.
 
+Local backend iPhone build:
+
+```bash
+cd platform/mobile
+npm run build:ios:local -- --api-url http://YOUR_MAC_LAN_IP:8000
+```
+
+This writes `platform/mobile/.env` with local dev auth settings, runs the same
+typecheck/config checks as the normal development build, then starts the EAS
+`development-local` iOS build. The local backend URL is used by Metro when the
+installed development client loads the app bundle.
+
+If your Mac LAN IP can be detected automatically, this is enough:
+
+```bash
+cd platform/mobile
+npm run build:ios:local
+```
+
+After installing the local development build, start Metro with matching local
+environment settings:
+
+```bash
+cd platform/mobile
+npm run start:dev:local -- --api-url http://YOUR_MAC_LAN_IP:8000
+```
+
 Local backend auth setup for iPhone QA:
 
 ```bash
@@ -106,7 +134,7 @@ EOF
 npm run start:dev
 ```
 
-Restart Metro after changing `.env`. The login screen should show username/password only. Use `dev` / `password` or any username with a non-empty password.
+Restart Metro after changing `.env`. The login screen should show the local development username/password panel. Use `dev@plantlab.local` / `password`, `dev` / `password`, or any username with a non-empty password.
 
 Recover from Metro watcher/cache issues:
 
@@ -123,6 +151,13 @@ Optional simulator build:
 ```bash
 cd platform/mobile
 npm run build:ios:sim
+```
+
+Optional local simulator build:
+
+```bash
+cd platform/mobile
+npm run build:ios:local:sim -- --api-url http://127.0.0.1:8000
 ```
 
 Optional local iOS run for developers with native tooling:
@@ -193,6 +228,15 @@ The production EAS profile sets:
 - `EXPO_PUBLIC_AUTH_MODE=production`
 - `EXPO_PUBLIC_ENABLE_DEV_AUTH=false`
 - `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false`
+
+The local development profile sets:
+
+- `EXPO_PUBLIC_AUTH_MODE=dev`
+- `EXPO_PUBLIC_ENABLE_DEV_AUTH=true`
+- `EXPO_PUBLIC_ENABLE_MOCK_FALLBACK=false`
+
+The local API URL is written to `.env` by `npm run build:ios:local` or
+`npm run start:dev:local` so a physical iPhone can use your Mac's LAN address.
 
 Status:
 

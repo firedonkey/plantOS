@@ -133,3 +133,12 @@ export function getGoogleAuthStartUrl(returnTo: string = `${window.location.orig
   const params = new URLSearchParams({ client: "web", return_to: returnTo });
   return `${baseUrl}/api/auth/google/start?${params.toString()}`;
 }
+
+export function getAppleAuthStartUrl(returnTo: string = `${window.location.origin}/login`): string {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) {
+    throw new Error("API base URL is not configured. Set VITE_API_BASE_URL before using Apple sign-in.");
+  }
+  const params = new URLSearchParams({ client: "web", return_to: returnTo });
+  return `${baseUrl}/api/auth/apple/start?${params.toString()}`;
+}

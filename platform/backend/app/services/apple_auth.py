@@ -20,7 +20,7 @@ class AppleIdentity:
     email_verified: bool
 
 
-def verify_apple_identity_token(identity_token: str, *, audience: str) -> AppleIdentity:
+def verify_apple_identity_token(identity_token: str, *, audience: str, nonce: str | None = None) -> AppleIdentity:
     key_set = JsonWebKey.import_key_set(_get_apple_jwks())
     claims = jwt.decode(
         identity_token,
@@ -34,6 +34,9 @@ def verify_apple_identity_token(identity_token: str, *, audience: str) -> AppleI
         },
     )
     claims.validate()
+
+    if nonce is not None and claims.get("nonce") != nonce:
+        raise ValueError("Apple identity token nonce did not match.")
 
     sub = str(claims.get("sub") or "").strip()
     if not sub:

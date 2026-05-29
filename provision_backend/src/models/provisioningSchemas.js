@@ -92,6 +92,7 @@ export const registerDeviceSchema = z.object({
   node_index: z.number().int().positive().optional(),
   display_name: z.string().trim().max(120, "display_name is too long.").optional(),
   hardware_model: z.string().trim().max(120, "hardware_model is too long.").optional(),
+  factory_reset: z.boolean().default(false),
   attach_to_platform_device_id: z.number().int().positive().optional()
 });
 

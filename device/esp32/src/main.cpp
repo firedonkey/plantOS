@@ -67,7 +67,7 @@ constexpr uint32_t kBleProvisioningTimeoutMs = 4UL * 60UL * 1000UL;
 constexpr uint32_t kBleWifiScanTimeoutMs = 15000UL;
 constexpr uint32_t kBleWifiScanRetryDelayMs = 750UL;
 constexpr uint8_t kBleWifiScanMaxRetries = 3;
-constexpr uint32_t kFactoryResetHoldMs = 15000UL;
+constexpr uint32_t kFactoryResetHoldMs = 20000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
@@ -338,6 +338,16 @@ bool hasPendingClaim() {
 
 bool hasRuntimeRegistration() {
   return g_config.platform_device_id > 0 && g_config.device_token.length() > 0;
+}
+
+bool configHasRuntimeRegistration(const DeviceConfig& config) {
+  return config.platform_device_id > 0 && config.device_token.length() > 0;
+}
+
+bool shouldRegisterAsFactoryResetTransfer() {
+  return hasPendingClaim() &&
+         g_config.attach_to_platform_device_id <= 0 &&
+         !configHasRuntimeRegistration(g_previous_active_config);
 }
 
 String runtimePlatformUrl() {
@@ -2768,6 +2778,10 @@ bool registerProvisionedDevice() {
   payload["hardware_model"] = "esp32_master";
   payload["hardware_version"] = BOARD_NAME;
   payload["software_version"] = kSoftwareVersion;
+  if (shouldRegisterAsFactoryResetTransfer()) {
+    payload["factory_reset"] = true;
+    Serial.println("[provisioning] registration includes factory_reset transfer flag");
+  }
   if (g_config.attach_to_platform_device_id > 0) {
     payload["attach_to_platform_device_id"] = g_config.attach_to_platform_device_id;
   }
