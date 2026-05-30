@@ -115,6 +115,10 @@ def _command_type(command: Command) -> CommandType | None:
         return CommandType.CAPTURE_IMAGE
     if target == "ota" and action == "start":
         return CommandType.START_OTA
+    if target == "diagnostics" and action == "request":
+        return CommandType.REQUEST_DIAGNOSTICS
+    if target == "system" and action == "reboot":
+        return CommandType.REBOOT
     return None
 
 
@@ -139,6 +143,10 @@ def _command_params(command: Command) -> dict[str, Any]:
         return {"reason": "manual"}
     if target == "ota" and action == "start":
         return _ota_command_params(command.value)
+    if target == "diagnostics" and action == "request":
+        return {"reason": command.value or "manual"}
+    if target == "system" and action == "reboot":
+        return {"reason": command.value or "manual"}
     return {"value": command.value}
 
 
@@ -163,6 +171,8 @@ def _timeout_ms(command: Command) -> int:
         return 150_000
     if _value(command.target) == "ota" and _value(command.action) == "start":
         return 1_800_000
+    if _value(command.target) == "system" and _value(command.action) == "reboot":
+        return 60_000
     return 20_000
 
 

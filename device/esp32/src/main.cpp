@@ -678,7 +678,10 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
         mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
     if (wifi_ready && node_registered && config_ready && !g_camera_runtime_ready) {
       g_camera_runtime_ready = true;
-      Serial.println("[camera-provisioning] camera runtime is ready; first capture can start now");
+      Serial.println("[camera-provisioning] camera runtime is ready; first capture will be requested now");
+      g_camera_bootstrap_capture_active = false;
+      g_camera_capture_schedule.has_sent_initial_request = false;
+      g_camera_capture_schedule.last_capture_requested_ms = 0;
     }
     if (is_camera_capture_health) {
       clearCameraCaptureFlight();
@@ -739,6 +742,9 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
     if (!g_camera_runtime_ready) {
       g_camera_runtime_ready = true;
       Serial.println("[camera-schedule] capture ACK confirms camera runtime is ready");
+    }
+    if (is_camera_capture_ack && g_camera_bootstrap_capture_active) {
+      capture_schedule_mark_requested(&g_camera_capture_schedule, millis());
     }
     g_camera_bootstrap_capture_active = false;
   }
@@ -905,7 +911,7 @@ void serviceCameraProvisioning(unsigned long now) {
   sendCameraProvisioningPacket(now);
 }
 
-bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true) {
+bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true, bool mark_schedule = true) {
   if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
@@ -939,7 +945,9 @@ bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true) {
   }
 
   noteEspNowSend(EspNowCommandType::kCaptureImage, packet.request_id, 0, target_mac, now);
-  capture_schedule_mark_requested(&g_camera_capture_schedule, now);
+  if (mark_schedule) {
+    capture_schedule_mark_requested(&g_camera_capture_schedule, now);
+  }
   markCameraCaptureInFlight(packet.request_id, 0, now, retry_available && !g_scheduled_capture_retry_pending);
   Serial.printf(
       "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
@@ -1400,7 +1408,7 @@ void maybeSendBootstrapCapture(unsigned long now) {
   if (now < g_next_camera_bootstrap_capture_ms) {
     return;
   }
-  if (sendEspNowCaptureCommand(now, false)) {
+  if (sendEspNowCaptureCommand(now, false, false)) {
     g_camera_bootstrap_capture_attempts =
         static_cast<uint8_t>(g_camera_bootstrap_capture_attempts + 1);
     g_next_camera_bootstrap_capture_ms = now + kCameraBootstrapCaptureRetryMs;
@@ -3383,6 +3391,9 @@ void execute_platform_command(const PlatformCommand& command) {
       }
     }
     return;
+  } else if (command.target == "system" && command.action == "reboot") {
+    message = "device reboot scheduled";
+    scheduleRestart(1500, "contract_reboot_command");
   } else if (command.target == "diagnostics" && command.action == "request") {
     message = "diagnostics heartbeat sent";
   } else {
@@ -3532,6 +3543,14 @@ void loop() {
     if (g_provisioning_mode) {
       return;
     }
+  }
+
+  if (g_restart_scheduled && static_cast<long>(now - g_restart_at_ms) >= 0) {
+    Serial.printf(
+        "[system] rebooting ESP32 reason=%s\n",
+        g_restart_reason.length() > 0 ? g_restart_reason.c_str() : "unspecified");
+    delay(100);
+    ESP.restart();
   }
 
   if (provisioningPriorityActive()) {

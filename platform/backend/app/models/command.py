@@ -16,6 +16,8 @@ class CommandTarget(str, Enum):
     LIGHT = "light"
     CAMERA = "camera"
     OTA = "ota"
+    DIAGNOSTICS = "diagnostics"
+    SYSTEM = "system"
 
 
 class CommandAction(str, Enum):
@@ -25,6 +27,8 @@ class CommandAction(str, Enum):
     RUN = "run"
     CAPTURE = "capture"
     START = "start"
+    REQUEST = "request"
+    REBOOT = "reboot"
 
 
 class CommandStatus(str, Enum):
@@ -43,7 +47,7 @@ class Command(Base):
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True)
     target: Mapped[CommandTarget] = mapped_column(String(40), index=True)
     action: Mapped[CommandAction] = mapped_column(String(40))
-    value: Mapped[Optional[str]] = mapped_column(String(120), default=None)
+    value: Mapped[Optional[str]] = mapped_column(String(2000), default=None)
     status: Mapped[CommandStatus] = mapped_column(
         String(40),
         default=CommandStatus.PENDING,

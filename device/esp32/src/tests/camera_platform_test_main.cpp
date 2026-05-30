@@ -116,6 +116,14 @@ void recordDiagnosticError(const char* code, const String& message) {
   }
 }
 
+void clearRecoveredDiagnosticError(const char* code) {
+  if (code == nullptr || g_last_diagnostic_error_code != code) {
+    return;
+  }
+  g_last_diagnostic_error_code = "";
+  g_last_diagnostic_error_message = "";
+}
+
 String stableHardwareDeviceId() {
   if (g_hardware_device_id.length() > 0) {
     return g_hardware_device_id;
@@ -544,6 +552,7 @@ bool sendHeartbeat() {
 
     String error;
     if (g_platform_client->send_hardware_heartbeat(heartbeat, &error)) {
+      clearRecoveredDiagnosticError("heartbeat_upload_failed");
       Serial.printf(
           "[camera-node] heartbeat sent to %s/api/hardware/heartbeat\n",
           g_platform_client->base_url().c_str());
@@ -573,6 +582,7 @@ bool sendHeartbeat() {
   http.end();
 
   if (code >= 200 && code < 300) {
+    clearRecoveredDiagnosticError("heartbeat_upload_failed");
     Serial.printf("[camera-node] heartbeat sent to %s (%d)\n", url.c_str(), code);
     return true;
   }
@@ -753,6 +763,7 @@ bool captureAndUploadImage() {
 
   if (uploaded) {
     g_last_image_upload_ms = millis();
+    clearRecoveredDiagnosticError("image_upload_failed");
     Serial.printf(
         "[camera-node] upload success command_id=%lu request=%u http=%d elapsed_ms=%lu\n",
         static_cast<unsigned long>(g_capture_command_id),

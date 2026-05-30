@@ -63,6 +63,13 @@ def _apply_lightweight_migrations(selected_engine) -> None:
             _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_on", Boolean))
             _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_intensity_percent", Integer))
             _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("pump_on", Boolean))
+            _widen_string_column(
+                connection,
+                selected_engine,
+                "commands",
+                "value",
+                minimum_length=2000,
+            )
         if "device_hardware_ids" in table_names:
             node_columns = {column["name"] for column in inspector.get_columns("device_hardware_ids")}
             _add_column_if_missing(
@@ -111,6 +118,20 @@ def _add_column_if_missing(connection, selected_engine, table_name: str, existin
     column_sql = str(CreateColumn(column).compile(dialect=selected_engine.dialect))
     connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
     existing_columns.add(column.name)
+
+
+def _widen_string_column(connection, selected_engine, table_name: str, column_name: str, *, minimum_length: int) -> None:
+    if selected_engine.dialect.name == "sqlite":
+        return
+    inspector = inspect(selected_engine)
+    column = next((item for item in inspector.get_columns(table_name) if item["name"] == column_name), None)
+    if column is None:
+        return
+    column_type = column["type"]
+    current_length = getattr(column_type, "length", None)
+    if current_length is None or current_length >= minimum_length:
+        return
+    connection.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} TYPE VARCHAR({minimum_length})"))
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -32,7 +32,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
     commandMessage,
     commandTone,
     isCommandRunning,
-    lastUpdatedAt,
     refresh,
     runCommand,
     selectedRange,
@@ -71,9 +70,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
         ? "Working..."
         : "Capture image";
   const health = dashboard ? resolveMobileHealth(dashboard) : null;
-  const wifi = dashboard ? resolveWifiState(dashboard) : null;
-  const camera = dashboard ? resolveCameraState(dashboard) : null;
-  const light = dashboard ? resolveLightState(dashboard) : null;
   const deviceContext = dashboard ? formatDeviceContext(dashboard.device.plantType, dashboard.device.location) : null;
 
   if (!deviceId) {
@@ -101,23 +97,6 @@ export function DeviceDashboardScreen({ deviceId }: DeviceDashboardScreenProps) 
               </View>
             </View>
 
-            <View style={styles.overviewStats}>
-              <OverviewStat label="Wi-Fi" value={wifi?.label ?? "Waiting"} meta={wifi?.meta ?? "No RSSI yet"} />
-              <OverviewStat label="Camera" value={camera?.label ?? "Waiting"} meta={camera?.meta ?? "No node yet"} />
-              <OverviewStat label="Light" value={light?.label ?? "Off"} meta={light?.meta ?? "Ready"} />
-              <OverviewStat label="Updated" value={lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : "Waiting"} meta={formatAge(dashboard.hardwareHealth?.lastHeartbeatAt ?? dashboard.device.lastSeenAt)} />
-            </View>
-
-            <View style={styles.overviewActions}>
-              <View style={styles.overviewActionButton}>
-                <PrimaryButton label={captureLabel} onPress={() => runCommand("capture_image")} disabled={captureDisabled} />
-              </View>
-              <Link href={`/(app)/devices/${deviceId}/settings`} asChild>
-                <Pressable accessibilityRole="button" style={styles.overviewSecondaryAction}>
-                  <Text style={styles.overviewSecondaryActionText}>Settings</Text>
-                </Pressable>
-              </Link>
-            </View>
           </Card>
 
           {setupComplete ? <FeedbackBanner tone="success" message="Setup complete. The dashboard is ready when the first live readings arrive." /> : null}
@@ -224,16 +203,6 @@ function ToggleButton({ disabled, label, on, onPress }: { disabled: boolean; lab
       <Text style={[styles.toggleLabel, on ? styles.toggleLabelOn : styles.toggleLabelOff]}>{on ? "ON" : "OFF"}</Text>
       <View style={[styles.toggleKnob, on ? styles.toggleKnobOn : styles.toggleKnobOff]} />
     </Pressable>
-  );
-}
-
-function OverviewStat({ label, value, meta }: { label: string; value: string; meta: string }) {
-  return (
-    <View style={styles.overviewStat}>
-      <Text style={styles.overviewStatLabel}>{label}</Text>
-      <Text style={styles.overviewStatValue}>{value}</Text>
-      <Text style={styles.overviewStatMeta}>{meta}</Text>
-    </View>
   );
 }
 
@@ -419,45 +388,6 @@ function formatDeviceContext(plantType?: string, location?: string) {
   return parts.length ? parts.join(" | ") : null;
 }
 
-function resolveWifiState(dashboard: DeviceDashboard): { label: string; meta: string } {
-  const rssi = dashboard.hardwareHealth?.primary?.diagnostics?.wifiRssiDbm;
-  if (typeof rssi !== "number") {
-    return { label: "Waiting", meta: "No RSSI yet" };
-  }
-  if (rssi <= -85) {
-    return { label: "Weak", meta: `${rssi} dBm` };
-  }
-  if (rssi <= -75) {
-    return { label: "Low", meta: `${rssi} dBm` };
-  }
-  return { label: "Good", meta: `${rssi} dBm` };
-}
-
-function resolveCameraState(dashboard: DeviceDashboard): { label: string; meta: string } {
-  const status = dashboard.hardwareHealth?.cameraStatus ?? dashboard.hardwareHealth?.cameras[0]?.status;
-  const cameraCount = dashboard.hardwareHealth?.cameras.length ?? 0;
-  if (!cameraCount && !status) {
-    return { label: "Waiting", meta: "No node yet" };
-  }
-  if (status === "online") {
-    return { label: "Online", meta: `${cameraCount || 1} node${cameraCount === 1 ? "" : "s"}` };
-  }
-  if (status === "offline") {
-    return { label: "Offline", meta: "Reconnect pending" };
-  }
-  return { label: "Review", meta: formatCode(status ?? "unknown") };
-}
-
-function resolveLightState(dashboard: DeviceDashboard): { label: string; meta: string } {
-  const reading = dashboard.device.latestReading;
-  const lightOn = (dashboard.device.currentLightOn ?? reading?.lightOn) === true;
-  const intensity = dashboard.device.currentLightIntensityPercent ?? reading?.lightIntensityPercent;
-  if (!lightOn) {
-    return { label: "Off", meta: typeof intensity === "number" ? `${Math.round(intensity)}%` : "Ready" };
-  }
-  return { label: "On", meta: typeof intensity === "number" ? `${Math.round(intensity)}%` : "Active" };
-}
-
 function formatStatusReason(reason?: string): string | undefined {
   if (!reason) {
     return undefined;
@@ -534,34 +464,6 @@ const styles = StyleSheet.create({
   overviewCopy: { gap: theme.spacing.sm },
   overviewChips: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
   overviewSummary: { color: theme.colors.textPrimary, fontSize: theme.typography.bodyLarge, lineHeight: 23 },
-  overviewStats: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
-  overviewStat: {
-    ...theme.surfaces.muted,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    flexBasis: "48%",
-    flexGrow: 1,
-    gap: 2,
-    minWidth: 132,
-    padding: theme.spacing.md,
-  },
-  overviewStatLabel: { color: theme.colors.textMuted, fontSize: theme.typography.caption, fontWeight: "800" },
-  overviewStatValue: { color: theme.colors.textPrimary, fontSize: theme.typography.bodyLarge, fontWeight: "800" },
-  overviewStatMeta: { color: theme.colors.textSecondary, fontSize: theme.typography.meta },
-  overviewActions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm },
-  overviewActionButton: { flex: 1, minWidth: 150 },
-  overviewSecondaryAction: {
-    ...theme.surfaces.default,
-    alignItems: "center",
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    justifyContent: "center",
-    minHeight: 46,
-    minWidth: 112,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  overviewSecondaryActionText: { color: theme.colors.textPrimary, fontSize: theme.typography.body, fontWeight: "700" },
   eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
   title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
   subtitle: { fontSize: theme.typography.bodyLarge, color: theme.colors.textSecondary },

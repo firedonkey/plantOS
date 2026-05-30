@@ -10,7 +10,7 @@ from app.models import CommandAction, CommandStatus, CommandTarget
 class CommandCreate(BaseModel):
     target: CommandTarget
     action: CommandAction
-    value: str | None = Field(default=None, max_length=120)
+    value: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def validate_target_action(self):
@@ -35,6 +35,10 @@ class CommandCreate(BaseModel):
             raise ValueError("Camera commands support capture.")
         if self.target == CommandTarget.OTA and self.action not in {CommandAction.START}:
             raise ValueError("OTA commands support start.")
+        if self.target == CommandTarget.DIAGNOSTICS and self.action not in {CommandAction.REQUEST}:
+            raise ValueError("Diagnostics commands support request.")
+        if self.target == CommandTarget.SYSTEM and self.action not in {CommandAction.REBOOT}:
+            raise ValueError("System commands support reboot.")
         return self
 
 

@@ -10,7 +10,9 @@ from app.models.device_node import DeviceNode
 from app.schemas.diagnostics import DeviceDiagnosticEventRead, DeviceDiagnosticSnapshotRead, HardwareDiagnosticsCreate
 
 EVENT_RETENTION_DAYS = 30
-EVENT_RETENTION_LIMIT = 100
+# Keep enough timeline context for command, OTA, image, and heartbeat events to
+# survive noisy reconnect or simulator stress windows without unbounded growth.
+EVENT_RETENTION_LIMIT = 1000
 EVENT_TYPE_BY_COUNTER = {
     "wifi_reconnects": "wifi_reconnect",
     "upload_failures": "upload_failure",

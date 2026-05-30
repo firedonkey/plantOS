@@ -12,11 +12,14 @@ from app.services.state_changes import emit_command_actuator_state_change
 
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 20
 CAPTURE_COMMAND_TIMEOUT_SECONDS = 150
+OTA_COMMAND_TIMEOUT_SECONDS = 1800
 
 
 def _timeout_seconds_for_command(command: Command, default_timeout_seconds: int) -> int:
     if command.target == "camera" and command.action == "capture":
         return max(default_timeout_seconds, CAPTURE_COMMAND_TIMEOUT_SECONDS)
+    if command.target == "ota" and command.action == "start":
+        return max(default_timeout_seconds, OTA_COMMAND_TIMEOUT_SECONDS)
     return default_timeout_seconds
 
 

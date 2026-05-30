@@ -24,6 +24,11 @@ bool isSupportedMasterCommand(const PlatformCommand& command) {
       command.action == "request") {
     return true;
   }
+  if (command.command_type == PLANTLAB_COMMAND_REBOOT &&
+      command.target == "system" &&
+      command.action == "reboot") {
+    return true;
+  }
   if (command.command_type == PLANTLAB_COMMAND_START_OTA &&
       command.target == "ota" &&
       command.action == "start") {
@@ -33,8 +38,7 @@ bool isSupportedMasterCommand(const PlatformCommand& command) {
 }
 
 const char* unsupportedCommandErrorCode(const PlatformCommand& command) {
-  if (command.command_type == PLANTLAB_COMMAND_REBOOT ||
-      command.command_type == PLANTLAB_COMMAND_ENTER_PAIRING_MODE ||
+  if (command.command_type == PLANTLAB_COMMAND_ENTER_PAIRING_MODE ||
       command.command_type == PLANTLAB_COMMAND_FACTORY_RESET ||
       command.command_type == PLANTLAB_COMMAND_UPDATE_CAPTURE_INTERVAL) {
     return PLANTLAB_COMMAND_ERROR_UNSUPPORTED_TARGET;

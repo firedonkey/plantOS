@@ -224,15 +224,15 @@ def test_mobile_add_device_keeps_manual_and_softap_fallbacks_separate():
 
     assert "My Wi-Fi is not listed" in screen
     assert "Your 2.4 GHz Wi-Fi name" in screen
-    assert "Existing Wi-Fi setup fallback" in screen
-    assert "Open PlantLab-Setup page" in screen
+    assert "Compatibility setup" in screen
+    assert "Open compatibility setup" in screen
     assert "openSoftApSetup" in screen
     assert "loadDeviceWifiNetworks" in screen
     assert "Looking for nearby Wi-Fi networks..." in screen
     assert "PlantLab supports 2.4 GHz Wi-Fi" in screen
     assert "setWifiSsid(ssids[0])" in screen
     assert "No nearby 2.4 GHz networks were found. You can still type your Wi-Fi name." in screen
-    assert "These networks come from your Smart Planter. If yours is missing, type it manually." in screen
+    assert "These networks come from PlantLab. If yours is missing, type it manually." in screen
 
 
 def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
@@ -243,13 +243,13 @@ def test_mobile_add_device_uses_in_app_ble_provisioning_as_primary_flow():
         "const canProvisionOverBle = Boolean(handoff?.setupToken && blePlatformUrl && canConfirmWifiDetails && !isProvisioningOverBle && !isWaitingForOnline)"
         in screen
     )
-    assert 'label={isProvisioningOverBle ? "Connecting..." : "Confirm"}' in screen
+    assert 'label={isProvisioningOverBle ? "Setting up..." : "Confirm Wi-Fi"}' in screen
     assert "Send provisioning over BLE" not in screen
     assert "provisionDeviceOverBle" in screen
     assert "setupToken: handoff.setupToken" in screen
     assert "platformUrl: blePlatformUrl" in screen
     assert "backendUrl: handoff.provisioningApiUrl" in screen
-    assert "Retry setup" in screen
+    assert "Try again" in screen
     assert "maskSecret(handoff.setupToken)" not in screen
     assert 'label="Home Wi-Fi password"' in screen
     assert "secureTextEntry" in screen
@@ -294,15 +294,15 @@ def test_mobile_add_device_waits_for_online_status_after_ble_provisioning():
     assert "const expectedDeviceId = handoff.expectedDeviceId ?? device?.identity?.hardwareDeviceId" in wait_online
     assert "handoff.setupToken" in wait_online
     assert "claimTokenFailureMessage(" in wait_online
-    assert "Device already registered" in wait_online
-    assert "This PlantLab is already registered to another account." in screen
+    assert "PlantLab already connected" in wait_online
+    assert "This PlantLab is already connected to another account." in screen
     assert "expectImage: false" in wait_online
     assert "result.status.deviceId && (result.status.online || result.status.ready)" in wait_online
     assert "router.replace(`/(app)/devices/${result.status.deviceId}?setup=complete`)" in wait_online
-    assert "We could not confirm your Smart Planter is online yet." in screen
-    assert "Retry online check" in screen
-    assert "Retry setup" in screen
-    assert "Connecting your Smart Planter... This may take a moment." in screen
+    assert "PlantLab could not confirm setup" in screen
+    assert "Keep waiting" in screen
+    assert "Change Wi-Fi details" in screen
+    assert "PlantLab is joining Wi-Fi and checking in. This can take a moment." in screen
     assert "getSetupStatus" in source
     assert "failure_code?: string | null" in source
     assert "failureCode: response.failure_code ?? undefined" in source
@@ -318,7 +318,7 @@ def test_mobile_add_device_ble_identity_replaces_required_serial_in_normal_flow(
     assert "Find PlantLab device" in screen
     assert "showSerialFallback" in screen
     assert "Use this only when the app cannot find or read the device automatically." in screen
-    assert "Verify serial and create setup token" in screen
+    assert "Verify serial" in screen
     assert "scanForBleProvisioningDevices()" in start_identity
     assert "devices.length > 1" in start_identity
     assert 'setBleDevicePickerMode("identity")' in start_identity

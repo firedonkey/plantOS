@@ -163,6 +163,53 @@ def test_contract_poll_filters_unsupported_legacy_pump_command():
         teardown_overrides()
 
 
+def test_contract_poll_returns_request_diagnostics_command_to_master_node():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "diagnostics", "action": "request"},
+        )
+        command_id = create_response.json()["id"]
+        _use_device_token_auth()
+
+        response = _poll(client, hardware_device_id="master-01", node_role="master")
+
+        assert response.status_code == 200
+        commands = response.json()["commands"]
+        assert len(commands) == 1
+        assert commands[0]["payload"]["command_id"] == f"cmd_{command_id}"
+        assert commands[0]["payload"]["command_type"] == "REQUEST_DIAGNOSTICS"
+        assert commands[0]["payload"]["target"]["node_role"] == "master"
+    finally:
+        teardown_overrides()
+
+
+def test_contract_poll_returns_reboot_command_to_master_node():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={"target": "system", "action": "reboot", "value": "validation"},
+        )
+        command_id = create_response.json()["id"]
+        _use_device_token_auth()
+
+        response = _poll(client, hardware_device_id="master-01", node_role="master")
+
+        assert response.status_code == 200
+        commands = response.json()["commands"]
+        assert len(commands) == 1
+        assert commands[0]["payload"]["command_id"] == f"cmd_{command_id}"
+        assert commands[0]["payload"]["command_type"] == "REBOOT"
+        assert commands[0]["payload"]["target"]["node_role"] == "master"
+        assert commands[0]["payload"]["params"]["reason"] == "validation"
+    finally:
+        teardown_overrides()
+
+
 def test_legacy_polling_still_works_after_contract_poll_endpoint_added():
     client, device_id, _ = build_client_with_devices()
     try:

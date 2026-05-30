@@ -27,6 +27,7 @@ Implemented command adapters:
 - `SET_LIGHT_BRIGHTNESS` -> existing grow LED intensity handler
 - `CAPTURE_IMAGE` -> existing ESP-NOW camera capture handler
 - `REQUEST_DIAGNOSTICS` -> existing heartbeat/diagnostics upload path
+- `REBOOT` -> existing scheduled restart path
 - `START_OTA` -> existing OTA manager through `OtaStartRequest`
 
 Unsupported command types are rejected explicitly with a contract error code.
@@ -103,9 +104,8 @@ Heartbeat state:
 
 Current limitations:
 
-- `REBOOT`, `ENTER_PAIRING_MODE`, `FACTORY_RESET`, and
-  `UPDATE_CAPTURE_INTERVAL` are parsed but rejected until product behavior is
-  finalized.
+- `ENTER_PAIRING_MODE`, `FACTORY_RESET`, and `UPDATE_CAPTURE_INTERVAL` are
+  parsed but rejected until product behavior is finalized.
 - There is no RTC hardware requirement. After power loss, wall-clock time is
   approximate until SNTP succeeds again.
 

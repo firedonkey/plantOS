@@ -10,6 +10,8 @@ RUN_SECONDS="${RUN_SECONDS:-15}"
 CAMERA_NODES="${CAMERA_NODES:-1}"
 START_DOCKER="${START_DOCKER:-1}"
 QUEUE_COMMANDS="${QUEUE_COMMANDS:-1}"
+CREATE_SIMULATOR_DEVICE="${CREATE_SIMULATOR_DEVICE:-0}"
+SIMULATOR_DEVICE_NAME="${SIMULATOR_DEVICE_NAME:-Simulator Stress $(date +%Y%m%d-%H%M%S)}"
 
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-plantlab-local-postgres}"
 POSTGRES_USER="${POSTGRES_USER:-plantlab_user}"
@@ -54,7 +56,11 @@ detect_device() {
     return
   fi
   local row
-  row="$(psql_query -Atc "select id || '|' || api_token from devices where api_token is not null order by id limit 1;")"
+  if [[ "$CREATE_SIMULATOR_DEVICE" == "1" ]]; then
+    row="$(create_simulator_device)"
+  else
+    row="$(psql_query -Atc "select id || '|' || api_token from devices where api_token is not null and released_at is null and archived_at is null order by id limit 1;")"
+  fi
   [[ -n "$row" ]] || fail "no local device with api_token found; create/provision a local device first"
   DEVICE_ID="${DEVICE_ID:-${row%%|*}}"
   DEVICE_TOKEN="${DEVICE_TOKEN:-${row#*|}}"
@@ -79,6 +85,36 @@ with urllib.request.urlopen(request, timeout=10) as response:
 PY
 }
 
+create_simulator_device() {
+  local token
+  token="$(login_token)"
+  python3 - "$BASE_URL" "$token" "$SIMULATOR_DEVICE_NAME" <<'PY'
+import json
+import sys
+import urllib.request
+
+base_url = sys.argv[1].rstrip("/")
+token = sys.argv[2]
+name = sys.argv[3]
+payload = json.dumps(
+    {
+        "name": name,
+        "location": "Local validation",
+        "plant_type": "Simulator",
+    }
+).encode()
+request = urllib.request.Request(
+    f"{base_url}/api/devices",
+    data=payload,
+    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=10) as response:
+    payload = json.load(response)
+print(f"{payload['id']}|{payload['api_token']}")
+PY
+}
+
 queue_api_command() {
   local token="$1"
   local path="$2"
@@ -91,9 +127,11 @@ queue_api_command() {
 }
 
 queue_ota_command() {
-  local params
-  params='{"target_version":"9.9.9","download_url":"/api/hardware/ota/artifacts/sim"}'
-  psql_query -c "insert into commands (device_id, target, action, value, status, created_at) values ($DEVICE_ID, 'ota', 'start', '$params', 'pending', now());" >/dev/null
+  local token="$1"
+  queue_api_command \
+    "$token" \
+    "/api/devices/$DEVICE_ID/commands" \
+    '{"target":"ota","action":"start","value":"{\"target_version\":\"9.9.9\",\"download_url\":\"/api/hardware/ota/artifacts/sim\"}"}'
 }
 
 queue_commands() {
@@ -102,7 +140,7 @@ queue_commands() {
   token="$(login_token)"
   queue_api_command "$token" "/api/devices/$DEVICE_ID/commands/light" '{"intensity_percent":65}' || true
   queue_api_command "$token" "/api/devices/$DEVICE_ID/commands/capture" '{}' || true
-  queue_ota_command || true
+  queue_ota_command "$token" || true
 }
 
 run_one() {
