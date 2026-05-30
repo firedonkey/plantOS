@@ -18,6 +18,7 @@ from app.models import Device, DeviceDiagnosticEvent, Image, User
 from app.models.base import Base
 from app.services.device_nodes import upsert_device_node
 from app.services import storage as storage_service
+from app.services import timelapse as timelapse_service
 from app.services.storage import GcsImageStorage, image_client_url, image_src
 
 
@@ -444,6 +445,13 @@ def test_device_timelapse_returns_sampled_owned_frames(tmp_path, monkeypatch):
             )
             session.commit()
 
+        empty_response = client.get(f"/api/devices/{device_id}/timelapse?days=1&interval_minutes=60&max_frames=10")
+        assert empty_response.status_code == 200
+        assert empty_response.json()["frame_count"] == 0
+
+        refresh_response = client.post(f"/api/devices/{device_id}/timelapse/refresh?days=1&interval_minutes=60&max_frames=10")
+        assert refresh_response.status_code == 200
+
         response = client.get(f"/api/devices/{device_id}/timelapse?days=1&interval_minutes=60&max_frames=10")
 
         assert response.status_code == 200
@@ -459,6 +467,51 @@ def test_device_timelapse_returns_sampled_owned_frames(tmp_path, monkeypatch):
         )
         assert all(frame["content_url"].endswith("/content") for frame in payload["frames"])
         assert all(frame["source_hardware_device_id"] == "cam-01" for frame in payload["frames"])
+    finally:
+        teardown_overrides()
+
+
+def test_device_timelapse_serves_cached_frames_without_resigning(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    try:
+        now = datetime.now(timezone.utc)
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add_all(
+                [
+                    Image(
+                        device_id=device_id,
+                        path=f"data/uploads/device-{device_id}/cached-{index}.jpg",
+                        timestamp=now - timedelta(minutes=20 - (index * 10)),
+                    )
+                    for index in range(3)
+                ]
+            )
+            session.commit()
+
+        calls = 0
+
+        def fake_image_client_url(image, request, settings):
+            nonlocal calls
+            calls += 1
+            return f"https://cached.example/images/{image.id}.jpg"
+
+        monkeypatch.setattr(timelapse_service, "image_client_url", fake_image_client_url)
+        refresh_response = client.post(f"/api/devices/{device_id}/timelapse/refresh?days=1&interval_minutes=5&max_frames=10")
+        assert refresh_response.status_code == 200
+        assert calls == 3
+
+        def fail_image_client_url(image, request, settings):
+            raise AssertionError("timelapse GET should not sign image URLs")
+
+        monkeypatch.setattr(timelapse_service, "image_client_url", fail_image_client_url)
+        response = client.get(f"/api/devices/{device_id}/timelapse?days=1&interval_minutes=5&max_frames=10")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["frame_count"] == 3
+        assert all(frame["content_url"].startswith("https://cached.example/images/") for frame in payload["frames"])
     finally:
         teardown_overrides()
 
@@ -581,6 +634,48 @@ def test_image_client_url_falls_back_to_proxy_when_signing_fails(monkeypatch):
     url = image_client_url(image, request, settings)
 
     assert url == "https://api.example/api/images/45/content"
+
+
+def test_gcs_signing_credentials_are_scoped_when_required():
+    class FakeCredentials:
+        requires_scopes = False
+
+        def with_scopes(self, scopes: list[str]):
+            scoped = SimpleNamespace(requires_scopes=False, scopes=scopes)
+            return scoped
+
+    scoped = storage_service._scoped_signing_credentials(FakeCredentials())
+
+    assert scoped.scopes == ["https://www.googleapis.com/auth/cloud-platform"]
+
+
+def test_gcs_signing_service_account_uses_metadata_for_default_email(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b"plantlab-run-sa@plantlab-493805.iam.gserviceaccount.com\n"
+
+    requested = {}
+
+    def fake_urlopen(request, timeout: int):
+        requested["url"] = request.full_url
+        requested["timeout"] = timeout
+        requested["metadata_flavor"] = request.headers["Metadata-flavor"]
+        return FakeResponse()
+
+    monkeypatch.setattr(storage_service, "urlopen", fake_urlopen)
+
+    email = storage_service._signing_service_account_email(SimpleNamespace(service_account_email="default"))
+
+    assert email == "plantlab-run-sa@plantlab-493805.iam.gserviceaccount.com"
+    assert requested["url"].endswith("/instance/service-accounts/default/email")
+    assert requested["timeout"] == 2
+    assert requested["metadata_flavor"] == "Google"
 
 
 def test_image_client_url_uses_backend_proxy_for_local_storage():

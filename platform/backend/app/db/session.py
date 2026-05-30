@@ -58,6 +58,8 @@ def _apply_lightweight_migrations(selected_engine) -> None:
         if "images" in table_names:
             image_columns = {column["name"] for column in inspector.get_columns("images")}
             _add_column_if_missing(connection, selected_engine, "images", image_columns, Column("source_hardware_device_id", String(120)))
+        if "device_timelapse_snapshots" not in table_names:
+            Base.metadata.tables["device_timelapse_snapshots"].create(selected_engine, checkfirst=True)
         if "commands" in table_names:
             command_columns = {column["name"] for column in inspector.get_columns("commands")}
             _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_on", Boolean))

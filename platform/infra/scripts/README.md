@@ -27,6 +27,9 @@ Defaults:
   - prints recent readings with optional range filters
 - `image_upload_inspector.py`
   - prints recent image metadata for one device
+- `timelapse_cache_refresh.py`
+  - refreshes cached growth timelapse snapshots outside dashboard page loads
+  - intended for local cron or GCP Cloud Scheduler
 - `ota_release.py`
   - builds and publishes ESP32 master and camera OTA releases to the local Docker backend
   - can publish production OTA releases to GCP by uploading firmware to GCS and upserting release metadata through a Cloud Run job
@@ -82,6 +85,25 @@ Inspect recent image uploads:
 ```bash
 cd /Users/gary/plantOS
 .venv/bin/python platform/infra/scripts/image_upload_inspector.py --device-id 36 --limit 6
+```
+
+Refresh cached growth timelapse snapshots:
+
+```bash
+cd /Users/gary/plantOS
+PLANTLAB_TIMELAPSE_REFRESH_SECRET=... \
+  .venv/bin/python platform/infra/scripts/timelapse_cache_refresh.py \
+  --base-url https://api.marspotatolab.com
+```
+
+Refresh one device:
+
+```bash
+cd /Users/gary/plantOS
+PLANTLAB_TIMELAPSE_REFRESH_SECRET=... \
+  .venv/bin/python platform/infra/scripts/timelapse_cache_refresh.py \
+  --base-url https://api.marspotatolab.com \
+  --device-id 34
 ```
 
 Publish a local OTA release for both ESP32 nodes after bumping `firmware_version.h`:

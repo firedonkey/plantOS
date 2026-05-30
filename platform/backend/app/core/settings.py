@@ -32,6 +32,7 @@ class Settings:
     gcs_bucket_name: str | None = None
     image_url_strategy: str | None = None
     image_signed_url_ttl_seconds: int = 30 * 60
+    timelapse_refresh_secret: str | None = None
     firmware_storage_backend: str = "local"
     firmware_local_dir: str = "data/firmware"
     firmware_bucket_name: str | None = None
@@ -141,6 +142,7 @@ def get_settings() -> Settings:
             "PLANTLAB_IMAGE_SIGNED_URL_TTL_SECONDS",
             default=Settings.image_signed_url_ttl_seconds,
         ),
+        timelapse_refresh_secret=_optional_env("PLANTLAB_TIMELAPSE_REFRESH_SECRET"),
         firmware_storage_backend=os.getenv(
             "PLANTLAB_FIRMWARE_STORAGE_BACKEND",
             Settings.firmware_storage_backend,

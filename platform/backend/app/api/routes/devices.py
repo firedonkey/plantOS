@@ -55,6 +55,12 @@ from app.services.images import list_recent_images_for_device, list_timelapse_im
 from app.services.lifecycle_events import write_canonical_event_once
 from app.services.readings import MAX_READING_QUERY_LIMIT, get_latest_reading_for_device, list_recent_readings_for_device
 from app.services.storage import image_client_url
+from app.services.timelapse import (
+    empty_timelapse_payload,
+    get_timelapse_snapshot,
+    refresh_device_timelapse_snapshot,
+    timelapse_snapshot_payload,
+)
 
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -66,9 +72,6 @@ READING_STALE_AFTER = timedelta(minutes=2)
 READING_OFFLINE_AFTER = timedelta(minutes=15)
 IMAGE_STALE_AFTER = timedelta(minutes=5)
 IMAGE_OFFLINE_AFTER = timedelta(minutes=20)
-TIMELAPSE_MIN_FRAME_MS = 50
-TIMELAPSE_MAX_FRAME_MS = 30_000
-
 
 @dataclass(frozen=True)
 class CommandHealthSnapshot:
@@ -505,44 +508,61 @@ def get_device_timelapse(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
-    window_end = datetime.now(timezone.utc)
-    window_start = window_end - timedelta(days=days)
-    images, total_image_count = list_timelapse_images_for_device(
+    snapshot = get_timelapse_snapshot(
         session,
         device.id,
-        start=window_start,
-        end=window_end,
+        days=days,
         interval_minutes=interval_minutes,
         max_frames=max_frames,
-    )
-    settings = get_settings()
-    frames = [
-        DeviceTimelapseFrameRead(
-            id=image.id,
-            content_url=image_client_url(image, request, settings),
-            timestamp=image.timestamp,
-            source_hardware_device_id=image.source_hardware_device_id,
-        )
-        for image in images
-    ]
-    return DeviceTimelapseRead(
-        device_id=device.id,
-        window_start=window_start,
-        window_end=window_end,
-        interval_minutes=interval_minutes,
         target_duration_seconds=target_duration_seconds,
-        playback_frame_ms=playback_frame_ms
-        if playback_frame_ms is not None
-        else _timelapse_playback_frame_ms(len(frames), target_duration_seconds),
-        total_image_count=total_image_count,
-        frame_count=len(frames),
-        frames=frames,
     )
+    if snapshot is None or _timelapse_snapshot_expired(snapshot.expires_at):
+        return DeviceTimelapseRead.model_validate(
+            empty_timelapse_payload(
+                device_id=device.id,
+                days=days,
+                interval_minutes=interval_minutes,
+                target_duration_seconds=target_duration_seconds,
+                playback_frame_ms=playback_frame_ms,
+            )
+        )
+    payload = timelapse_snapshot_payload(snapshot, playback_frame_ms=playback_frame_ms)
+    return DeviceTimelapseRead.model_validate(payload)
 
 
-def _timelapse_playback_frame_ms(frame_count: int, target_duration_seconds: int) -> int:
-    desired_frame_ms = round((target_duration_seconds * 1000) / max(frame_count, 1))
-    return min(TIMELAPSE_MAX_FRAME_MS, max(TIMELAPSE_MIN_FRAME_MS, desired_frame_ms))
+@router.post("/{device_id}/timelapse/refresh", response_model=DeviceTimelapseRead)
+def refresh_device_timelapse(
+    device_id: int,
+    request: Request,
+    days: int = Query(default=7, ge=1, le=30),
+    interval_minutes: int = Query(default=5, ge=5, le=24 * 60),
+    max_frames: int = Query(default=168, ge=2, le=720),
+    target_duration_seconds: int = Query(default=30, ge=5, le=120),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    snapshot = refresh_device_timelapse_snapshot(
+        session=session,
+        request=request,
+        device=device,
+        settings=get_settings(),
+        days=days,
+        interval_minutes=interval_minutes,
+        max_frames=max_frames,
+        target_duration_seconds=target_duration_seconds,
+    )
+    return DeviceTimelapseRead.model_validate(timelapse_snapshot_payload(snapshot))
+
+
+def _timelapse_snapshot_expired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= datetime.now(timezone.utc) + timedelta(seconds=60)
 
 
 @router.post("/{device_id}/commands/light", response_model=DeviceCommandEnvelopeRead, status_code=201)

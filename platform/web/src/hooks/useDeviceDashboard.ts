@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RangeKey } from "@/components/ReadingTrendSection";
-import { getDeviceDashboard, sendDeviceCommand } from "@/api/devices";
+import { getDeviceDashboard, getDeviceTimelapse, sendDeviceCommand } from "@/api/devices";
 import { DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -12,6 +12,7 @@ type OptimisticLightState = {
 
 export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
   const autoRefreshMs = 10000;
+  const timelapseRefreshMs = 5 * 60 * 1000;
   const commandRefreshMs = 1000;
   const captureRefreshAttempts = 16;
   const captureRefreshDelayMs = 500;
@@ -34,6 +35,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   } | null>(null);
   const [optimisticLight, setOptimisticLight] = useState<OptimisticLightState | null>(null);
   const hasLoadedRef = useRef(false);
+  const timelapseLoadedRef = useRef(false);
+  const lastTimelapseRefreshAtRef = useRef(0);
+  const timelapseRequestIdRef = useRef(0);
 
   const refresh = useCallback(async (options?: { background?: boolean }) => {
     try {
@@ -41,7 +45,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       if (!options?.background || !hasLoadedRef.current) {
         setIsLoading(true);
       }
-      const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
+      const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined, { includeTimelapse: false });
       let optimisticForRender = optimisticLight;
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
@@ -113,8 +117,45 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           }
         }
       }
-      setDashboard(applyOptimisticLight(result.dashboard, optimisticForRender));
+      setDashboard((current) => {
+        const preservedTimelapse =
+          current && current.device.id === result.dashboard.device.id ? current.timelapse : undefined;
+        return applyOptimisticLight(
+          {
+            ...result.dashboard,
+            timelapse: result.dashboard.timelapse ?? preservedTimelapse,
+          },
+          optimisticForRender,
+        );
+      });
       hasLoadedRef.current = true;
+      const now = Date.now();
+      const shouldRefreshTimelapse =
+        !options?.background ||
+        !timelapseLoadedRef.current ||
+        now - lastTimelapseRefreshAtRef.current >= timelapseRefreshMs;
+      if (shouldRefreshTimelapse && !result.usedMock) {
+        lastTimelapseRefreshAtRef.current = now;
+        const requestId = ++timelapseRequestIdRef.current;
+        void getDeviceTimelapse(deviceId, token ?? undefined)
+          .then((timelapse) => {
+            if (requestId !== timelapseRequestIdRef.current) {
+              return;
+            }
+            setDashboard((current) =>
+              current && current.device.id === result.dashboard.device.id
+                ? {
+                    ...current,
+                    timelapse,
+                  }
+                : current,
+            );
+            timelapseLoadedRef.current = true;
+          })
+          .catch(() => {
+            // Timelapse is useful, but it should not block the primary dashboard.
+          });
+      }
     } catch (err) {
       setUsedMock(false);
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
@@ -130,6 +171,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       return;
     }
     hasLoadedRef.current = false;
+    timelapseLoadedRef.current = false;
+    lastTimelapseRefreshAtRef.current = 0;
+    timelapseRequestIdRef.current += 1;
     refresh();
     if (!autoRefreshEnabled) {
       return;
@@ -227,7 +271,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         if (nextOptimisticLight) {
           setOptimisticLight(null);
           try {
-            const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined);
+            const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined, { includeTimelapse: false });
             setDashboard(refreshed.dashboard);
             setUsedMock(refreshed.usedMock);
             setLastUpdatedAt(new Date().toISOString());
@@ -294,7 +338,7 @@ async function waitForCaptureDashboardRefresh({
     if (attempt > 0) {
       await delay(delayMs);
     }
-    const result = await getDeviceDashboard(deviceId, selectedRange, token);
+    const result = await getDeviceDashboard(deviceId, selectedRange, token, { includeTimelapse: false });
     lastResult = result;
     const latestImageId = result.dashboard.recentImages[0]?.id ?? result.dashboard.device.latestImage?.id ?? null;
     if (latestImageId !== null && latestImageId !== baselineImageId) {
@@ -305,7 +349,7 @@ async function waitForCaptureDashboardRefresh({
       return result;
     }
   }
-  return lastResult ?? getDeviceDashboard(deviceId, selectedRange, token);
+  return lastResult ?? getDeviceDashboard(deviceId, selectedRange, token, { includeTimelapse: false });
 }
 
 function delay(ms: number): Promise<void> {

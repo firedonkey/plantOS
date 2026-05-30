@@ -1,0 +1,19 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - platform/infra/docker/Dockerfile.web
+      - --build-arg
+      - VITE_API_BASE_URL=${_VITE_API_BASE_URL}
+      - --build-arg
+      - VITE_AUTH_MODE=${_VITE_AUTH_MODE}
+      - --build-arg
+      - VITE_ENABLE_DEV_AUTH=${_VITE_ENABLE_DEV_AUTH}
+      - --build-arg
+      - VITE_ENABLE_MOCK_FALLBACK=${_VITE_ENABLE_MOCK_FALLBACK}
+      - -t
+      - ${_IMAGE_URI}
+      - .
+images:
+  - ${_IMAGE_URI}

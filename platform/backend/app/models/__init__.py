@@ -7,6 +7,7 @@ from app.models.event import Event, EventType
 from app.models.firmware import FirmwareRelease
 from app.models.image import Image
 from app.models.sensor_reading import SensorReading
+from app.models.timelapse import DeviceTimelapseSnapshot
 from app.models.user import User
 
 
@@ -26,5 +27,6 @@ __all__ = [
     "FirmwareRelease",
     "Image",
     "SensorReading",
+    "DeviceTimelapseSnapshot",
     "User",
 ]

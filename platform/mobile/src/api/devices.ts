@@ -756,9 +756,11 @@ export async function getDeviceDashboard(
   deviceId: string,
   range: RangeKey = "24h",
   token?: string,
+  options?: { includeTimelapse?: boolean },
 ): Promise<{ dashboard: DeviceDashboard; usedMock: boolean }> {
   try {
     const readingsQuery = buildReadingsQuery(range);
+    const includeTimelapse = options?.includeTimelapse ?? true;
     const [summary, history, commands, recentImages, timelapse] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
       apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?${readingsQuery}`, {}, token),
@@ -769,16 +771,7 @@ export async function getDeviceDashboard(
         }
         throw error;
       }),
-      apiRequest<ApiDeviceTimelapse>(
-        `/api/devices/${deviceId}/timelapse?days=7&interval_minutes=5&max_frames=168&target_duration_seconds=30`,
-        {},
-        token
-      ).catch((error) => {
-        if (error instanceof ApiError && error.status === 404) {
-          return undefined;
-        }
-        throw error;
-      }),
+      includeTimelapse ? getDeviceTimelapse(deviceId, token) : Promise.resolve(undefined),
     ]);
     const latestImage = summary.latest_image
       ? {
@@ -820,7 +813,7 @@ export async function getDeviceDashboard(
         },
         hardwareHealth: mapHardwareHealth(summary.hardware_health),
         recentImages: galleryImages,
-        timelapse: timelapse ? mapTimelapse(timelapse) : undefined,
+        timelapse,
         recentCommands: commands.slice(0, 6).map(mapCommand),
         history: mergeLatestReadingIntoHistory(mappedHistory, latestReading),
       },
@@ -837,6 +830,22 @@ export async function getDeviceDashboard(
         history: filterMockHistory(mockDashboard.history, range),
       },
     };
+  }
+}
+
+export async function getDeviceTimelapse(deviceId: string, token?: string): Promise<DeviceTimelapse | undefined> {
+  try {
+    const timelapse = await apiRequest<ApiDeviceTimelapse>(
+      `/api/devices/${deviceId}/timelapse?days=7&interval_minutes=5&max_frames=168&target_duration_seconds=30`,
+      {},
+      token,
+    );
+    return mapTimelapse(timelapse);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+    throw error;
   }
 }
 

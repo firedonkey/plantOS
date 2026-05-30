@@ -16,6 +16,7 @@
 #include "firmware_version.h"
 #include "ota/ota_update_manager.h"
 #include "platform/platform_client.h"
+#include "time/time_sync_manager.h"
 
 extern "C" {
 #include "esp_bt.h"
@@ -990,6 +991,7 @@ void setup() {
     Serial.printf("[camera-node] base_url: %s\n", g_platform_client->base_url().c_str());
     Serial.printf("[camera-node] device_id: %d\n", g_platform_client->device_id());
   }
+  plantlab::time_sync::begin();
   setupWiFi();
   setupEspNow();
   deinitCamera();
@@ -1005,6 +1007,7 @@ void loop() {
   maintainWiFiConnection();
 
   const unsigned long now = millis();
+  plantlab::time_sync::service(g_wifi_ready, now);
   if (camera_node_runtime_config_complete(g_runtime_config) && g_wifi_ready) {
     registerDeviceNode();
   }

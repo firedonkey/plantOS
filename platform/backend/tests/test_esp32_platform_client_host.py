@@ -142,6 +142,14 @@ class String {
 
 inline uint32_t millis() { return 0; }
 inline void delay(unsigned long) {}
+
+class SerialClass {
+ public:
+  template <typename... Args>
+  void printf(const char*, Args...) {}
+};
+
+inline SerialClass Serial;
 ''',
         encoding="utf-8",
     )
@@ -183,6 +191,20 @@ class WiFiClientSecure : public WiFiClient {
         encoding="utf-8",
     )
     (tmp_path / "WiFi.h").write_text("#pragma once\n", encoding="utf-8")
+    (tmp_path / "ESP.h").write_text(
+        r'''
+#pragma once
+#include <cstdint>
+
+class ESPClass {
+ public:
+  uint32_t getFreeHeap() const { return 123456; }
+};
+
+inline ESPClass ESP;
+''',
+        encoding="utf-8",
+    )
     (tmp_path / "HTTPClient.h").write_text(
         r'''
 #pragma once

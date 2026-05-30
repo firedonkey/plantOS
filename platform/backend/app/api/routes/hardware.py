@@ -10,6 +10,7 @@ from app.contracts import (
     CommandProtocolStatus,
     DiagnosticSeverity,
     EventType,
+    HeartbeatPayload,
     ProtocolValidationError,
     diagnostics_snapshot_payload,
     is_device_message_envelope,
@@ -20,7 +21,7 @@ from app.contracts import (
 from app.db.session import get_session
 from app.models import CommandStatus
 from app.schemas.commands import CommandRead
-from app.schemas.diagnostics import DeviceDiagnosticSnapshotRead
+from app.schemas.diagnostics import DeviceDiagnosticSnapshotRead, HardwareDiagnosticsCreate
 from app.schemas.hardware import (
     HardwareCommandResultCreate,
     HardwareHeartbeatCreate,
@@ -168,7 +169,10 @@ def hardware_heartbeat(
     session: Session = Depends(get_session),
 ):
     device = _require_device(request, session)
-    payload, correlation_id, contract_data = _normalize_heartbeat_payload(raw_payload, device_id=device.id)
+    payload, correlation_id, contract_data, diagnostics_event_source = _normalize_heartbeat_payload(
+        raw_payload,
+        device_id=device.id,
+    )
     last_seen_at = None
     node_role = payload.node_role
     diagnostics_snapshot = None
@@ -257,7 +261,7 @@ def hardware_heartbeat(
                 data={"source": "heartbeat"},
                 occurred_at=last_seen_at,
             )
-        if diagnostics_snapshot is not None:
+        if diagnostics_snapshot is not None and diagnostics_event_source is not None:
             write_canonical_event(
                 session,
                 event_type=EventType.DIAGNOSTICS_RECEIVED,
@@ -267,7 +271,7 @@ def hardware_heartbeat(
                 node_role=updated_node.node_role,
                 correlation_id=correlation_id,
                 data={
-                    "source": "legacy_heartbeat_diagnostics",
+                    "source": diagnostics_event_source,
                     "schema_version": diagnostics_snapshot.schema_version,
                 },
                 occurred_at=last_seen_at,
@@ -356,7 +360,7 @@ def _normalize_heartbeat_payload(
     raw_payload: dict[str, Any],
     *,
     device_id: int,
-) -> tuple[HardwareHeartbeatCreate, str | None, dict[str, Any]]:
+) -> tuple[HardwareHeartbeatCreate, str | None, dict[str, Any], str | None]:
     if is_device_message_envelope(raw_payload):
         try:
             message = parse_heartbeat_message(raw_payload)
@@ -374,9 +378,11 @@ def _normalize_heartbeat_payload(
                 light_on=ambient_light.enabled if ambient_light else None,
                 light_intensity_percent=ambient_light.brightness_percent if ambient_light else None,
                 message=heartbeat.node_status.value,
+                diagnostics=_diagnostics_from_heartbeat_payload(heartbeat),
             ),
             message.message_id,
             heartbeat.model_dump(mode="json", exclude_none=True),
+            None,
         )
 
     try:
@@ -388,7 +394,30 @@ def _normalize_heartbeat_payload(
             "Request validation failed.",
             details=_validation_error_details(exc),
         ) from exc
-    return payload, None, {"source": "legacy"}
+    return (
+        payload,
+        None,
+        {"source": "legacy"},
+        "legacy_heartbeat_diagnostics" if payload.diagnostics is not None else None,
+    )
+
+
+def _diagnostics_from_heartbeat_payload(heartbeat: HeartbeatPayload) -> HardwareDiagnosticsCreate:
+    runtime = heartbeat.runtime
+    last_command = None
+    if runtime is not None and (runtime.last_command_id or runtime.last_command_status):
+        last_command = {
+            "id": parse_contract_command_id(runtime.last_command_id),
+            "status": runtime.last_command_status,
+        }
+    return HardwareDiagnosticsCreate(
+        schema_version=1,
+        uptime_seconds=heartbeat.uptime_seconds,
+        wifi_rssi_dbm=heartbeat.wifi_rssi_dbm,
+        provisioning_state=runtime.provisioning_status if runtime is not None else None,
+        last_command=last_command,
+        error_counters={},
+    )
 
 
 def _normalize_command_result_payload(

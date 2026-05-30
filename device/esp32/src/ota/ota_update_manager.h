@@ -42,6 +42,8 @@ class OtaUpdateManager {
     OtaUpdateManager* manager;
     size_t bytes_written;
     String error;
+    size_t next_progress_log_bytes;
+    uint32_t chunks_written;
   };
 
   static bool writeChunk(const uint8_t* bytes, size_t length, void* context);

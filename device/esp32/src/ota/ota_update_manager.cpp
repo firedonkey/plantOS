@@ -19,6 +19,7 @@ constexpr char kPendingCommandTypeKey[] = "pending_cmd_type";
 constexpr char kPendingLegacyCommandIdKey[] = "pending_cmd_num";
 constexpr unsigned long kInitialOtaDelayMs = 60000UL;
 constexpr unsigned long kOtaCheckIntervalMs = 6UL * 60UL * 60UL * 1000UL;
+constexpr size_t kOtaProgressLogIntervalBytes = 128UL * 1024UL;
 #ifdef UPDATE_SIZE_UNKNOWN
 constexpr size_t kUpdateSizeUnknown = UPDATE_SIZE_UNKNOWN;
 #else
@@ -256,7 +257,20 @@ bool OtaUpdateManager::installManifest(const FirmwareManifest& manifest) {
 
   const size_t expected_artifact_size = manifest.artifact_size_bytes;
   const size_t update_size = expected_artifact_size > 0 ? expected_artifact_size : kUpdateSizeUnknown;
-  if (!Update.begin(update_size, U_FLASH)) {
+  Serial.printf(
+      "[ota] Update.begin release=%s expected_bytes=%lu update_size=%lu free_heap=%lu\n",
+      manifest.release_id.c_str(),
+      static_cast<unsigned long>(expected_artifact_size),
+      static_cast<unsigned long>(update_size),
+      static_cast<unsigned long>(ESP.getFreeHeap()));
+  const bool update_begin_ok = Update.begin(update_size, U_FLASH);
+  Serial.printf(
+      "[ota] Update.begin result=%s error=%u message=%s free_heap=%lu\n",
+      update_begin_ok ? "ok" : "failed",
+      static_cast<unsigned int>(Update.getError()),
+      Update.errorString(),
+      static_cast<unsigned long>(ESP.getFreeHeap()));
+  if (!update_begin_ok) {
     String error = Update.errorString();
     reportStatus(
         PLANTLAB_OTA_STATUS_FAILED,
@@ -270,7 +284,7 @@ bool OtaUpdateManager::installManifest(const FirmwareManifest& manifest) {
   mbedtls_sha256_init(&g_sha_context);
   mbedtls_sha256_starts(&g_sha_context, 0);
 
-  DownloadContext context{this, 0, ""};
+  DownloadContext context{this, 0, "", kOtaProgressLogIntervalBytes, 0};
   String error;
   const bool downloaded = client_->download_ota_artifact(
       manifest.artifact_url,
@@ -280,11 +294,18 @@ bool OtaUpdateManager::installManifest(const FirmwareManifest& manifest) {
   if (!downloaded) {
     Update.abort();
     mbedtls_sha256_free(&g_sha_context);
+    const String failure = context.error.length() > 0 ? context.error : error;
+    Serial.printf(
+        "[ota] download failed release=%s bytes_written=%lu error=%s free_heap=%lu\n",
+        manifest.release_id.c_str(),
+        static_cast<unsigned long>(context.bytes_written),
+        failure.c_str(),
+        static_cast<unsigned long>(ESP.getFreeHeap()));
     reportStatus(
         PLANTLAB_OTA_STATUS_FAILED,
         &manifest,
         0,
-        error.c_str(),
+        failure.c_str(),
         PLANTLAB_OTA_FAILURE_DOWNLOAD_FAILED);
     return false;
   }
@@ -326,6 +347,12 @@ bool OtaUpdateManager::installManifest(const FirmwareManifest& manifest) {
 
   if (!Update.end(true)) {
     String update_error = Update.errorString();
+    Serial.printf(
+        "[ota] Update.end failed release=%s error=%u message=%s free_heap=%lu\n",
+        manifest.release_id.c_str(),
+        static_cast<unsigned int>(Update.getError()),
+        update_error.c_str(),
+        static_cast<unsigned long>(ESP.getFreeHeap()));
     reportStatus(
         PLANTLAB_OTA_STATUS_FAILED,
         &manifest,
@@ -334,6 +361,11 @@ bool OtaUpdateManager::installManifest(const FirmwareManifest& manifest) {
         PLANTLAB_OTA_FAILURE_INSTALL_FAILED);
     return false;
   }
+  Serial.printf(
+      "[ota] Update.end ok release=%s bytes=%lu free_heap=%lu\n",
+      manifest.release_id.c_str(),
+      static_cast<unsigned long>(context.bytes_written),
+      static_cast<unsigned long>(ESP.getFreeHeap()));
 
   if (preferences_.begin(kOtaPreferencesNamespace, false)) {
     preferences_.putString(kPendingVersionKey, manifest.version);
@@ -359,11 +391,31 @@ bool OtaUpdateManager::writeChunk(const uint8_t* bytes, size_t length, void* con
   }
   const size_t written = Update.write(const_cast<uint8_t*>(bytes), length);
   if (written != length) {
-    download->error = Update.errorString();
+    download->error =
+        "Update.write failed requested=" + String(static_cast<unsigned long>(length)) +
+        " written=" + String(static_cast<unsigned long>(written)) +
+        " total=" + String(static_cast<unsigned long>(download->bytes_written)) +
+        " error=" + String(static_cast<unsigned int>(Update.getError())) +
+        " message=" + Update.errorString() +
+        " free_heap=" + String(static_cast<unsigned long>(ESP.getFreeHeap()));
+    Serial.printf("[ota] %s\n", download->error.c_str());
     return false;
   }
   mbedtls_sha256_update(&g_sha_context, bytes, length);
   download->bytes_written += written;
+  ++download->chunks_written;
+  if (download->chunks_written == 1 ||
+      download->bytes_written >= download->next_progress_log_bytes) {
+    Serial.printf(
+        "[ota] write progress bytes=%lu chunk=%lu last_write=%lu free_heap=%lu\n",
+        static_cast<unsigned long>(download->bytes_written),
+        static_cast<unsigned long>(download->chunks_written),
+        static_cast<unsigned long>(written),
+        static_cast<unsigned long>(ESP.getFreeHeap()));
+    while (download->bytes_written >= download->next_progress_log_bytes) {
+      download->next_progress_log_bytes += kOtaProgressLogIntervalBytes;
+    }
+  }
   return true;
 }
 

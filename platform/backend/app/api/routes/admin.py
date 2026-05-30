@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_admin_user
+from app.api.deps import get_admin_user, get_optional_current_user
+from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import (
     Command,
@@ -28,6 +29,7 @@ from app.schemas.admin import (
     AdminSummaryRead,
     AdminUserRead,
 )
+from app.services.timelapse import refresh_device_timelapse_snapshot
 
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -74,6 +76,67 @@ def get_admin_diagnostics(
         recent_commands=_admin_commands(session),
         firmware_releases=_admin_firmware_releases(session),
     )
+
+
+@router.post("/timelapse/refresh")
+def refresh_timelapse_cache(
+    request: Request,
+    device_id: int | None = Query(default=None),
+    days: int = Query(default=7, ge=1, le=30),
+    interval_minutes: int = Query(default=5, ge=5, le=24 * 60),
+    max_frames: int = Query(default=168, ge=2, le=720),
+    target_duration_seconds: int = Query(default=30, ge=5, le=120),
+    session: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    settings = get_settings()
+    if not _can_refresh_timelapse(request, current_user):
+        raise HTTPException(status_code=403, detail="Timelapse refresh access required.")
+
+    statement = select(Device).where(Device.archived_at.is_(None))
+    if device_id is not None:
+        statement = statement.where(Device.id == device_id)
+    devices = session.scalars(statement.order_by(Device.id.asc())).all()
+    snapshots = [
+        refresh_device_timelapse_snapshot(
+            session=session,
+            request=request,
+            device=device,
+            settings=settings,
+            days=days,
+            interval_minutes=interval_minutes,
+            max_frames=max_frames,
+            target_duration_seconds=target_duration_seconds,
+        )
+        for device in devices
+    ]
+    return {
+        "status": "refreshed",
+        "device_count": len(devices),
+        "snapshots": [
+            {
+                "device_id": snapshot.device_id,
+                "frame_count": snapshot.frame_count,
+                "total_image_count": snapshot.total_image_count,
+                "refreshed_at": snapshot.refreshed_at,
+                "expires_at": snapshot.expires_at,
+            }
+            for snapshot in snapshots
+        ],
+    }
+
+
+def _can_refresh_timelapse(request: Request, current_user: User | None) -> bool:
+    settings = get_settings()
+    if current_user is not None and (current_user.email or "").strip().lower() in settings.effective_admin_emails:
+        return True
+    expected_secret = settings.timelapse_refresh_secret or settings.provisioning_service_secret
+    provided_secret = (
+        request.headers.get("x-plantlab-timelapse-secret")
+        or request.headers.get("x-plantlab-service-secret")
+        or ""
+    )
+    return bool(expected_secret and provided_secret and provided_secret == expected_secret)
 
 
 def _count(session: Session, column, *conditions) -> int:

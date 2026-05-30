@@ -6,6 +6,7 @@ from mimetypes import guess_type
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import unquote, urlparse
+from urllib.request import Request as UrlRequest, urlopen
 from uuid import uuid4
 
 from fastapi import Request, UploadFile
@@ -167,12 +168,8 @@ def _signed_gcs_image_url(bucket_name: str, object_name: str, settings: Settings
             client=client,
         )
     except AttributeError:
-        credentials = client._credentials
-        service_account_email = getattr(credentials, "service_account_email", None) or getattr(
-            credentials,
-            "signer_email",
-            None,
-        )
+        credentials = _scoped_signing_credentials(client._credentials)
+        service_account_email = _signing_service_account_email(credentials)
         if not service_account_email:
             raise RuntimeError("GCS signed image URLs require service account signing credentials.")
         credentials.refresh(GoogleAuthRequest())
@@ -183,6 +180,38 @@ def _signed_gcs_image_url(bucket_name: str, object_name: str, settings: Settings
             service_account_email=service_account_email,
             access_token=credentials.token,
         )
+
+
+def _scoped_signing_credentials(credentials):
+    with_scopes = getattr(credentials, "with_scopes", None)
+    if callable(with_scopes):
+        return with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
+    return credentials
+
+
+def _signing_service_account_email(credentials) -> str | None:
+    service_account_email = getattr(credentials, "service_account_email", None) or getattr(
+        credentials,
+        "signer_email",
+        None,
+    )
+    if service_account_email and service_account_email != "default":
+        return service_account_email
+    return _metadata_service_account_email()
+
+
+def _metadata_service_account_email() -> str | None:
+    request = UrlRequest(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    try:
+        with urlopen(request, timeout=2) as response:
+            email = response.read().decode("utf-8").strip()
+    except Exception:
+        logger.warning("Cloud metadata service account email lookup failed.", exc_info=True)
+        return None
+    return email or None
 
 
 def _is_gcs_url(path: str) -> bool:

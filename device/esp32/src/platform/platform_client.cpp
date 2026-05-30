@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <ArduinoJson.h>
+#include <ESP.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -922,6 +923,13 @@ bool PlatformClient::download_ota_artifact(
   }
   http.addHeader(kDeviceTokenHeader, auth_header_value());
   const int status_code = http.GET();
+  const int content_length = http.getSize();
+  Serial.printf(
+      "[ota] artifact HTTP status=%d content_length=%d free_heap=%lu path=%s\n",
+      status_code,
+      content_length,
+      static_cast<unsigned long>(ESP.getFreeHeap()),
+      artifact_path.c_str());
   if (status_code < 200 || status_code >= 300) {
     const String body = status_code > 0 ? http.getString() : http.errorToString(status_code);
     http.end();
@@ -931,7 +939,7 @@ bool PlatformClient::download_ota_artifact(
 
   WiFiClient* stream = http.getStreamPtr();
   uint8_t buffer[kImageUploadChunkSize];
-  int remaining = http.getSize();
+  int remaining = content_length;
   uint32_t last_progress_at = millis();
   while (http.connected() && (remaining > 0 || remaining == -1)) {
     const size_t available = stream->available();
@@ -960,6 +968,10 @@ bool PlatformClient::download_ota_artifact(
     last_progress_at = millis();
   }
   http.end();
+  if (remaining > 0) {
+    set_error(error, "OTA artifact incomplete remaining=" + String(remaining));
+    return false;
+  }
   return remaining <= 0;
 }
 

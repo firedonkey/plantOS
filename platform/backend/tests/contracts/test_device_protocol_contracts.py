@@ -75,8 +75,22 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
         body = response.json()
         assert body["light_on"] is True
         assert body["light_intensity_percent"] == 65
+        assert body["diagnostics"]["uptime_seconds"] == 123
+        assert body["diagnostics"]["wifi_rssi_dbm"] == -58
+        assert body["diagnostics"]["firmware_version"] == "1.0.0"
+        assert body["diagnostics"]["provisioning_state"] == "normal"
+        assert body["diagnostics"]["last_command_id"] == 12
+        assert body["diagnostics"]["last_command_status"] == "completed"
 
         with client.testing_session_local() as session:
+            snapshot = session.get(DeviceDiagnosticSnapshot, "master-01")
+            assert snapshot is not None
+            assert snapshot.uptime_seconds == 123
+            assert snapshot.wifi_rssi_dbm == -58
+            assert snapshot.firmware_version == "1.0.0"
+            assert snapshot.provisioning_state == "normal"
+            assert snapshot.last_command_id == 12
+            assert snapshot.last_command_status == "completed"
             event = (
                 session.query(DeviceDiagnosticEvent)
                 .filter(DeviceDiagnosticEvent.event_type == "HEARTBEAT_RECEIVED")
@@ -84,6 +98,8 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
             )
             assert event.metadata_json["data"]["actuators"]["ambient_light"]["brightness_percent"] == 65
             assert event.metadata_json["data"]["runtime"]["capture_interval_seconds"] == 3600
+            event_types = [item.event_type for item in session.query(DeviceDiagnosticEvent).all()]
+            assert "DIAGNOSTICS_RECEIVED" not in event_types
     finally:
         teardown_overrides()
 
