@@ -72,6 +72,7 @@ class EventType(str, Enum):
     COMMAND_QUEUED = "COMMAND_QUEUED"
     COMMAND_SENT = "COMMAND_SENT"
     COMMAND_POLLED = "COMMAND_POLLED"
+    COMMAND_POLL_STALE = "COMMAND_POLL_STALE"
     COMMAND_ACKED = "COMMAND_ACKED"
     COMMAND_IN_PROGRESS = "COMMAND_IN_PROGRESS"
     COMMAND_COMPLETED = "COMMAND_COMPLETED"
@@ -214,6 +215,11 @@ class HeartbeatRuntimeState(ContractModel):
     camera_node_status: DeviceStatus | None = None
     last_command_id: str | None = Field(default=None, min_length=1, max_length=120)
     last_command_status: str | None = Field(default=None, min_length=1, max_length=80)
+    last_command_poll_at: datetime | None = None
+    last_command_poll_status: str | None = Field(default=None, min_length=1, max_length=80)
+    last_command_poll_error: str | None = Field(default=None, max_length=160)
+    last_command_poll_latency_ms: int | None = Field(default=None, ge=0, le=300_000)
+    command_poll_stale_seconds: int | None = Field(default=None, ge=0, le=86_400)
     time_sync_status: str | None = Field(default=None, min_length=1, max_length=80)
     last_ntp_sync_at: datetime | None = None
 

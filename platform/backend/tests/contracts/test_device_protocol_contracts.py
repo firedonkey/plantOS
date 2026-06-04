@@ -63,6 +63,10 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
             "camera_node_status": "online",
             "last_command_id": "cmd_12",
             "last_command_status": "completed",
+            "last_command_poll_at": "2026-05-27T12:00:01Z",
+            "last_command_poll_status": "ok",
+            "last_command_poll_latency_ms": 112,
+            "command_poll_stale_seconds": 4,
         }
 
         response = client.post(
@@ -98,6 +102,8 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
             )
             assert event.metadata_json["data"]["actuators"]["ambient_light"]["brightness_percent"] == 65
             assert event.metadata_json["data"]["runtime"]["capture_interval_seconds"] == 3600
+            assert event.metadata_json["data"]["runtime"]["last_command_poll_status"] == "ok"
+            assert event.metadata_json["data"]["runtime"]["command_poll_stale_seconds"] == 4
             event_types = [item.event_type for item in session.query(DeviceDiagnosticEvent).all()]
             assert "DIAGNOSTICS_RECEIVED" not in event_types
     finally:

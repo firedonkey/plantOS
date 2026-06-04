@@ -205,8 +205,14 @@ def image_content(
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found.")
 
+    image_path = image.path
+    # Release the DB connection before reading image bytes from storage. The
+    # proxy endpoint can receive many concurrent browser image requests, and
+    # holding a pooled DB connection during GCS reads can starve auth lookups.
+    session.close()
+
     try:
-        return image_response(image.path, get_settings())
+        return image_response(image_path, get_settings())
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Image content not found.") from exc
 

@@ -50,6 +50,12 @@ int main() {
   status.camera_node_status = "online";
   status.last_command_contract_id = "cmd_12";
   status.last_command_status = "completed";
+  status.last_command_poll_at = "2026-01-01T00:00:01Z";
+  status.last_command_poll_status = "ok";
+  status.has_last_command_poll_latency_ms = true;
+  status.last_command_poll_latency_ms = 112;
+  status.has_command_poll_stale_seconds = true;
+  status.command_poll_stale_seconds = 4;
   status.diagnostics.valid = true;
   status.diagnostics.has_uptime_seconds = true;
   status.diagnostics.uptime_seconds = 3661;
@@ -81,7 +87,7 @@ int main() {
   assert(platform_client_host_test::last_url == "https://api.example.test/base/api/hardware/heartbeat");
   assert(platform_client_host_test::last_post_body.length() > 0);
 
-  StaticJsonDocument<2048> doc;
+  StaticJsonDocument<3072> doc;
   DeserializationError json_error = deserializeJson(doc, platform_client_host_test::last_post_body);
   assert(!json_error);
   assert(std::string(doc["schema_version"] | "") == "1.0");
@@ -106,17 +112,27 @@ int main() {
   assert(std::string(doc["payload"]["runtime"]["camera_node_status"] | "") == "online");
   assert(std::string(doc["payload"]["runtime"]["last_command_id"] | "") == "cmd_12");
   assert(std::string(doc["payload"]["runtime"]["last_command_status"] | "") == "completed");
+  assert(std::string(doc["payload"]["runtime"]["last_command_poll_at"] | "") == "2026-01-01T00:00:01Z");
+  assert(std::string(doc["payload"]["runtime"]["last_command_poll_status"] | "") == "ok");
+  assert((doc["payload"]["runtime"]["last_command_poll_latency_ms"] | 0) == 112);
+  assert((doc["payload"]["runtime"]["command_poll_stale_seconds"] | 0) == 4);
   assert(std::string(doc["payload"]["runtime"]["time_sync_status"] | "") == "unsynchronized");
 
   plantlab::time_sync::setSynchronizedTimeForTesting(1767225600);
   platform_client_host_test::reset_http_capture();
   assert(client.send_hardware_heartbeat(status, &error));
-  StaticJsonDocument<2048> synced_doc;
+  StaticJsonDocument<3072> synced_doc;
   json_error = deserializeJson(synced_doc, platform_client_host_test::last_post_body);
   assert(!json_error);
   assert(std::string(synced_doc["sent_at"] | "") == "2026-01-01T00:00:00Z");
   assert(std::string(synced_doc["payload"]["runtime"]["time_sync_status"] | "") == "synchronized");
   assert(std::string(synced_doc["payload"]["runtime"]["last_ntp_sync_at"] | "") == "2026-01-01T00:00:00Z");
+
+  platform_client_host_test::reset_http_capture();
+  platform_client_host_test::next_response_body = "{\"schema_version\":\"1.0\",\"commands\":[]}";
+  PlatformCommand empty_commands[1]{};
+  assert(client.poll_contract_commands("master-01", "master", "0.2.3", "esp32_master", empty_commands, 1, &error) == 0);
+  assert(platform_client_host_test::last_timeout_ms == 5000);
 
   platform_client_host_test::reset_http_capture();
   PlatformStatus legacy_status;

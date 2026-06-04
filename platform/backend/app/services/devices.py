@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select, text, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -85,7 +85,30 @@ def update_device_for_user(session: Session, user: User, device_id: int, device_
 
 
 def get_device_by_api_token(session: Session, api_token: str) -> Device | None:
-    return session.scalar(select(Device).where(Device.api_token == api_token))
+    statement = select(Device).where(Device.api_token == api_token)
+    try:
+        return session.scalar(statement)
+    except OperationalError as exc:
+        if not _is_transient_connection_error(exc):
+            raise
+        session.rollback()
+        return session.scalar(statement)
+
+
+def _is_transient_connection_error(exc: OperationalError) -> bool:
+    if getattr(exc, "connection_invalidated", False):
+        return True
+    message = str(exc).lower()
+    return any(
+        fragment in message
+        for fragment in (
+            "server closed the connection unexpectedly",
+            "consuming input failed",
+            "connection not open",
+            "connection was closed",
+            "ssl connection has been closed unexpectedly",
+        )
+    )
 
 
 def delete_device_for_user(session: Session, user: User, device_id: int) -> bool:

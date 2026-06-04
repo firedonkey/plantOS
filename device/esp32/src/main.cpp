@@ -243,6 +243,11 @@ String g_last_command_status;
 String g_last_command_code;
 String g_last_command_message;
 unsigned long g_last_command_result_ms = 0;
+unsigned long g_last_command_poll_completed_ms = 0;
+uint32_t g_last_command_poll_latency_ms = 0;
+String g_last_command_poll_at_iso;
+String g_last_command_poll_status = "never";
+String g_last_command_poll_error;
 bool g_master_node_registered = false;
 unsigned long g_last_master_node_register_attempt_ms = 0;
 bool g_scheduled_capture_retry_pending = false;
@@ -259,6 +264,7 @@ void flushPendingCaptureCommandResult();
 void markPendingCaptureCommandInProgress(int command_id);
 void recordDiagnosticError(const char* code, const String& message);
 void recordLastCommandResult(int command_id, const char* status, const String& message, const char* code);
+void recordCommandPollResult(const char* status, const String& error, unsigned long started_at_ms, unsigned long finished_at_ms);
 bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now);
 bool dispatchPendingCaptureCommand(unsigned long now);
 void serviceCameraCaptureFlight(unsigned long now);
@@ -1580,6 +1586,24 @@ void recordLastCommandResult(int command_id, const char* status, const String& m
     g_last_command_message = g_last_command_message.substring(0, 120);
   }
   g_last_command_result_ms = millis();
+}
+
+void recordCommandPollResult(
+    const char* status,
+    const String& error,
+    unsigned long started_at_ms,
+    unsigned long finished_at_ms) {
+  g_last_command_poll_completed_ms = finished_at_ms;
+  g_last_command_poll_latency_ms =
+      finished_at_ms >= started_at_ms ? static_cast<uint32_t>(finished_at_ms - started_at_ms) : 0;
+  g_last_command_poll_status = status == nullptr || strlen(status) == 0 ? "unknown" : String(status);
+  g_last_command_poll_error = error;
+  if (g_last_command_poll_error.length() > 120) {
+    g_last_command_poll_error = g_last_command_poll_error.substring(0, 120);
+  }
+  char timestamp[32]{};
+  plantlab::time_sync::currentUtcIso8601(timestamp, sizeof(timestamp));
+  g_last_command_poll_at_iso = timestamp;
 }
 
 plantlab::ProvisioningParseError bleWifiValidationErrorForStatus(wl_status_t status) {
@@ -3036,6 +3060,17 @@ PlatformStatus platform_status(const String& message) {
     status.last_command_contract_id = "cmd_" + String(g_last_command_id);
     status.last_command_status = g_last_command_status;
   }
+  if (g_last_command_poll_at_iso.length() > 0) {
+    status.last_command_poll_at = g_last_command_poll_at_iso;
+  }
+  status.last_command_poll_status = g_last_command_poll_status;
+  status.last_command_poll_error = g_last_command_poll_error;
+  status.has_last_command_poll_latency_ms = g_last_command_poll_completed_ms > 0;
+  status.last_command_poll_latency_ms = g_last_command_poll_latency_ms;
+  status.has_command_poll_stale_seconds = true;
+  status.command_poll_stale_seconds = g_last_command_poll_completed_ms > 0
+                                          ? ageSecondsSince(now, g_last_command_poll_completed_ms)
+                                          : static_cast<uint32_t>(now / 1000UL);
   status.diagnostics.valid = true;
   status.diagnostics.has_uptime_seconds = true;
   status.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
@@ -3430,6 +3465,7 @@ void poll_platform_commands(unsigned long now) {
   PlatformCommand commands[4]{};
   String error;
   const String hardware_id = stableHardwareDeviceId();
+  const unsigned long poll_started_at = millis();
   int count = g_platform_client->poll_contract_commands(
       hardware_id.c_str(),
       PLANTLAB_NODE_ROLE_MASTER,
@@ -3439,13 +3475,18 @@ void poll_platform_commands(unsigned long now) {
       4,
       &error);
   if (count < 0) {
-    Serial.printf("[platform] contract command poll failed, falling back to legacy: %s\n", error.c_str());
+    const String contract_error = error;
+    Serial.printf("[platform] contract command poll failed, falling back to legacy: %s\n", contract_error.c_str());
     error = "";
     count = g_platform_client->poll_hardware_pending_commands(commands, 4, &error);
     if (count < 0) {
       Serial.printf("[platform] command poll failed: %s\n", error.c_str());
+      recordCommandPollResult("error", error, poll_started_at, millis());
       return;
     }
+    recordCommandPollResult("legacy_ok", contract_error, poll_started_at, millis());
+  } else {
+    recordCommandPollResult("ok", "", poll_started_at, millis());
   }
 
   for (int i = 0; i < count; ++i) {

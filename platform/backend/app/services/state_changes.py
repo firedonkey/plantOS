@@ -16,6 +16,7 @@ from app.services.events import write_canonical_event
 WIFI_DEGRADED_RSSI_DBM = -80
 WIFI_RECOVERED_RSSI_DBM = -70
 LOW_MEMORY_HEAP_BYTES = 32_768
+COMMAND_POLL_STALE_SECONDS = 300
 
 
 def emit_heartbeat_state_changes(
@@ -86,6 +87,20 @@ def emit_heartbeat_state_changes(
         node_role=node_role,
         previous=_int(previous.get("wifi_rssi_dbm")),
         current=_int(current.get("wifi_rssi_dbm")),
+        correlation_id=correlation_id,
+        occurred_at=occurred_at,
+    )
+    _emit_command_poll_stale(
+        session,
+        device_id=device_id,
+        hardware_device_id=hardware_device_id,
+        node_role=node_role,
+        previous_stale_seconds=_runtime_int(previous, "command_poll_stale_seconds"),
+        current_stale_seconds=_runtime_int(current, "command_poll_stale_seconds"),
+        current_status=_runtime_value(current, "last_command_poll_status"),
+        current_error=_runtime_text(current, "last_command_poll_error"),
+        current_latency_ms=_runtime_int(current, "last_command_poll_latency_ms"),
+        last_poll_at=_runtime_text(current, "last_command_poll_at"),
         correlation_id=correlation_id,
         occurred_at=occurred_at,
     )
@@ -393,6 +408,48 @@ def _emit_wifi_signal_change(
         )
 
 
+def _emit_command_poll_stale(
+    session: Session,
+    *,
+    device_id: int,
+    hardware_device_id: str,
+    node_role: str,
+    previous_stale_seconds: int | None,
+    current_stale_seconds: int | None,
+    current_status: str | None,
+    current_error: str | None,
+    current_latency_ms: int | None,
+    last_poll_at: str | None,
+    correlation_id: str | None,
+    occurred_at: datetime | None,
+) -> None:
+    if current_stale_seconds is None or current_stale_seconds < COMMAND_POLL_STALE_SECONDS:
+        return
+    if previous_stale_seconds is not None and previous_stale_seconds >= COMMAND_POLL_STALE_SECONDS:
+        return
+
+    write_canonical_event(
+        session,
+        event_type=EventType.COMMAND_POLL_STALE,
+        severity=DiagnosticSeverity.WARNING,
+        device_id=device_id,
+        hardware_device_id=hardware_device_id,
+        node_role=node_role,
+        correlation_id=correlation_id,
+        data={
+            "source": "heartbeat",
+            "threshold_seconds": COMMAND_POLL_STALE_SECONDS,
+            "previous_stale_seconds": previous_stale_seconds,
+            "current_stale_seconds": current_stale_seconds,
+            "last_command_poll_status": current_status,
+            "last_command_poll_error": current_error,
+            "last_command_poll_latency_ms": current_latency_ms,
+            "last_command_poll_at": last_poll_at,
+        },
+        occurred_at=occurred_at,
+    )
+
+
 def _latest_event_data(
     session: Session,
     *,
@@ -459,6 +516,22 @@ def _runtime_value(payload: dict[str, Any], key: str) -> str | None:
     if not isinstance(runtime, dict):
         return None
     return _string(runtime.get(key))
+
+
+def _runtime_text(payload: dict[str, Any], key: str) -> str | None:
+    runtime = payload.get("runtime")
+    if not isinstance(runtime, dict):
+        return None
+    value = runtime.get(key)
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _runtime_int(payload: dict[str, Any], key: str) -> int | None:
+    runtime = payload.get("runtime")
+    if not isinstance(runtime, dict):
+        return None
+    return _int(runtime.get(key))
 
 
 def _clean_ambient_light(value: Any) -> dict[str, Any]:

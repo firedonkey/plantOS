@@ -35,6 +35,7 @@ Implemented writers:
 - `COMMAND_QUEUED`
 - `COMMAND_SENT`
 - `COMMAND_POLLED`
+- `COMMAND_POLL_STALE`
 - `COMMAND_IN_PROGRESS`
 - `COMMAND_ACKED`
 - `COMMAND_COMPLETED`
@@ -82,6 +83,9 @@ Deduplication rules:
   The gap is intentional hysteresis to avoid flapping.
 - Device health changes emit when heartbeat `node_status` or diagnostics
   status/severity changes.
+- Command polling stale emits when heartbeat runtime reports
+  `command_poll_stale_seconds >= 300` after previously being below the
+  threshold. Repeated stale heartbeats do not emit duplicates.
 - Provisioning lifecycle events are deduplicated per device/hardware node and
   provisioning phase.
 - Image capture/upload lifecycle events are deduplicated by command or image

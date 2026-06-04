@@ -16,6 +16,7 @@
 
 namespace {
 constexpr uint32_t kHttpTimeoutMs = 10000;
+constexpr uint32_t kCommandPollTimeoutMs = 5000;
 constexpr uint32_t kOtaDownloadTimeoutMs = 30000;
 constexpr uint32_t kImageUploadTimeoutMs = 15000;
 constexpr uint32_t kImageUploadWriteIdleTimeoutMs = 5000;
@@ -237,6 +238,13 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
             status.camera_node_status.c_str(),
             status.last_command_contract_id.c_str(),
             status.last_command_status.c_str(),
+            status.last_command_poll_at.c_str(),
+            status.last_command_poll_status.c_str(),
+            status.last_command_poll_error.c_str(),
+            status.has_last_command_poll_latency_ms,
+            status.last_command_poll_latency_ms,
+            status.has_command_poll_stale_seconds,
+            status.command_poll_stale_seconds,
             &contract_body)) {
       int contract_status_code = 0;
       String contract_response_body;
@@ -382,7 +390,7 @@ int PlatformClient::poll_pending_commands(PlatformCommand* commands, size_t max_
 int PlatformClient::poll_hardware_pending_commands(PlatformCommand* commands, size_t max_commands, String* error) {
   int status_code = 0;
   String response_body;
-  if (!json_get("/api/hardware/commands/pending", &status_code, &response_body)) {
+  if (!json_get_with_timeout("/api/hardware/commands/pending", kCommandPollTimeoutMs, &status_code, &response_body)) {
     set_error(error, response_body);
     return -1;
   }
@@ -445,7 +453,7 @@ int PlatformClient::poll_contract_commands(
 
   int status_code = 0;
   String response_body;
-  if (!json_get(path, &status_code, &response_body)) {
+  if (!json_get_with_timeout(path, kCommandPollTimeoutMs, &status_code, &response_body)) {
     set_error(error, response_body);
     return -1;
   }
@@ -916,6 +924,7 @@ bool PlatformClient::download_ota_artifact(
   }
 
   HTTPClient http;
+  http.useHTTP10(true);
   http.setTimeout(kOtaDownloadTimeoutMs);
   if (!http.begin(join_url(artifact_path))) {
     set_error(error, "OTA artifact request setup failed");
@@ -1002,8 +1011,16 @@ bool PlatformClient::json_post(
 }
 
 bool PlatformClient::json_get(const String& path, int* status_code, String* response_body) {
+  return json_get_with_timeout(path, kHttpTimeoutMs, status_code, response_body);
+}
+
+bool PlatformClient::json_get_with_timeout(
+    const String& path,
+    uint32_t timeout_ms,
+    int* status_code,
+    String* response_body) {
   HTTPClient http;
-  http.setTimeout(kHttpTimeoutMs);
+  http.setTimeout(timeout_ms);
   if (!http.begin(join_url(path))) {
     if (response_body != nullptr) {
       *response_body = "request setup failed";

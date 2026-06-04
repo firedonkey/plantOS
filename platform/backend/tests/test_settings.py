@@ -70,6 +70,18 @@ def test_local_storage_defaults_to_proxy_image_urls(monkeypatch):
     clear_settings_cache()
 
 
+def test_gcs_storage_can_use_proxy_image_urls(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_STORAGE_BACKEND", "gcs")
+    monkeypatch.setenv("GCS_BUCKET_NAME", "plantlab-images")
+    monkeypatch.setenv("PLANTLAB_IMAGE_URL_STRATEGY", "proxy")
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.effective_image_url_strategy == "proxy"
+    clear_settings_cache()
+
+
 def test_image_url_strategy_must_be_valid(monkeypatch):
     monkeypatch.setenv("PLANTLAB_IMAGE_URL_STRATEGY", "public")
     clear_settings_cache()
@@ -137,9 +149,51 @@ def test_valid_production_settings(monkeypatch):
 
     assert settings.is_production is True
     assert settings.database_url == "postgresql+psycopg://plantlab:secret@localhost:5432/plantlab"
+    assert settings.database_pool_pre_ping is True
+    assert settings.database_pool_recycle_seconds == 1800
+    assert settings.database_pool_size == 2
+    assert settings.database_pool_max_overflow == 1
+    assert settings.database_pool_timeout_seconds == 10
     assert settings.session_secret == "a-secure-production-session-secret"
     assert settings.storage_backend == "gcs"
     assert settings.gcs_bucket_name == "plantlab-images"
+    clear_settings_cache()
+
+
+def test_database_pool_settings_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("PLANTLAB_DATABASE_POOL_PRE_PING", "false")
+    monkeypatch.setenv("PLANTLAB_DATABASE_POOL_RECYCLE_SECONDS", "900")
+    monkeypatch.setenv("PLANTLAB_DATABASE_POOL_SIZE", "2")
+    monkeypatch.setenv("PLANTLAB_DATABASE_POOL_MAX_OVERFLOW", "1")
+    monkeypatch.setenv("PLANTLAB_DATABASE_POOL_TIMEOUT_SECONDS", "5")
+    clear_settings_cache()
+
+    settings = get_settings()
+
+    assert settings.database_pool_pre_ping is False
+    assert settings.database_pool_recycle_seconds == 900
+    assert settings.database_pool_size == 2
+    assert settings.database_pool_max_overflow == 1
+    assert settings.database_pool_timeout_seconds == 5
+    clear_settings_cache()
+
+
+@pytest.mark.parametrize(
+    ("env_name", "env_value"),
+    (
+        ("PLANTLAB_DATABASE_POOL_RECYCLE_SECONDS", "-2"),
+        ("PLANTLAB_DATABASE_POOL_SIZE", "0"),
+        ("PLANTLAB_DATABASE_POOL_MAX_OVERFLOW", "-1"),
+        ("PLANTLAB_DATABASE_POOL_TIMEOUT_SECONDS", "0"),
+    ),
+)
+def test_database_pool_settings_must_be_valid(monkeypatch, env_name, env_value):
+    monkeypatch.setenv(env_name, env_value)
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match=env_name):
+        get_settings()
+
     clear_settings_cache()
 
 

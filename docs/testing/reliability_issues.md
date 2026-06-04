@@ -273,6 +273,7 @@ This file tracks issues found during local reliability validation.
 
 ## REL-GCP-HW-004: Camera OTA to 0.1.6 failed while writing artifact
 
+- Status: RESOLVED on `2026-05-31`.
 - Scenario: Phase 4 Gate 3 camera NTP patch delivery after camera power-cycle.
 - Severity: High
 - Classification: Camera OTA install blocker.
@@ -317,3 +318,367 @@ This file tracks issues found during local reliability validation.
   - These new logs are in firmware that is not yet running on the camera. The current camera `0.1.5` updater cannot emit them for the already-observed failure.
   - Current visible USB devices still do not expose the camera as an Espressif serial target; serial capture/direct flash requires connecting the camera board as a proper ESP32-S3 serial device.
 - Recommendation: Do not rerun Gate 3 or proceed to image/command validation until the camera is either direct-flashed with the patched firmware or a serial-backed OTA attempt captures the detailed write failure.
+- Phase 5 exception:
+  - Explicitly accepted for the 48-hour GCP soak on `2026-05-30`.
+  - The soak may proceed with camera firmware `0.1.5` because current camera heartbeat, diagnostics, connectivity, and image uploads are healthy.
+  - This remains a known OTA-path issue and should fail the soak only if camera runtime behavior degrades, image uploads stop, diagnostics become unhealthy, or OTA failure starts causing repeated runtime instability.
+- Post-hardening mini-soak observation on `2026-05-31`:
+  - During the post-hardening mini-soak, the camera automatically saw release `camera-0.1.6-gcp` as available again at `2026-05-31T19:04:59Z`.
+  - Camera OTA attempted `preparing` and `downloading`, then failed again at `2026-05-31T19:05:05Z`.
+  - Failure payload remained `failure_reason=download_failed` and `message=OTA artifact write failed`.
+  - Camera remained online after the failure and continued healthy heartbeats.
+  - Image uploads continued; latest mini-soak image upload was `2026-05-31T19:16:18Z`.
+  - This is consistent with the accepted `REL-GCP-HW-004` failure mode, but it creates warning events and unexpected OTA activity during the mini-soak.
+  - Recommendation: do not restart the full 48-hour soak until the camera `0.1.6` rollout is paused/withdrawn for this device or the camera OTA write failure is fixed. Otherwise the soak will continue to include known OTA failure warnings unrelated to the master command-poll hardening.
+- Root cause confirmed on `2026-05-31` with camera serial attached at `/dev/cu.usbmodem12201`:
+  - Running diagnostic camera firmware `0.1.6`, release `camera-0.1.7-gcp` reproduced the failure before the backend fix.
+  - Serial log showed `artifact HTTP status=200 content_length=-1`, followed by `Update.write failed requested=143 written=0 total=4020 error=8 message=Wrong Magic Byte`.
+  - The GCP backend served firmware artifacts as a streaming response without `Content-Length`; Arduino `HTTPClient::getStreamPtr()` exposed chunked-transfer framing to the firmware write loop, so `Update.write()` received non-firmware bytes.
+- Fix:
+  - Backend GCS firmware artifact responses now return a byte response with explicit `Content-Length`.
+  - Firmware OTA artifact downloads now request HTTP/1.0 as an additional guard against chunked transfer framing.
+  - Deployed backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260531210337` to Cloud Run revision `plantlab-api-00072-muc`.
+- Retest:
+  - Production artifact endpoint for `camera-0.1.7-gcp` returned `Content-Length: 1011024` and SHA-256 `35348eac9929b23133c60f085e7aa1d67b1bdadb8336e84b32320a80a49715a2`.
+  - Camera OTA `0.1.6 -> 0.1.7` completed with `OTA_VALIDATING`, `OTA_INSTALLING`, `OTA_REBOOTING`, and `OTA_SUCCESS` at `2026-05-31T21:14:39Z`.
+  - Published final camera release `camera-0.1.8-gcp`, which includes the firmware HTTP/1.0 hardening.
+  - Camera OTA `0.1.7 -> 0.1.8` completed with `OTA_VALIDATING`, `OTA_INSTALLING`, `OTA_REBOOTING`, and `OTA_SUCCESS` at `2026-05-31T21:26:58Z`.
+  - Camera reconnected as firmware `0.1.8`, status `online`, `ota_status=idle`, and `ota_last_success_at=2026-05-31T21:26:58Z`.
+  - Camera heartbeat runtime reported `time_sync_status=synchronized` and `last_ntp_sync_at=2026-05-31T21:26:01Z`.
+  - Capture commands `254`, `255`, and `256` completed and uploaded new images, including `1531`, `1532`, and `1533`.
+  - No camera warning/error/critical diagnostics were observed after OTA success.
+
+## REL-GCP-SOAK-001: Master heartbeat stopped during Phase 5 GCP soak
+
+- Scenario: Phase 5 48-hour GCP soak checkpoint at `2026-05-31T00:03:05Z`.
+- Severity: High
+- Classification: Reliability blocker / master heartbeat gap.
+- Evidence:
+  - Soak start: `2026-05-30T20:37:40Z`.
+  - Master hardware ID: `pl-esp32-64e0a80af6e8`.
+  - Latest master heartbeat at checkpoint: `2026-05-30T23:57:28.863829Z`.
+  - Confirmation check at `2026-05-31T00:03:22Z` showed master last_seen age `5m53s`.
+  - No later master events were present in `device_diagnostic_events`.
+  - Last retained master heartbeat before the gap reported firmware `0.1.5`, uptime `17609s`, RSSI `-57 dBm`, `time_sync_status=synchronized`, and `camera_node_status=online`.
+  - Camera `pl-cam-1c1df816a398` continued reporting heartbeats through `2026-05-31T00:03:16Z`.
+  - Images continued uploading during the soak; image count since soak start reached `7`.
+  - Commands since soak start remained `5 completed`.
+  - No non-info diagnostic events were recorded.
+  - Cloud Run backend health endpoints returned OK and backend ERROR logs were empty for the previous hour.
+- Impact:
+  - Master connectivity or runtime likely stopped while backend and camera remained healthy.
+  - This violates the Phase 5 stop condition for master/camera offline or heartbeat gaps.
+- Fix:
+  - Not applied. No speculative changes during soak.
+- Recommendation:
+  - Stop the active soak monitor.
+  - Capture master serial logs if physically accessible.
+  - Check power, Wi-Fi, and whether the master is still running locally.
+  - If the master recovers, record the recovery time, uptime behavior, and whether a reboot occurred before deciding whether to restart the soak.
+- Follow-up evidence at `2026-05-31T16:04:57Z`:
+  - Master recovered and reported online with last_seen `2026-05-31T16:04:53Z`.
+  - Master uptime was `75653s`, which is consistent with continuous uptime rather than a reboot loop.
+  - Camera reported online with last_seen `2026-05-31T16:04:46Z`.
+  - Images continued uploading; image count since soak start reached `24`.
+  - Command `245` (`camera:capture`) was created at `2026-05-31T00:05:30Z`, was never sent, and timed out at `2026-05-31T00:23:49Z` with message `Timed out waiting for device pickup.`
+  - Backend health endpoints returned OK and Cloud Run backend ERROR logs were empty for the previous hour.
+  - Current status is recovered, but the original soak remains failed/partial because the heartbeat gap and timed-out command occurred before the 24-hour minimum.
+- Root-cause analysis:
+  - Command `245` was created from the web dashboard via `POST /api/devices/34/commands/capture` at `2026-05-31T00:05:30Z`.
+  - The command row remained `pending` with `sent_at=NULL` until the stale-command timeout path marked it `timed_out`.
+  - Cloud Run request logs show no master `GET /api/hardware/commands/poll` requests between command creation and the timeout window.
+  - The first master command poll after command creation occurred at `2026-05-31T00:23:49.109310Z`, which is effectively the same moment command `245` timed out at `2026-05-31T00:23:49.133769Z`.
+  - Backend routing is not ambiguous: `camera:capture` creates a `CAPTURE_IMAGE` command targeting the camera node, and the contract dispatcher allows the master node to poll camera-targeted commands as the ESP-NOW camera gateway.
+  - Current camera firmware does not independently support direct command polling as the primary delivery path, so manual camera capture depends on the master gateway polling normally.
+  - The failure is therefore a master gateway heartbeat/command-poll outage during command creation, not a command targeting bug or backend dispatcher bug.
+- Retest:
+  - Command `246` (`camera:capture`) was queued at `2026-05-31T16:16:37Z`.
+  - It was sent at `2026-05-31T16:16:38Z`, acked, completed at `2026-05-31T16:16:43Z`, and uploaded image `1518`.
+  - Command lifecycle events observed: `COMMAND_QUEUED`, `COMMAND_POLLED`, `COMMAND_SENT`, `COMMAND_ACKED`, `COMMAND_IN_PROGRESS`, and `COMMAND_COMPLETED`.
+  - Image lifecycle events observed: `IMAGE_CAPTURE_STARTED`, `IMAGE_UPLOAD_STARTED`, `IMAGE_CAPTURED`, and `IMAGE_UPLOADED`.
+- Severity:
+  - C - reliability issue requiring follow-up before treating the soak as a clean pass.
+  - It is not a release-blocking backend command architecture failure because command delivery works when the master gateway is polling, and the system recovered without backend errors or reboot loops.
+- Recommendation:
+  - Do not treat the 48-hour soak as clean.
+  - Rerun a 24-48 hour soak after capturing or mitigating the master polling/heartbeat gap.
+  - Before private beta, add a small user-facing/backend guard so capture commands are not queued while the master gateway is stale, or make the UI clearly report that the gateway is offline instead of allowing a command that cannot be picked up.
+- Hardening added after investigation:
+  - Master firmware now reports command-poll observability in heartbeat runtime:
+    - `last_command_poll_at`
+    - `last_command_poll_status`
+    - `last_command_poll_error`
+    - `last_command_poll_latency_ms`
+    - `command_poll_stale_seconds`
+  - Contract and legacy command-poll HTTP calls now use a bounded 5-second poll timeout instead of the generic 10-second GET timeout.
+  - Backend heartbeat state-change detection now emits `COMMAND_POLL_STALE` when `command_poll_stale_seconds` crosses `>= 300` seconds. The event is threshold-crossing based, so repeated stale heartbeats do not spam the timeline.
+- Root-cause hypothesis after firmware audit:
+  - The master loop polls commands before camera scheduling and sensor uploads, so ESP-NOW camera work is unlikely to be the direct starvation source.
+  - The strongest current hypothesis is a master Wi-Fi/network stack outage or blocking network call window. The original production firmware did not expose enough command-poll runtime telemetry to distinguish Wi-Fi disconnected, HTTP timeout, or loop stall after recovery.
+  - The new heartbeat fields are intended to make the next soak failure diagnosable without requiring serial logs at the exact failure time.
+- Validation:
+  - Focused backend/contract tests passed for stale-poll detection and heartbeat runtime fields.
+  - Full backend suite passed: `.venv/bin/pytest platform/backend/tests -q`.
+  - Master GCP firmware build passed: `.venv/bin/pio run -d device/esp32 -e esp32-gcp`.
+  - Master local firmware build passed: `.venv/bin/pio run -d device/esp32 -e esp32-local`.
+- Deployment and hardware validation:
+  - Backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260531165941` deployed to Cloud Run revision `plantlab-api-00070-yof`.
+  - Production traffic shifted to the patched backend revision after candidate health checks passed.
+  - Master firmware was bumped to `0.1.6` and flashed over `/dev/cu.usbmodem1301`.
+  - A minimal NTP boot/reset hardening fix was added after post-flash telemetry showed retained RTC time could be marked synchronized before a fresh SNTP refresh.
+  - Post-flash heartbeat at `2026-05-31T17:17:13Z` reported firmware `0.1.6`, `last_command_poll_status=ok`, `last_command_poll_latency_ms=704`, and `command_poll_stale_seconds=0`.
+  - No `COMMAND_POLL_STALE` or `COMMAND_TIMED_OUT` events were observed after the post-flash validation window.
+- Updated recommendation:
+  - Rerun at least a 24-hour GCP soak after deploying/flashing this hardening. A full 48-hour rerun is preferable before private beta if schedule allows.
+
+## REL-GCP-SOAK-002: Cloud Run signed image URL errors during final 48-hour GCP soak
+
+- Scenario: Phase 5 final 48-hour GCP soak checkpoint at `2026-06-01T16:22:53Z`.
+- Severity: C
+- Classification: Reliability concern / clean-soak stop condition.
+- Evidence:
+  - Soak start: `2026-06-01T02:18:22Z`.
+  - Snapshot at `2026-06-01T16:22:53Z` showed both nodes still online:
+    - Master `pl-esp32-64e0a80af6e8`, firmware `0.1.6`, uptime `83237s`, command poll status `ok`, stale seconds `0`.
+    - Camera `pl-cam-1c1df816a398`, firmware `0.1.8`, uptime `68175s`, `time_sync_status=synchronized`, `last_ntp_sync_at=2026-05-31T21:26:01Z`.
+  - Image uploads continued; image count since soak start reached `24`, latest upload at `2026-06-01T16:16:55Z`.
+  - Commands remained healthy; `24 completed`, `0 timed_out`.
+  - No `COMMAND_POLL_STALE`, OTA retry/failure, or non-info diagnostics were observed.
+  - Backend health endpoints returned OK.
+  - Cloud Run ERROR logs were nonzero. Two ERROR entries appeared at `2026-06-01T16:15:07Z`.
+  - Error source: `platform/backend/app/services/storage.py`, signed GCS image URL generation in `image_client_url`.
+  - First error: default Cloud Run compute credentials could not sign directly: `you need a private key to sign credentials`.
+  - Fallback signing path then called IAM `signBytes` and failed with `google.auth.exceptions.TransportError: Error calling the IAM signBytes API`, `code=503`, `message=Unable to extract the resource from the request`.
+- Impact:
+  - Device runtime, command polling, diagnostics, and image uploads remained healthy.
+  - User-facing image display may have fallen back to the authenticated image proxy because `image_client_url` catches signed-URL failures and returns `/api/images/{image_id}/content`.
+  - The soak is not a clean pass because the final soak gate requires Cloud Run backend errors to remain `0`.
+- Fix:
+  - Strategy B selected: use the authenticated backend proxy as the normal Cloud Run image URL strategy.
+  - Cloud Run deployment now sets `PLANTLAB_IMAGE_URL_STRATEGY=proxy` with `PLANTLAB_STORAGE_BACKEND=gcs`.
+  - `image_client_url` still supports signed URLs when explicitly configured, but a signing failure now logs a handled warning and returns the authenticated proxy URL instead of logging an ERROR.
+  - This preserves authenticated image access and avoids IAM signing fragility in normal Cloud Run operation.
+- Validation:
+  - Focused backend tests passed for GCS proxy strategy and handled signing fallback logging.
+  - Full backend suite passed: `.venv/bin/pytest platform/backend/tests -q`.
+  - New backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260602034524` built successfully.
+  - Candidate revision `plantlab-api-00074-muc` deployed with `PLANTLAB_IMAGE_URL_STRATEGY=proxy`.
+  - Candidate `/health` and `/api/health` passed.
+  - Production traffic shifted 100% to revision `plantlab-api-00074-muc`.
+  - Production `/health` and `/api/health` passed after traffic shift.
+  - Recent image API returned proxy content URL `https://api.marspotatolab.com/api/images/1576/content`.
+  - Image `1576` loaded through the proxy endpoint with HTTP `200`, content type `image/jpeg`, size `62139` bytes, and dimensions `1600x1200`.
+  - Cloud Run ERROR log query after the patched deploy and forced image load returned no ERROR entries.
+- Recommendation:
+  - `REL-GCP-SOAK-002` is resolved.
+  - Restart a clean 48-hour GCP soak from a fresh baseline.
+
+## REL-GCP-SOAK-003: Cloud Run database connection error during final clean 48-hour soak
+
+- Timestamp: `2026-06-02T13:26:52Z`
+- Alias: `REL-GCP-HW-006`
+- Scenario: Phase 5 final clean 48-hour GCP soak started at `2026-06-02T04:09:33Z`.
+- Severity: C
+- Classification: Reliability concern / strict clean-soak stop condition.
+- Evidence:
+  - Checkpoint at `2026-06-02T13:43:58Z` showed both hardware nodes online:
+    - Master `pl-esp32-64e0a80af6e8`, firmware `0.1.6`, uptime `160099s`, RSSI `-64 dBm`, command poll status `ok`, command poll stale seconds `0`.
+    - Camera `pl-cam-1c1df816a398`, firmware `0.1.8`, uptime `145081s`, RSSI `-73 dBm`, `time_sync_status=synchronized`, `last_ntp_sync_at=2026-05-31T21:26:01Z`.
+  - Image uploads continued; image count since soak start reached `14`, latest upload at `2026-06-02T13:18:10Z`.
+  - Commands remained healthy; `13 completed`, `0 timed_out`.
+  - No `COMMAND_POLL_STALE`, OTA retry/failure, or non-info diagnostic events were observed.
+  - Backend health endpoints returned OK.
+  - Cloud Run ERROR logs were nonzero. ERROR entries appeared at `2026-06-02T13:26:52Z`.
+  - Error source: `platform/backend/app/api/routes/hardware.py`, `poll_contract_hardware_commands`, while resolving the device from the hardware API token.
+  - Error detail: `sqlalchemy.exc.OperationalError` / `psycopg.OperationalError`, `consuming input failed: server closed the connection unexpectedly`.
+- Impact:
+  - The device fleet remained online and continued reporting after the event.
+  - The error occurred in a hardware command poll request and may have caused a transient failed poll.
+  - The release-candidate soak is not a clean pass because the final soak gate requires Cloud Run backend ERROR logs to remain `0`.
+- Root cause:
+  - Production was using SQLAlchemy's default PostgreSQL `QueuePool` behavior.
+  - The pool did not pre-ping connections before checkout and did not recycle old Cloud SQL connections.
+  - Cloud SQL later showed `max_connections=25`; Cloud Run was configured with `maxScale=20`, while default SQLAlchemy pooling can keep up to 5 persistent connections plus 10 overflow connections per instance.
+  - After the initial stale/closed connection error, Cloud Run also logged repeated `FATAL: remaining connection slots are reserved...` errors, confirming DB connection pressure in addition to stale socket reuse.
+- Fix:
+  - Added backend DB pool hardening:
+    - `pool_pre_ping=True`
+    - `pool_recycle=1800`
+    - `pool_size=1`
+    - `max_overflow=0`
+    - `pool_timeout=10`
+  - Added explicit Cloud Run deploy env values for the same pool caps.
+  - Added a single retry for clearly transient closed-connection `OperationalError` signatures on the idempotent device API-token lookup path.
+  - Persistent DB errors still surface; the retry is not a blanket exception suppressor.
+- Recovery:
+  - By the `2026-06-02T13:43:58Z` checkpoint, master command polling was current, both nodes were online, and image uploads continued.
+  - Backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260602143656` was deployed to Cloud Run revision `plantlab-api-00076-mif`.
+  - Production traffic shifted 100% to `plantlab-api-00076-mif`.
+  - Post-deploy DB pressure dropped to 2-3 `plantlab_user` connections during validation.
+- Validation:
+  - Focused DB/session tests passed: `29 passed`.
+  - Full backend suite passed: `.venv/bin/pytest platform/backend/tests -q` with `288 passed`.
+  - Candidate and production `/health` and `/api/health` returned OK.
+  - Command validation completed:
+    - `295` diagnostics request completed.
+    - `296` camera capture completed.
+    - `297` light intensity command completed.
+  - Image `1592` uploaded and loaded through `/api/images/1592/content` with HTTP `200`, `image/jpeg`, dimensions `1600x1200`, and size `62708` bytes.
+  - Revision-specific Cloud Run ERROR log query for `plantlab-api-00076-mif` after traffic shift returned no entries.
+  - 30-minute post-deploy observation remained clean:
+    - Production `/health` and `/api/health` returned OK.
+    - Master `pl-esp32-64e0a80af6e8` firmware `0.1.6` and camera `pl-cam-1c1df816a398` firmware `0.1.8` remained online.
+    - Commands `298` and `299` completed.
+    - Image `1594` uploaded and loaded through `/api/images/1594/content` with HTTP `200`, `image/jpeg`, dimensions `1600x1200`, and size `65586` bytes.
+    - Revision-specific Cloud Run ERROR log query for `plantlab-api-00076-mif` since `2026-06-02T14:48:00Z` returned no entries.
+    - DB activity stayed at `2` `plantlab_user` connections during the final check.
+- Recommendation:
+  - Restart the final clean 48-hour GCP soak from a fresh baseline after a short post-deploy observation window remains clean.
+
+## REL-GCP-SOAK-004: Cloud Run QueuePool timeout during final clean release-candidate soak
+
+- Timestamp: `2026-06-02T19:01:57Z`
+- Alias: `REL-GCP-HW-007`
+- Scenario: Final clean release-candidate 48-hour GCP soak started at `2026-06-02T17:19:25Z`.
+- Severity: D
+- Classification: Release-candidate blocker / explicit soak failure condition.
+- Evidence:
+  - The `2026-06-02T19:22:52Z` checkpoint showed both hardware nodes still online:
+    - Master `pl-esp32-64e0a80af6e8`, firmware `0.1.6`, uptime `180430s`, RSSI `-56 dBm`, command poll status `ok`, command poll stale seconds `0`.
+    - Camera `pl-cam-1c1df816a398`, firmware `0.1.8`, uptime `165376s`, RSSI `-57 dBm`, `time_sync_status=synchronized`.
+  - Image uploads continued; image count since soak start reached `3`, latest upload at `2026-06-02T19:18:11Z`.
+  - Commands remained healthy from the device perspective; `2 completed`, `0 timed_out`.
+  - No `COMMAND_POLL_STALE`, OTA retry/failure, or non-info diagnostic events were observed.
+  - Backend health endpoints returned OK.
+  - Cloud Run ERROR logs were nonzero. Multiple ERROR entries appeared at `2026-06-02T19:01:57Z` on revision `plantlab-api-00076-mif`.
+  - Error source: authenticated API request dependency path, `get_current_user` -> `get_optional_current_user` -> `get_user_from_access_token` -> `get_user_by_id`.
+  - Error detail: `sqlalchemy.exc.TimeoutError: QueuePool limit of size 1 overflow 0 reached, connection timed out, timeout 10.00`.
+- Impact:
+  - Hardware runtime, command polling, diagnostics, and image upload behavior remained healthy.
+  - The release-candidate soak is failed because the soak criteria explicitly fail on any Cloud Run ERROR log or DB connection error.
+- Root cause:
+  - Production `plantlab-api` was capped to `pool_size=1`, `max_overflow=0`, and `pool_timeout=10` while Cloud Run still allowed concurrency `80`.
+  - The failure window included a burst of authenticated `/api/images/{id}/content` proxy requests from the web image/gallery path.
+  - The image proxy route authenticated the user and authorized image ownership through the DB, then read image bytes from GCS while the request-scoped SQLAlchemy session remained open. With only one DB connection in the pool, concurrent authenticated requests queued behind image reads and timed out.
+  - The global Cloud SQL budget was also exposed by `plantlab-provision-api`, which can connect to the same DB and was configured with maxScale `20` and a Node PG pool max of `10`.
+- Recovery:
+  - No speculative fix was applied during the soak.
+  - Monitoring automation was stopped after documenting the blocker.
+- Fix:
+  - Backend image proxy now verifies image ownership, copies the image path, and closes the DB session before reading image bytes from storage.
+  - `plantlab-api` pool defaults and deploy config changed to:
+    - `pool_pre_ping=true`
+    - `pool_recycle=1800`
+    - `pool_size=2`
+    - `max_overflow=1`
+    - `pool_timeout=10`
+    - Cloud Run max instances `4`
+    - Cloud Run concurrency `20`
+  - `plantlab-provision-api` now supports `PLANTLAB_PROVISIONING_DB_POOL_MAX` and deploys with:
+    - DB pool max `3`
+    - Cloud Run max instances `2`
+    - Cloud Run concurrency `20`
+  - Connection budget after fix:
+    - Cloud SQL `max_connections=25`
+    - `superuser_reserved_connections=3`
+    - effective normal user budget `22`
+    - `plantlab-api`: `4 * (2 + 1) = 12`
+    - `plantlab-provision-api`: `2 * 3 = 6`
+    - total planned DB connections `18`, leaving `4` normal-user slots for ops and transient activity.
+- Deployment:
+  - Backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260602200455` deployed to Cloud Run revision `plantlab-api-00078-mur`.
+  - Production traffic shifted 100% to `plantlab-api-00078-mur`.
+  - Provisioning image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-provision-api:7adcb7c-provision-20260602201307` deployed to Cloud Run revision `plantlab-provision-api-00021-bis`.
+  - Provisioning traffic shifted 100% to `plantlab-provision-api-00021-bis`.
+- Immediate validation:
+  - Backend tests passed: `.venv/bin/pytest platform/backend/tests -q` with `289 passed`.
+  - Provisioning tests passed: `npm --prefix provision_backend test` with `11 passed`.
+  - Production `/health`, `/api/health`, and provisioning `/health` returned OK.
+  - Commands `305`, `306`, and `307` completed.
+  - Image `1601` uploaded successfully from capture command `306`.
+  - A 60-image authenticated proxy burst with concurrency `20` completed without curl failures.
+  - Revision-specific Cloud Run ERROR log query after the burst returned no entries.
+  - DB activity after the burst was `5` `plantlab_user` connections.
+- Backend mini-soak validation:
+  - Status: RESOLVED.
+  - Mini-soak start: `2026-06-02T20:16:47Z`.
+  - Passing checkpoint: `2026-06-02T21:19:52Z`, elapsed `1h03m05s`.
+  - Backend revision: `plantlab-api-00078-mur`.
+  - Provisioning revision: `plantlab-provision-api-00021-bis`.
+  - Master `0.1.6` and camera `0.1.8` remained online with healthy diagnostics.
+  - Master command polling stayed healthy: `last_command_poll_status=ok`, `command_poll_stale_seconds=0`.
+  - Camera NTP stayed `synchronized`.
+  - Commands `308`-`313` all completed; no command timeouts.
+  - Images uploaded during the mini-soak reached `4`.
+  - Two 60-image authenticated proxy bursts at concurrency `20` completed with `0` failures.
+  - Revision-specific Cloud Run ERROR logs for `plantlab-api-00078-mur` and `plantlab-provision-api-00021-bis`: `0`.
+  - DB activity at the passing checkpoint was `9` `plantlab_user` connections, within the planned budget of `18`.
+  - No QueuePool timeout, stale connection OperationalError, Cloud SQL connection exhaustion, `COMMAND_POLL_STALE`, OTA activity, image proxy failure, or non-info diagnostics were observed.
+- Recommendation:
+  - Safe to restart the clean 48-hour release-candidate soak.
+
+## REL-GCP-SOAK-005: Cloud Run InvalidRequestError during master heartbeat event write
+
+- Timestamp: `2026-06-03T09:04:13Z`
+- Scenario: Final clean release-candidate 48-hour GCP soak started at `2026-06-02T22:10:51Z`.
+- Severity: D
+- Classification: Release-candidate blocker / explicit soak failure condition.
+- Status: RESOLVED, deployed to GCP. The failed soak remains invalid and must be restarted from a fresh baseline.
+- Evidence:
+  - The `2026-06-03T09:14:30Z` checkpoint showed both hardware nodes still online:
+    - Master `pl-esp32-64e0a80af6e8`, firmware `0.1.6`, uptime `230335s`, RSSI `-51 dBm`, command poll status `ok`, command poll stale seconds `0`.
+    - Camera `pl-cam-1c1df816a398`, firmware `0.1.8`, uptime `215282s`, RSSI `-65 dBm`, `time_sync_status=synchronized`.
+  - Image uploads continued; image count since soak start reached `17`, latest upload at `2026-06-03T08:18:14Z`.
+  - Commands remained healthy; `18 completed`, `0 timed_out`.
+  - No `COMMAND_POLL_STALE`, image upload failure event, or OTA activity was observed.
+  - Backend health endpoints returned OK.
+  - Cloud Run ERROR logs were nonzero on revision `plantlab-api-00078-mur`.
+  - Cloud Run stack trace at `2026-06-03T09:04:13.829437Z`:
+    - path: `hardware_heartbeat` -> `write_canonical_event` -> `session.refresh(db_event)`
+    - exception: `sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<DeviceDiagnosticEvent ...>'`
+  - Master non-info diagnostic events appeared at `2026-06-03T09:04:14.404969Z`:
+    - `upload_failure` warning: `upload_failures increased`
+    - `last_error` error: `sensor reading upload failed`
+    - `DIAGNOSTICS_RECEIVED` warning from `legacy_heartbeat_diagnostics`
+  - Master heartbeats resumed immediately after the failure:
+    - `2026-06-03T09:04:23Z`, command poll status `ok`, stale seconds `0`
+    - later checkpoint heartbeat at `2026-06-03T09:14:28Z`, command poll status `ok`, stale seconds `0`
+- Impact:
+  - Hardware runtime, command polling, image upload, and backend health recovered/continued.
+  - The release-candidate soak is failed because the soak criteria explicitly fail on any Cloud Run ERROR log and persistent/non-info diagnostics require investigation.
+- Root cause:
+  - `write_canonical_event()` committed the new `DeviceDiagnosticEvent` and then called `session.refresh(db_event)`.
+  - During the master heartbeat / legacy diagnostics path, the post-commit refresh raised `sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<DeviceDiagnosticEvent ...>'`.
+  - This made a post-commit hydration problem surface as a request-level Cloud Run ERROR even though the device path remained healthy.
+  - Retention/pruning was reviewed. The current retention path prunes old diagnostics from `device_diagnostics._prune_events()` and was not expected to delete the just-written canonical event, but the regression suite now covers that ordering.
+  - The master `upload_failure` / `last_error` values were legacy heartbeat diagnostic fields that triggered warning/error event writes through this path. They were not the cause of the SQLAlchemy refresh failure. Current post-fix master snapshot is healthy: `reported_status=online`, firmware `0.1.6`, no `last_error_code`, no `last_error_message`, and empty `error_counters`.
+- Fix:
+  - `write_canonical_event()` now uses `session.flush()` to populate `db_event.id`, captures the event fields, commits the write, and then performs a best-effort reload.
+  - If post-commit reload/hydration fails, the writer logs a warning and returns a detached event populated from the captured fields.
+  - Real DB write failures during flush or commit are still allowed to raise; the fix does not suppress failed event persistence.
+- Regression tests:
+  - Added canonical event tests for normal persistence, no post-commit `session.refresh()`, post-commit reload failure fallback, retention not deleting the current event, and the legacy heartbeat upload-failure diagnostic path.
+  - Backend test run passed: `.venv/bin/pytest platform/backend/tests -q` with `294 passed`.
+- Deployment:
+  - Backend image `us-central1-docker.pkg.dev/plantlab-493805/plantlab-repo/plantlab-api:7adcb7c-20260603145505` built successfully in Cloud Build `d520197a-b45a-4d3c-8755-3300b8f01bf6`.
+  - Deployed to candidate revision `plantlab-api-00080-hej`.
+  - Candidate `/health` and `/api/health` passed.
+  - Production traffic shifted 100% to `plantlab-api-00080-hej`.
+- GCP validation:
+  - Production `/health` and `/api/health` returned OK.
+  - Commands completed:
+    - `332` diagnostics request completed.
+    - `333` camera capture completed.
+    - `334` light intensity command completed.
+  - Capture command uploaded image `1632`.
+  - Authenticated image proxy load for `/api/images/1632/content` returned HTTP `200`, content type `image/jpeg`, size `71505` bytes, image dimensions `1600x1200`.
+  - Canonical events were written after deploy for heartbeat, command, image capture, image upload, and command completion paths.
+  - Revision-specific Cloud Run ERROR log query for `plantlab-api-00080-hej` since `2026-06-03T15:03:00Z` returned no entries.
+  - DB connection check showed `5` `plantlab_user` connections, `3 active`, `2 idle`, total DB connections `17`.
+  - Current post-fix event aggregate since `2026-06-03T15:03:00Z` contains only info-level canonical events.
+- Recovery:
+  - No speculative fix was applied during the soak.
+  - Monitoring automation was stopped after documenting the blocker.
+  - Backend fix was applied after the soak was already failed, then deployed and validated on GCP.
+- Recommendation:
+  - Restart a clean 48-hour release-candidate soak from a fresh baseline.

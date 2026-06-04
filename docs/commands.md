@@ -115,6 +115,16 @@ When a command is returned by this endpoint:
 - Completion or failure should be reported with a second `COMMAND_RESULT`
   envelope.
 
+Firmware heartbeat runtime may include command-poll observability:
+
+- `last_command_poll_at`
+- `last_command_poll_status`
+- `last_command_poll_error`
+- `last_command_poll_latency_ms`
+- `command_poll_stale_seconds`
+
+The backend emits `COMMAND_POLL_STALE` when the stale age crosses 5 minutes.
+
 Current filtering:
 
 - Master commands are returned to master nodes.

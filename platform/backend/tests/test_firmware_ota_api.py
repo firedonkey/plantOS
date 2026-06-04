@@ -1,6 +1,8 @@
 from collections.abc import Generator
 from datetime import datetime, timezone
 from hashlib import sha256
+import sys
+from types import ModuleType
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -478,6 +480,63 @@ def test_ota_artifact_requires_device_token_and_serves_only_local_firmware_files
         assert authorized.status_code == 200
         assert authorized.content == firmware_bytes
         assert external.status_code == 404
+    finally:
+        teardown_overrides()
+        get_settings.cache_clear()
+
+
+def test_gcs_ota_artifact_response_includes_content_length(monkeypatch):
+    client, testing_session_local, device_id, _ = build_client_with_devices()
+    firmware_bytes = b"camera-firmware-image"
+
+    class FakeBlob:
+        def download_as_bytes(self) -> bytes:
+            return firmware_bytes
+
+    class FakeBucket:
+        def blob(self, object_name: str) -> FakeBlob:
+            assert object_name == "firmware/camera.bin"
+            return FakeBlob()
+
+    class FakeStorageClient:
+        def bucket(self, bucket_name: str) -> FakeBucket:
+            assert bucket_name == "plantlab-firmware"
+            return FakeBucket()
+
+    storage_module = ModuleType("google.cloud.storage")
+    storage_module.Client = FakeStorageClient
+    cloud_module = ModuleType("google.cloud")
+    cloud_module.storage = storage_module
+    google_module = ModuleType("google")
+    google_module.cloud = cloud_module
+
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud_module)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", storage_module)
+    monkeypatch.setenv("PLANTLAB_FIRMWARE_STORAGE_BACKEND", "gcs")
+    monkeypatch.setenv("PLANTLAB_FIRMWARE_BUCKET_NAME", "plantlab-firmware")
+    get_settings.cache_clear()
+    try:
+        with testing_session_local() as session:
+            add_master_node(session, device_id)
+            add_release(
+                session,
+                release_id="camera-gcs-release",
+                artifact_path="gs://plantlab-firmware/firmware/camera.bin",
+                artifact_size_bytes=len(firmware_bytes),
+                checksum=sha256(firmware_bytes).hexdigest(),
+            )
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_optional_current_user, None)
+        response = client.get(
+            "/api/hardware/ota/artifacts/camera-gcs-release",
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+        assert response.content == firmware_bytes
+        assert response.headers["content-length"] == str(len(firmware_bytes))
     finally:
         teardown_overrides()
         get_settings.cache_clear()

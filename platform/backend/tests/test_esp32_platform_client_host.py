@@ -216,6 +216,7 @@ inline ESPClass ESP;
 namespace platform_client_host_test {
 inline std::string last_url;
 inline std::string last_post_body;
+inline uint32_t last_timeout_ms = 0;
 inline std::string next_response_body = "{}";
 inline int next_get_status = 200;
 inline int next_post_status = 200;
@@ -224,6 +225,7 @@ inline std::vector<std::pair<std::string, std::string>> headers;
 inline void reset_http_capture() {
   last_url.clear();
   last_post_body.clear();
+  last_timeout_ms = 0;
   next_response_body = "{}";
   next_get_status = 200;
   next_post_status = 200;
@@ -233,7 +235,8 @@ inline void reset_http_capture() {
 
 class HTTPClient {
  public:
-  void setTimeout(uint32_t) {}
+  void useHTTP10(bool = true) {}
+  void setTimeout(uint32_t timeout_ms) { platform_client_host_test::last_timeout_ms = timeout_ms; }
   bool begin(const String& url) {
     platform_client_host_test::last_url = url.c_str();
     return true;

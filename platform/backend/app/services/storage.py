@@ -96,10 +96,15 @@ def image_client_url(image: object, request: Request, settings: Settings) -> str
         bucket_name, object_name = _gcs_object_from_path(path, settings)
         try:
             return _signed_gcs_image_url(bucket_name, object_name, settings)
-        except Exception:
-            logger.exception(
-                "GCS signed image URL generation failed; falling back to authenticated proxy.",
-                extra={"bucket_name": bucket_name, "object_name": object_name},
+        except Exception as exc:
+            logger.warning(
+                "GCS signed image URL generation failed; using authenticated proxy fallback.",
+                extra={
+                    "bucket_name": bucket_name,
+                    "object_name": object_name,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
             )
     return str(request.url_for("image_content", image_id=image_id))
 

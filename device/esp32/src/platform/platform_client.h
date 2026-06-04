@@ -98,6 +98,13 @@ struct PlatformStatus {
   String camera_node_status;
   String last_command_contract_id;
   String last_command_status;
+  String last_command_poll_at;
+  String last_command_poll_status;
+  String last_command_poll_error;
+  bool has_last_command_poll_latency_ms = false;
+  uint32_t last_command_poll_latency_ms = 0;
+  bool has_command_poll_stale_seconds = false;
+  uint32_t command_poll_stale_seconds = 0;
   PlatformDiagnostics diagnostics;
 };
 
@@ -205,6 +212,11 @@ class PlatformClient {
  private:
   bool json_post(const String& path, const String& json_body, int* status_code, String* response_body);
   bool json_get(const String& path, int* status_code, String* response_body);
+  bool json_get_with_timeout(
+      const String& path,
+      uint32_t timeout_ms,
+      int* status_code,
+      String* response_body);
   bool parse_url(String* host, uint16_t* port, String* path, bool* secure) const;
   String auth_header_value() const;
   String join_url(const String& path) const;

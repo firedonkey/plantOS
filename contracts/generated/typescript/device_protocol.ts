@@ -35,6 +35,7 @@ export type EventType =
   | "COMMAND_QUEUED"
   | "COMMAND_SENT"
   | "COMMAND_POLLED"
+  | "COMMAND_POLL_STALE"
   | "COMMAND_ACKED"
   | "COMMAND_IN_PROGRESS"
   | "COMMAND_COMPLETED"
@@ -155,6 +156,11 @@ export type HeartbeatRuntimeState = {
   camera_node_status?: DeviceStatus;
   last_command_id?: string;
   last_command_status?: string;
+  last_command_poll_at?: string;
+  last_command_poll_status?: string;
+  last_command_poll_error?: string;
+  last_command_poll_latency_ms?: number;
+  command_poll_stale_seconds?: number;
   time_sync_status?: string;
   last_ntp_sync_at?: string;
 } & Record<string, unknown>;

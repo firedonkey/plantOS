@@ -109,8 +109,10 @@ Heartbeat v1 additive state:
   LED state.
 - `runtime.capture_interval_seconds`, `ota_status`, `provisioning_status`,
   `camera_node_status`, `last_command_id`, `last_command_status`,
-  `time_sync_status`, and `last_ntp_sync_at` are optional runtime details.
-  Firmware omits fields that are not known.
+  `last_command_poll_at`, `last_command_poll_status`,
+  `last_command_poll_error`, `last_command_poll_latency_ms`,
+  `command_poll_stale_seconds`, `time_sync_status`, and `last_ntp_sync_at` are
+  optional runtime details. Firmware omits fields that are not known.
 - The backend stores the full contract heartbeat payload in the canonical
   `HEARTBEAT_RECEIVED` event data and maps ambient light state into the current
   device status for existing dashboards.
@@ -119,3 +121,6 @@ Heartbeat v1 additive state:
   health, and Wi-Fi signal state-change events.
 - RSSI state uses hysteresis: degraded at `<= -80 dBm`, recovered at
   `>= -70 dBm`.
+- Command poll stale detection currently uses heartbeat runtime telemetry and
+  emits `COMMAND_POLL_STALE` when `command_poll_stale_seconds` crosses
+  `>= 300`.

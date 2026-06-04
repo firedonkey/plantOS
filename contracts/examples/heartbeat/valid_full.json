@@ -28,7 +28,11 @@
       "provisioning_status": "normal",
       "camera_node_status": "online",
       "last_command_id": "cmd_189",
-      "last_command_status": "completed"
+      "last_command_status": "completed",
+      "last_command_poll_at": "2026-05-27T12:00:00Z",
+      "last_command_poll_status": "ok",
+      "last_command_poll_latency_ms": 112,
+      "command_poll_stale_seconds": 4
     }
   }
 }

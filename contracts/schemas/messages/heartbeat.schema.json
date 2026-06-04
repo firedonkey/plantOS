@@ -111,6 +111,29 @@
                   "minLength": 1,
                   "maxLength": 80
                 },
+                "last_command_poll_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "last_command_poll_status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "last_command_poll_error": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "last_command_poll_latency_ms": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 300000
+                },
+                "command_poll_stale_seconds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 86400
+                },
                 "time_sync_status": {
                   "type": "string",
                   "minLength": 1,

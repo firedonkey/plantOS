@@ -10,9 +10,24 @@ import app.models  # noqa: F401
 
 
 def get_engine(database_url: str | None = None):
-    url = database_url or get_settings().database_url
+    settings = get_settings()
+    url = database_url or settings.database_url
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    engine_args = {
+        "connect_args": connect_args,
+        "pool_pre_ping": settings.database_pool_pre_ping,
+    }
+    if settings.database_pool_recycle_seconds >= 0:
+        engine_args["pool_recycle"] = settings.database_pool_recycle_seconds
+    if not url.startswith("sqlite"):
+        engine_args.update(
+            {
+                "pool_size": settings.database_pool_size,
+                "max_overflow": settings.database_pool_max_overflow,
+                "pool_timeout": settings.database_pool_timeout_seconds,
+            }
+        )
+    return create_engine(url, **engine_args)
 
 
 engine = get_engine()

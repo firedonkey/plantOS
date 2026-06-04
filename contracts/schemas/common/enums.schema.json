@@ -48,6 +48,7 @@
         "COMMAND_QUEUED",
         "COMMAND_SENT",
         "COMMAND_POLLED",
+        "COMMAND_POLL_STALE",
         "COMMAND_ACKED",
         "COMMAND_IN_PROGRESS",
         "COMMAND_COMPLETED",

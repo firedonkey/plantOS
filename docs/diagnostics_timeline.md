@@ -64,6 +64,7 @@ interpretation. Examples:
 - `IMAGE_UPLOAD_STARTED`: `Image upload started`
 - `IMAGE_UPLOADED`: `Image uploaded #91 (manual)`
 - `IMAGE_UPLOAD_FAILED`: `Image upload failed: camera timeout`
+- `COMMAND_POLL_STALE`: `Command polling stale for 305s`
 
 Unknown event types fall back to a safe humanized label.
 
@@ -82,6 +83,8 @@ Current thresholds and dedupe behavior:
 - OTA progress-only updates do not emit `OTA_STATE_CHANGED`.
 - Repeated identical actuator and health states do not emit duplicate state
   events.
+- Command polling stale emits once when heartbeat runtime crosses
+  `command_poll_stale_seconds >= 300`.
 - Provisioning events are deduplicated per provisioning phase and primary node.
 - Image capture/upload events are deduplicated by command or image message
   correlation id.

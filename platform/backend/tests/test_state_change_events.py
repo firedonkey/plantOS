@@ -86,6 +86,48 @@ def test_heartbeat_node_status_change_emits_device_health_changed():
         teardown_overrides()
 
 
+def test_command_poll_stale_emits_once_when_threshold_crossed():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id)
+        _use_device_token_auth()
+
+        _post_heartbeat(client, _heartbeat(device_id=device_id, command_poll_stale_seconds=60))
+        _post_heartbeat(
+            client,
+            _heartbeat(
+                device_id=device_id,
+                command_poll_stale_seconds=305,
+                last_command_poll_status="error",
+                last_command_poll_error="connection timed out",
+                last_command_poll_latency_ms=5000,
+            ),
+        )
+        _post_heartbeat(
+            client,
+            _heartbeat(
+                device_id=device_id,
+                command_poll_stale_seconds=420,
+                last_command_poll_status="error",
+                last_command_poll_error="connection timed out",
+                last_command_poll_latency_ms=5000,
+            ),
+        )
+
+        events = _events(client, "COMMAND_POLL_STALE")
+        assert len(events) == 1
+        assert events[0].severity == "warning"
+        data = events[0].metadata_json["data"]
+        assert data["threshold_seconds"] == 300
+        assert data["previous_stale_seconds"] == 60
+        assert data["current_stale_seconds"] == 305
+        assert data["last_command_poll_status"] == "error"
+        assert data["last_command_poll_error"] == "connection timed out"
+        assert data["last_command_poll_latency_ms"] == 5000
+    finally:
+        teardown_overrides()
+
+
 def test_diagnostics_status_and_severity_change_emits_device_health_changed():
     client, device_id, _ = build_client_with_devices()
     try:
@@ -172,6 +214,16 @@ def test_timeline_summaries_handle_state_change_events():
                             "data": {"previous": -58, "current": -82},
                         },
                     ),
+                    DeviceDiagnosticEvent(
+                        device_id=device_id,
+                        hardware_device_id="master-01",
+                        event_type="COMMAND_POLL_STALE",
+                        severity="warning",
+                        metadata_json={
+                            "node_role": "master",
+                            "data": {"current_stale_seconds": 305},
+                        },
+                    ),
                 ]
             )
             session.commit()
@@ -182,6 +234,7 @@ def test_timeline_summaries_handle_state_change_events():
         summaries = [event["summary"] for event in response.json()["events"]]
         assert "Ambient light changed: off -> 65%" in summaries
         assert "Wi-Fi signal degraded: -58 -> -82 dBm" in summaries
+        assert "Command polling stale for 305s" in summaries
     finally:
         teardown_overrides()
 
@@ -235,6 +288,10 @@ def _heartbeat(
     brightness: int = 0,
     camera_node_status: str = "online",
     ota_status: str = "idle",
+    command_poll_stale_seconds: int | None = None,
+    last_command_poll_status: str | None = None,
+    last_command_poll_error: str | None = None,
+    last_command_poll_latency_ms: int | None = None,
 ) -> dict:
     payload = {
         "schema_version": "1.0",
@@ -266,7 +323,17 @@ def _heartbeat(
             },
         },
     }
-    return deepcopy(payload)
+    payload = deepcopy(payload)
+    runtime = payload["payload"]["runtime"]
+    if command_poll_stale_seconds is not None:
+        runtime["command_poll_stale_seconds"] = command_poll_stale_seconds
+    if last_command_poll_status is not None:
+        runtime["last_command_poll_status"] = last_command_poll_status
+    if last_command_poll_error is not None:
+        runtime["last_command_poll_error"] = last_command_poll_error
+    if last_command_poll_latency_ms is not None:
+        runtime["last_command_poll_latency_ms"] = last_command_poll_latency_ms
+    return payload
 
 
 def _diagnostics(*, device_id: int, status: str, severity: str) -> dict:

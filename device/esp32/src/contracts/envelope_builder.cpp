@@ -70,6 +70,13 @@ bool buildHeartbeatEnvelope(
     const char* camera_node_status,
     const char* last_command_id,
     const char* last_command_status,
+    const char* last_command_poll_at,
+    const char* last_command_poll_status,
+    const char* last_command_poll_error,
+    bool has_last_command_poll_latency_ms,
+    uint32_t last_command_poll_latency_ms,
+    bool has_command_poll_stale_seconds,
+    uint32_t command_poll_stale_seconds,
     String* body) {
   if (body == nullptr || hardware_device_id == nullptr || String(hardware_device_id).length() == 0 ||
       firmware_version == nullptr || String(firmware_version).length() == 0) {
@@ -135,6 +142,11 @@ bool buildHeartbeatEnvelope(
       (camera_node_status != nullptr && String(camera_node_status).length() > 0) ||
       (last_command_id != nullptr && String(last_command_id).length() > 0) ||
       (last_command_status != nullptr && String(last_command_status).length() > 0) ||
+      (last_command_poll_at != nullptr && String(last_command_poll_at).length() > 0) ||
+      (last_command_poll_status != nullptr && String(last_command_poll_status).length() > 0) ||
+      (last_command_poll_error != nullptr && String(last_command_poll_error).length() > 0) ||
+      has_last_command_poll_latency_ms ||
+      has_command_poll_stale_seconds ||
       plantlab::time_sync::statusName() != nullptr) {
     JsonObject runtime = payload.createNestedObject("runtime");
     if (has_capture_interval_seconds) {
@@ -154,6 +166,21 @@ bool buildHeartbeatEnvelope(
     }
     if (last_command_status != nullptr && String(last_command_status).length() > 0) {
       runtime["last_command_status"] = last_command_status;
+    }
+    if (last_command_poll_at != nullptr && String(last_command_poll_at).length() > 0) {
+      runtime["last_command_poll_at"] = last_command_poll_at;
+    }
+    if (last_command_poll_status != nullptr && String(last_command_poll_status).length() > 0) {
+      runtime["last_command_poll_status"] = last_command_poll_status;
+    }
+    if (last_command_poll_error != nullptr && String(last_command_poll_error).length() > 0) {
+      runtime["last_command_poll_error"] = last_command_poll_error;
+    }
+    if (has_last_command_poll_latency_ms) {
+      runtime["last_command_poll_latency_ms"] = last_command_poll_latency_ms;
+    }
+    if (has_command_poll_stale_seconds) {
+      runtime["command_poll_stale_seconds"] = command_poll_stale_seconds;
     }
     runtime["time_sync_status"] = plantlab::time_sync::statusName();
     char last_ntp_sync_at[32]{};

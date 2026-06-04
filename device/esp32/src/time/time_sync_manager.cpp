@@ -28,6 +28,12 @@ bool isValidUtc(time_t value) {
   return value >= kMinimumValidUtc;
 }
 
+#if defined(ARDUINO_ARCH_ESP32)
+bool sntpSyncCompleted() {
+  return sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED;
+}
+#endif
+
 bool formatUtc(time_t value, char* buffer, size_t buffer_size) {
   if (buffer == nullptr || buffer_size < 21 || !isValidUtc(value)) {
     if (buffer != nullptr && buffer_size > 0) {
@@ -96,10 +102,12 @@ void markFailed(unsigned long now_ms) {
 }  // namespace
 
 void begin() {
-  g_status = isValidUtc(currentSystemUtc()) ? TimeSyncStatus::kSynchronized : TimeSyncStatus::kUnsynchronized;
-  if (g_status == TimeSyncStatus::kSynchronized) {
-    g_last_sync_utc = currentSystemUtc();
-  }
+  g_status = TimeSyncStatus::kUnsynchronized;
+  g_attempt_started_at_ms = 0;
+  g_next_retry_at_ms = 0;
+  g_attempt_count = 0;
+  g_last_sync_utc = 0;
+  g_started_once = false;
 }
 
 void service(bool wifi_connected, unsigned long now_ms) {
@@ -108,14 +116,27 @@ void service(bool wifi_connected, unsigned long now_ms) {
   }
 
   const time_t now_utc = currentSystemUtc();
-  if (isValidUtc(now_utc)) {
-    if (g_status != TimeSyncStatus::kSynchronized) {
-      markSynchronized(now_utc);
+
+  if (g_status == TimeSyncStatus::kSynchronized) {
+    if (!isValidUtc(now_utc)) {
+      g_status = TimeSyncStatus::kUnsynchronized;
+      g_last_sync_utc = 0;
     }
     return;
   }
 
   if (g_status == TimeSyncStatus::kSynchronizing) {
+#if defined(ARDUINO_ARCH_ESP32)
+    if (sntpSyncCompleted() && isValidUtc(now_utc)) {
+      markSynchronized(now_utc);
+      return;
+    }
+#else
+    if (isValidUtc(now_utc)) {
+      markSynchronized(now_utc);
+      return;
+    }
+#endif
     if (now_ms - g_attempt_started_at_ms >= PLANTLAB_NTP_SYNC_TIMEOUT_MS) {
       markFailed(now_ms);
     }

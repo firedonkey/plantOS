@@ -27,6 +27,11 @@ class Settings:
     version: str = "0.1.0"
     app_env: str = "development"
     database_url: str = "sqlite:///./data/platform.db"
+    database_pool_pre_ping: bool = True
+    database_pool_recycle_seconds: int = 1800
+    database_pool_size: int = 2
+    database_pool_max_overflow: int = 1
+    database_pool_timeout_seconds: int = 10
     storage_backend: str = "local"
     upload_dir: str = "data/uploads"
     gcs_bucket_name: str | None = None
@@ -82,6 +87,14 @@ class Settings:
     def validate(self) -> None:
         if self.is_production and self.database_url.startswith("sqlite"):
             raise ValueError("PostgreSQL DATABASE_URL or Cloud SQL DB_PASSWORD is required in production.")
+        if self.database_pool_recycle_seconds < -1:
+            raise ValueError("PLANTLAB_DATABASE_POOL_RECYCLE_SECONDS must be -1 or greater.")
+        if self.database_pool_size < 1:
+            raise ValueError("PLANTLAB_DATABASE_POOL_SIZE must be at least 1.")
+        if self.database_pool_max_overflow < 0:
+            raise ValueError("PLANTLAB_DATABASE_POOL_MAX_OVERFLOW must be at least 0.")
+        if self.database_pool_timeout_seconds < 1:
+            raise ValueError("PLANTLAB_DATABASE_POOL_TIMEOUT_SECONDS must be at least 1.")
         if self.storage_backend not in {"local", "gcs"}:
             raise ValueError("PLANTLAB_STORAGE_BACKEND must be 'local' or 'gcs'.")
         if self.storage_backend == "local" and not self.upload_dir:
@@ -134,6 +147,26 @@ def get_settings() -> Settings:
     settings = Settings(
         app_env=os.getenv("APP_ENV", Settings.app_env).lower(),
         database_url=_database_url(),
+        database_pool_pre_ping=_env_bool(
+            "PLANTLAB_DATABASE_POOL_PRE_PING",
+            default=Settings.database_pool_pre_ping,
+        ),
+        database_pool_recycle_seconds=_env_int(
+            "PLANTLAB_DATABASE_POOL_RECYCLE_SECONDS",
+            default=Settings.database_pool_recycle_seconds,
+        ),
+        database_pool_size=_env_int(
+            "PLANTLAB_DATABASE_POOL_SIZE",
+            default=Settings.database_pool_size,
+        ),
+        database_pool_max_overflow=_env_int(
+            "PLANTLAB_DATABASE_POOL_MAX_OVERFLOW",
+            default=Settings.database_pool_max_overflow,
+        ),
+        database_pool_timeout_seconds=_env_int(
+            "PLANTLAB_DATABASE_POOL_TIMEOUT_SECONDS",
+            default=Settings.database_pool_timeout_seconds,
+        ),
         storage_backend=os.getenv("PLANTLAB_STORAGE_BACKEND", Settings.storage_backend).lower(),
         upload_dir=os.getenv("PLANTLAB_UPLOAD_DIR", Settings.upload_dir),
         gcs_bucket_name=_optional_env("GCS_BUCKET_NAME"),

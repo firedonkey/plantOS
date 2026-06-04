@@ -8,7 +8,7 @@ const config = getConfig();
 
 export const pool = new Pool({
   ...config.database,
-  max: 10,
+  max: config.databasePoolMax,
   idleTimeoutMillis: 30_000
 });
 

@@ -80,6 +80,12 @@ def summarize_timeline_event(event: DeviceDiagnosticEvent) -> str:
             return f"Heartbeat received (RSSI {rssi} dBm)"
         return "Heartbeat received"
 
+    if event_type == "COMMAND_POLL_STALE":
+        stale_seconds = data.get("current_stale_seconds")
+        if isinstance(stale_seconds, int):
+            return f"Command polling stale for {stale_seconds}s"
+        return "Command polling stale"
+
     if event_type.startswith("COMMAND_"):
         label = command_type or _string(metadata.get("command_id")) or "Command"
         target = _string(metadata.get("target_node_role")) or _string(metadata.get("node_role"))

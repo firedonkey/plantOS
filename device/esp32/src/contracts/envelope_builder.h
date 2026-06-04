@@ -29,6 +29,13 @@ bool buildHeartbeatEnvelope(
     const char* camera_node_status,
     const char* last_command_id,
     const char* last_command_status,
+    const char* last_command_poll_at,
+    const char* last_command_poll_status,
+    const char* last_command_poll_error,
+    bool has_last_command_poll_latency_ms,
+    uint32_t last_command_poll_latency_ms,
+    bool has_command_poll_stale_seconds,
+    uint32_t command_poll_stale_seconds,
     String* body);
 
 bool buildCommandResultEnvelope(

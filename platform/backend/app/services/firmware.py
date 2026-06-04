@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
-from io import BytesIO
 from pathlib import Path
 from re import fullmatch
 from urllib.parse import unquote, urlparse
 
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -478,4 +477,8 @@ def _gcs_artifact_response(bucket_name: str, object_name: str):
         data = blob.download_as_bytes()
     except Exception as exc:
         raise RuntimeError("GCS firmware artifact could not be read.") from exc
-    return StreamingResponse(BytesIO(data), media_type="application/octet-stream")
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Length": str(len(data))},
+    )

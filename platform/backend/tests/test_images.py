@@ -2,9 +2,11 @@ from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import json
+import logging
 import sys
 from types import ModuleType, SimpleNamespace
 
+from fastapi.responses import Response
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,6 +18,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models import Device, DeviceDiagnosticEvent, Image, User
 from app.models.base import Base
+from app.api.routes import images as image_routes
 from app.services.device_nodes import upsert_device_node
 from app.services import storage as storage_service
 from app.services import timelapse as timelapse_service
@@ -128,6 +131,46 @@ def test_upload_image_rejects_non_image_file(tmp_path, monkeypatch):
         assert response.status_code == 400
     finally:
         teardown_overrides()
+
+
+def test_image_content_releases_db_session_before_storage_read(monkeypatch):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    with TestingSessionLocal() as session:
+        user = User(email="owner@example.com", google_sub="owner-google")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        device = Device(user_id=user.id, name="Kitchen Rose", api_token="token-owner")
+        session.add(device)
+        session.commit()
+        session.refresh(device)
+
+        image = Image(device_id=device.id, path="gs://plantlab-images/device-1/plant.jpg")
+        session.add(image)
+        session.commit()
+        session.refresh(image)
+
+        storage_read_started_after_close = False
+
+        def fake_image_response(path, settings):
+            nonlocal storage_read_started_after_close
+            storage_read_started_after_close = not session.in_transaction()
+            return Response(content=b"image", media_type="image/jpeg")
+
+        monkeypatch.setattr(image_routes, "image_response", fake_image_response)
+
+        response = image_routes.image_content(image.id, session=session, current_user=user)
+
+    assert response.status_code == 200
+    assert storage_read_started_after_close is True
 
 
 def test_upload_image_accepts_device_token(tmp_path, monkeypatch):
@@ -634,6 +677,72 @@ def test_image_client_url_falls_back_to_proxy_when_signing_fails(monkeypatch):
     url = image_client_url(image, request, settings)
 
     assert url == "https://api.example/api/images/45/content"
+
+
+def test_image_client_url_proxy_strategy_skips_gcs_signing(monkeypatch):
+    def fail_signed_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+        raise AssertionError("GCS signing should not be attempted when proxy strategy is configured.")
+
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fail_signed_url)
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(storage_backend="gcs", gcs_bucket_name="plantlab-images", image_url_strategy="proxy")
+    image = SimpleNamespace(id=46, path="gs://plantlab-images/device-1/rose.jpg")
+
+    url = image_client_url(image, request, settings)
+
+    assert url == "https://api.example/api/images/46/content"
+
+
+def test_image_client_url_signing_failure_logs_warning_not_error(monkeypatch, caplog):
+    def fake_signed_url(bucket_name: str, object_name: str, settings: Settings) -> str:
+        raise RuntimeError("iam signBytes unavailable")
+
+    monkeypatch.setattr(storage_service, "_signed_gcs_image_url", fake_signed_url)
+    request = SimpleNamespace(url_for=lambda name, image_id: f"https://api.example/api/images/{image_id}/content")
+    settings = Settings(storage_backend="gcs", gcs_bucket_name="plantlab-images")
+    image = SimpleNamespace(id=47, path="gs://plantlab-images/device-1/rose.jpg")
+
+    with caplog.at_level(logging.WARNING, logger="app.services.storage"):
+        url = image_client_url(image, request, settings)
+
+    assert url == "https://api.example/api/images/47/content"
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+def test_gcs_image_response_raises_when_object_cannot_be_read(monkeypatch):
+    class FakeBlob:
+        content_type = None
+
+        def download_as_bytes(self):
+            raise RuntimeError("not found")
+
+    class FakeBucket:
+        def blob(self, object_name: str):
+            return FakeBlob()
+
+    class FakeStorageClient:
+        def bucket(self, bucket_name: str):
+            return FakeBucket()
+
+    storage_module = ModuleType("google.cloud.storage")
+    storage_module.Client = FakeStorageClient
+    cloud_module = ModuleType("google.cloud")
+    cloud_module.storage = storage_module
+    google_module = ModuleType("google")
+    google_module.cloud = cloud_module
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud_module)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", storage_module)
+
+    settings = Settings(storage_backend="gcs", gcs_bucket_name="plantlab-images")
+
+    try:
+        storage_service.image_response("gs://plantlab-images/device-1/missing.jpg", settings)
+    except RuntimeError as exc:
+        assert "GCS image could not be read." in str(exc)
+    else:
+        raise AssertionError("missing GCS image should raise")
 
 
 def test_gcs_signing_credentials_are_scoped_when_required():
