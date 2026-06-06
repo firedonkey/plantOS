@@ -682,3 +682,48 @@ This file tracks issues found during local reliability validation.
   - Backend fix was applied after the soak was already failed, then deployed and validated on GCP.
 - Recommendation:
   - Restart a clean 48-hour release-candidate soak from a fresh baseline.
+
+## REL-GCP-SOAK-006: Master operator-induced reset during release-candidate soak
+
+- Timestamp: `2026-06-04T04:23:20Z`
+- Scenario: Final clean release-candidate 48-hour GCP soak started at `2026-06-04T00:51:39Z`.
+- Severity: B
+- Classification: External/operator-induced soak interruption.
+- Status: CLOSED as non-product reliability failure. The interrupted soak does not count as the release-candidate result and was restarted from a fresh baseline.
+- Evidence:
+  - The `2026-06-04T04:25:58Z` checkpoint showed both hardware nodes online:
+    - Master `pl-esp32-64e0a80af6e8`, firmware `0.1.6`, status `online`, RSSI `-50 dBm`, command poll status `ok`, command poll stale seconds `0`.
+    - Camera `pl-cam-1c1df816a398`, firmware `0.1.8`, status `online`, RSSI `-56 dBm`, `time_sync_status=synchronized`.
+  - Master uptime reset during the soak:
+    - `2026-06-04T04:23:02Z`: uptime `48792s`.
+    - `2026-06-04T04:23:20Z`: uptime `10s`.
+    - Uptime delta: `-48782s`.
+  - The first post-reset heartbeat had no `last_ntp_sync_at`; NTP re-synchronized at `2026-06-04T04:23:22Z`.
+  - `reboot_reason` was not populated in `device_diagnostic_snapshots`.
+  - The heartbeat gap around the reset was short, about `18s`.
+  - Master command polling recovered immediately:
+    - `last_command_poll_status=ok`
+    - `command_poll_stale_seconds=0`
+  - An `ACTUATOR_STATE_CHANGED` info event was emitted at `2026-06-04T04:23:20Z`.
+  - Post-reset heartbeat data reported ambient light `enabled=false`, `brightness_percent=0`, while the prior commanded brightness during the soak was `50%`.
+  - Camera stayed online and continued image uploads.
+  - Commands remained healthy: `6 completed`, `0 timed_out`.
+  - Images since soak start reached `8`.
+  - Cloud Run ERROR logs since soak start remained `0`.
+  - DB connections remained within budget: `3` `plantlab_user` connections at the failed checkpoint, total DB connections `15`.
+  - No `COMMAND_POLL_STALE`, OTA event, non-info diagnostic, DB error, image upload failure, or command timeout was observed.
+- Impact:
+  - The master recovered quickly and device/cloud paths remained functional.
+  - The release-candidate soak is failed because uptime did not progress continuously and an unexpected master reset violates the clean soak success criteria.
+  - The reset also appears to have cleared the ambient light actuator state to off/0%, which may be user-visible.
+- Root cause:
+  - User confirmed the master was accidentally reset manually.
+  - Current evidence confirms a master reboot/reset, not a backend outage.
+  - No backend ERROR, DB issue, OTA activity, command timeout, `COMMAND_POLL_STALE`, or non-info diagnostic contributed to the reset.
+- Recovery:
+  - No speculative fix was applied during the soak.
+  - Monitoring automation was stopped after documenting the interruption.
+  - A fresh release-candidate soak was restarted at `2026-06-04T04:29:20Z`.
+- Recommendation:
+  - Do not count the interrupted soak as the release-candidate result.
+  - Continue with the fresh clean 48-hour soak started at `2026-06-04T04:29:20Z`.
