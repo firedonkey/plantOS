@@ -17,7 +17,7 @@ export async function loadAuthSession(): Promise<AuthSession | null> {
 }
 
 export async function saveAuthSession(session: AuthSession): Promise<void> {
-  if (session.mode === "production") {
+  if (session.mode === "production" && !session.isDemo) {
     await AsyncStorage.removeItem(AUTH_SESSION_KEY);
     return;
   }

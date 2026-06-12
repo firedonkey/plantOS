@@ -16,6 +16,7 @@ type ApiLoginResponse = {
     email: string;
     name?: string | null;
     avatar_url?: string | null;
+    is_demo_user?: boolean;
   };
 };
 
@@ -31,6 +32,7 @@ type ApiRefreshResponse = {
     email: string;
     name?: string | null;
     avatar_url?: string | null;
+    is_demo_user?: boolean;
   };
 };
 
@@ -51,6 +53,7 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
       email: session.user?.email ?? session.email,
       name: session.user?.name ?? undefined,
       mode: session.mode,
+      isDemo: session.user?.is_demo_user ?? false,
     };
   } catch (error) {
     if (!shouldUseMockFallback(error)) {
@@ -83,6 +86,7 @@ export async function loginWithAppleIdentityToken(input: AppleLoginInput): Promi
       mode: "production",
       expiresAt: payload.expires_at,
       refreshToken: payload.refresh_token ?? undefined,
+      isDemo: payload.user.is_demo_user ?? false,
     },
     refreshToken: payload.refresh_token,
   };
@@ -107,6 +111,25 @@ export async function refreshProductionSession(input: {
       mode: "production",
       expiresAt: payload.expires_at,
       refreshToken: payload.refresh_token ?? undefined,
+      isDemo: payload.user.is_demo_user ?? false,
+    },
+    refreshToken: payload.refresh_token,
+  };
+}
+
+export async function loginWithDemoAccount(): Promise<{ session: AuthSession; refreshToken?: string | null }> {
+  const payload = await apiRequest<ApiRefreshResponse>("/api/auth/demo", {
+    method: "POST",
+  });
+  return {
+    session: {
+      token: payload.access_token,
+      email: payload.user.email,
+      name: payload.user.name ?? undefined,
+      mode: "production",
+      expiresAt: payload.expires_at,
+      refreshToken: payload.refresh_token ?? undefined,
+      isDemo: payload.user.is_demo_user ?? false,
     },
     refreshToken: payload.refresh_token,
   };

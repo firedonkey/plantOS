@@ -8,7 +8,7 @@ import { useSession } from "@/hooks/useSession";
 export function RemoveDeviceScreen() {
   const { deviceId = "" } = useParams();
   const navigate = useNavigate();
-  const { token } = useSession();
+  const { getAccessToken } = useSession();
   const { dashboard, usedMock: dashboardUsedMock, isLoading, error } = useDeviceDashboard(deviceId, { autoRefresh: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -23,7 +23,8 @@ export function RemoveDeviceScreen() {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const result = await deleteDevice(deviceId, token ?? undefined);
+      const accessToken = await getAccessToken();
+      const result = await deleteDevice(deviceId, accessToken ?? undefined);
       navigate("/devices", {
         replace: true,
         state: {

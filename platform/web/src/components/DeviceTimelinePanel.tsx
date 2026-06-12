@@ -35,7 +35,7 @@ type TimelineFilters = {
 };
 
 export function DeviceTimelinePanel({ deviceId }: { deviceId: string }) {
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const [events, setEvents] = useState<DeviceTimelineEvent[]>([]);
   const [nextBefore, setNextBefore] = useState<string | undefined>();
   const [usedMock, setUsedMock] = useState(false);
@@ -69,7 +69,8 @@ export function DeviceTimelinePanel({ deviceId }: { deviceId: string }) {
           nodeRole: filters.nodeRole || undefined,
           correlationId: filters.correlationId.trim() || undefined,
         };
-        const result = await getDeviceTimeline(deviceId, query, token ?? undefined);
+        const accessToken = await getAccessToken();
+        const result = await getDeviceTimeline(deviceId, query, accessToken ?? undefined);
         setUsedMock(result.usedMock);
         setEvents((current) => (append ? [...current, ...result.timeline.events] : result.timeline.events));
         setNextBefore(result.timeline.nextBefore);
@@ -80,7 +81,7 @@ export function DeviceTimelinePanel({ deviceId }: { deviceId: string }) {
         setIsLoadingMore(false);
       }
     },
-    [deviceId, filters.correlationId, filters.eventType, filters.nodeRole, filters.severity, token],
+    [deviceId, filters.correlationId, filters.eventType, filters.nodeRole, filters.severity, getAccessToken, token],
   );
 
   useEffect(() => {

@@ -168,4 +168,5 @@ export type AuthSession = {
   mode: "mock" | "api" | "production";
   expiresAt?: string;
   refreshToken?: string;
+  isDemo?: boolean;
 };

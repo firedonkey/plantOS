@@ -50,6 +50,13 @@ def _apply_lightweight_migrations(selected_engine) -> None:
         if "users" in table_names:
             user_columns = {column["name"] for column in inspector.get_columns("users")}
             _add_column_if_missing(connection, selected_engine, "users", user_columns, Column("apple_sub", String(255)))
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "users",
+                user_columns,
+                Column("is_demo_user", Boolean, nullable=False, server_default="0"),
+            )
         if "devices" in table_names:
             device_columns = {column["name"] for column in inspector.get_columns("devices")}
             _add_column_if_missing(connection, selected_engine, "devices", device_columns, Column("api_token", String(80)))

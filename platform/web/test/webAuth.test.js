@@ -24,6 +24,11 @@ test("web login exposes backend-owned Apple and Google auth starts", async () =>
     "apple-auth-button",
     "Continue with Google",
     "getGoogleAuthStartUrl",
+    "loginWithDemoAccount",
+    "/api/auth/demo",
+    "Try PlantLab Demo",
+    "startDemoAuth",
+    "is_demo_user",
   ]) {
     assert.match(`${authSource}\n${loginSource}\n${styleSource}`, escaped(requiredText));
   }

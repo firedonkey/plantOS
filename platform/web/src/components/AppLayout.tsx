@@ -5,7 +5,7 @@ import { fetchCurrentUserProfile } from "@/api/auth";
 import { useSession } from "@/hooks/useSession";
 
 export function AppLayout() {
-  const { session, signOut, token } = useSession();
+  const { getAccessToken, session, signOut, token } = useSession();
   const [isAdmin, setIsAdmin] = useState(Boolean(session?.isAdmin));
 
   useEffect(() => {
@@ -14,7 +14,8 @@ export function AppLayout() {
       return;
     }
     let cancelled = false;
-    fetchCurrentUserProfile(token, session?.email)
+    void getAccessToken()
+      .then((accessToken) => fetchCurrentUserProfile(accessToken ?? undefined, session?.email))
       .then((result) => {
         if (!cancelled) {
           setIsAdmin(Boolean(result.profile.isAdmin));
@@ -28,7 +29,7 @@ export function AppLayout() {
     return () => {
       cancelled = true;
     };
-  }, [session?.email, token]);
+  }, [getAccessToken, session?.email, token]);
 
   return (
     <div className="shell">

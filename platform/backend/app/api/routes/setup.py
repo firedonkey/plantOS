@@ -12,6 +12,7 @@ from app.models import User
 from app.schemas.setup import ClaimTokenStatusRead, ClaimTokenStatusRequest, SetupStatusRead
 from app.services.device_nodes import latest_node_heartbeat_at, list_nodes_for_device
 from app.services.devices import list_devices_for_user
+from app.services.demo import demo_forbidden_message, is_demo_user
 from app.services.images import list_recent_images_for_device
 from app.services.lifecycle_events import write_canonical_event_once
 from app.services.readings import get_latest_reading_for_device
@@ -29,6 +30,8 @@ def get_setup_status(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("provision"))
     pending_device_name = device_name.strip()
     pending_location = location.strip()
     pending_expected_device_id = expected_device_id.strip()
@@ -121,6 +124,8 @@ async def get_claim_token_status(
     payload: ClaimTokenStatusRequest,
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("provision"))
     settings = get_settings()
     try:
         async with httpx.AsyncClient(timeout=10) as client:

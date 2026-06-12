@@ -15,6 +15,7 @@ type ApiCurrentUser = {
     name?: string | null;
     avatar_url?: string | null;
     is_admin?: boolean;
+    is_demo_user?: boolean;
   } | null;
 };
 
@@ -24,6 +25,7 @@ type ApiLoginResponse = {
   mode: "api";
   user?: {
     is_admin?: boolean;
+    is_demo_user?: boolean;
   };
 };
 
@@ -39,6 +41,7 @@ type ApiRefreshResponse = {
     name?: string | null;
     avatar_url?: string | null;
     is_admin?: boolean;
+    is_demo_user?: boolean;
   };
 };
 
@@ -53,6 +56,7 @@ export async function loginWithBackendFallback({ email, password }: LoginInput):
       email: payload.email,
       mode: payload.mode,
       isAdmin: payload.user?.is_admin ?? false,
+      isDemo: payload.user?.is_demo_user ?? false,
     };
   } catch (error) {
     if (!shouldUseMockFallback(error)) {
@@ -86,6 +90,7 @@ export async function fetchCurrentUserProfile(
         name: payload.user?.name ?? undefined,
         avatarUrl: payload.user?.avatar_url ?? undefined,
         isAdmin: payload.user?.is_admin ?? false,
+        isDemo: payload.user?.is_demo_user ?? false,
       },
     };
   } catch (error) {
@@ -99,6 +104,7 @@ export async function fetchCurrentUserProfile(
         email: fallbackEmail ?? "mock@example.com",
         name: "Mock support user",
         isAdmin: true,
+        isDemo: false,
       },
     };
   }
@@ -115,6 +121,22 @@ export async function refreshProductionSession(): Promise<AuthSession> {
     mode: "production",
     expiresAt: payload.expires_at,
     isAdmin: payload.user.is_admin,
+    isDemo: payload.user.is_demo_user,
+  };
+}
+
+export async function loginWithDemoAccount(): Promise<AuthSession> {
+  const payload = await apiRequest<ApiRefreshResponse>("/api/auth/demo", {
+    method: "POST",
+    credentials: "include",
+  });
+  return {
+    token: payload.access_token,
+    email: payload.user.email,
+    mode: "production",
+    expiresAt: payload.expires_at,
+    isAdmin: payload.user.is_admin,
+    isDemo: payload.user.is_demo_user,
   };
 }
 

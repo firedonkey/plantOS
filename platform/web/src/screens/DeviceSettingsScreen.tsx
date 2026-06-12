@@ -8,7 +8,7 @@ import { useSession } from "@/hooks/useSession";
 
 export function DeviceSettingsScreen() {
   const { deviceId = "" } = useParams();
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const [details, setDetails] = useState<DeviceSettingsDetails | null>(null);
   const [usedMock, setUsedMock] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +26,8 @@ export function DeviceSettingsScreen() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getDeviceSettingsDetails(deviceId, token ?? undefined);
+        const accessToken = await getAccessToken();
+        const result = await getDeviceSettingsDetails(deviceId, accessToken ?? undefined);
         if (cancelled) {
           return;
         }
@@ -48,7 +49,7 @@ export function DeviceSettingsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [deviceId, token]);
+  }, [deviceId, getAccessToken, token]);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -59,12 +60,13 @@ export function DeviceSettingsScreen() {
     setError(null);
     setMessage(null);
     try {
+      const accessToken = await getAccessToken();
       const result = await updateDeviceSettings(
         deviceId,
         {
           name,
         },
-        token ?? undefined,
+        accessToken ?? undefined,
       );
       setDetails(result.details);
       setUsedMock(result.usedMock);

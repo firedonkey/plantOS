@@ -17,7 +17,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   const captureRefreshAttempts = 16;
   const captureRefreshDelayMs = 500;
   const autoRefreshEnabled = options?.autoRefresh ?? true;
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const [dashboard, setDashboard] = useState<DeviceDashboard | null>(null);
   const [usedMock, setUsedMock] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,7 +45,8 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       if (!options?.background || !hasLoadedRef.current) {
         setIsLoading(true);
       }
-      const result = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined, { includeTimelapse: false });
+      const accessToken = await getAccessToken();
+      const result = await getDeviceDashboard(deviceId, selectedRange, accessToken ?? undefined, { includeTimelapse: false });
       let optimisticForRender = optimisticLight;
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
@@ -137,7 +138,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       if (shouldRefreshTimelapse && !result.usedMock) {
         lastTimelapseRefreshAtRef.current = now;
         const requestId = ++timelapseRequestIdRef.current;
-        void getDeviceTimelapse(deviceId, token ?? undefined)
+        void getDeviceTimelapse(deviceId, accessToken ?? undefined)
           .then((timelapse) => {
             if (requestId !== timelapseRequestIdRef.current) {
               return;
@@ -162,7 +163,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, optimisticLight, selectedRange, token, trackedCommand]);
+  }, [deviceId, getAccessToken, optimisticLight, selectedRange, token, trackedCommand]);
 
   const refreshIntervalMs = trackedCommand ? commandRefreshMs : autoRefreshMs;
 
@@ -217,8 +218,10 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setError(null);
       setCommandMessage(null);
       setCommandTone(null);
+      let accessToken: string | null = null;
       try {
-        const result = await sendDeviceCommand(deviceId, action, options, token ?? undefined);
+        accessToken = await getAccessToken();
+        const result = await sendDeviceCommand(deviceId, action, options, accessToken ?? undefined);
         if (result.usedMock) {
           if (action !== "capture_image") {
             setCommandMessage(`Simulated ${friendlyCommandLabel(action)} in mock mode.`);
@@ -242,7 +245,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           const refreshed = await waitForCaptureDashboardRefresh({
             deviceId,
             selectedRange,
-            token: token ?? undefined,
+            token: accessToken ?? undefined,
             commandId: result.command.id,
             baselineImageId,
             attempts: captureRefreshAttempts,
@@ -271,7 +274,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         if (nextOptimisticLight) {
           setOptimisticLight(null);
           try {
-            const refreshed = await getDeviceDashboard(deviceId, selectedRange, token ?? undefined, { includeTimelapse: false });
+            const refreshed = await getDeviceDashboard(deviceId, selectedRange, accessToken ?? undefined, { includeTimelapse: false });
             setDashboard(refreshed.dashboard);
             setUsedMock(refreshed.usedMock);
             setLastUpdatedAt(new Date().toISOString());
@@ -287,7 +290,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
         setActiveCommandAction(null);
       }
     },
-    [dashboard, deviceId, isActionBlocked, selectedRange, token],
+    [dashboard, deviceId, getAccessToken, isActionBlocked, selectedRange, token],
   );
 
   const imageAuthHeaders = useMemo(() => {

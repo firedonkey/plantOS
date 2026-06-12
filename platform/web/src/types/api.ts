@@ -133,6 +133,7 @@ export type AuthSession = {
   mode: "mock" | "api" | "production";
   expiresAt?: string;
   isAdmin?: boolean;
+  isDemo?: boolean;
 };
 
 export type CurrentUserProfile = {
@@ -142,6 +143,7 @@ export type CurrentUserProfile = {
   name?: string;
   avatarUrl?: string;
   isAdmin?: boolean;
+  isDemo?: boolean;
 };
 
 export type AdminSummary = {

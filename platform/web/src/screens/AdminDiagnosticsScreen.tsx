@@ -13,7 +13,7 @@ type UserRollup = {
 };
 
 export function AdminDiagnosticsScreen() {
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const [diagnostics, setDiagnostics] = useState<AdminDiagnostics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,13 +22,14 @@ export function AdminDiagnosticsScreen() {
     setIsLoading(true);
     setError(null);
     try {
-      setDiagnostics(await fetchAdminDiagnostics(token ?? undefined));
+      const accessToken = await getAccessToken();
+      setDiagnostics(await fetchAdminDiagnostics(accessToken ?? undefined));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load admin diagnostics.");
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [getAccessToken, token]);
 
   useEffect(() => {
     void refresh();

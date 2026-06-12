@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -20,6 +20,7 @@ class User(Base):
     apple_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
     name: Mapped[Optional[str]] = mapped_column(String(255), default=None)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), default=None)
+    is_demo_user: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

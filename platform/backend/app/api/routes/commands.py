@@ -12,6 +12,13 @@ from app.services.commands import (
     list_commands_for_device,
     take_pending_commands,
 )
+from app.services.demo import (
+    demo_commands,
+    demo_diagnostics_command,
+    demo_forbidden_message,
+    is_demo_device_id,
+    is_demo_user,
+)
 from app.services.devices import get_device_for_user
 
 
@@ -24,6 +31,10 @@ def list_commands(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_commands(current_user.id)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -37,6 +48,14 @@ def create_device_command(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if not is_demo_device_id(device_id):
+            raise HTTPException(status_code=404, detail="Device not found.")
+        if payload.target == "diagnostics" and payload.action == "request":
+            return demo_diagnostics_command(current_user.id, payload)
+        if payload.target == "ota":
+            raise HTTPException(status_code=403, detail=demo_forbidden_message("start OTA on"))
+        raise HTTPException(status_code=403, detail=demo_forbidden_message("send hardware commands to"))
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")

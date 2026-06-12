@@ -42,6 +42,22 @@ from app.services.commands import create_command, list_commands_for_device
 from app.services.device_diagnostics import event_read, list_diagnostic_events, list_diagnostic_snapshots, snapshot_read
 from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
 from app.services.device_timeline import list_timeline_events, timeline_event_read
+from app.services.demo import (
+    demo_capture_command,
+    demo_device_read,
+    demo_device_summary,
+    demo_diagnostics,
+    demo_forbidden_message,
+    demo_image_response,
+    demo_images,
+    demo_latest_image,
+    demo_light_command,
+    demo_readings,
+    demo_timelapse,
+    demo_timeline,
+    is_demo_device_id,
+    is_demo_user,
+)
 from app.services.devices import (
     create_device_for_user,
     delete_device_for_user,
@@ -73,6 +89,12 @@ READING_OFFLINE_AFTER = timedelta(minutes=15)
 IMAGE_STALE_AFTER = timedelta(minutes=5)
 IMAGE_OFFLINE_AFTER = timedelta(minutes=20)
 
+
+@router.get("/demo/images/{image_id}", name="demo_image")
+def demo_image(image_id: int):
+    return demo_image_response(image_id)
+
+
 @dataclass(frozen=True)
 class CommandHealthSnapshot:
     latest: object | None
@@ -86,6 +108,8 @@ def list_devices(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        return [demo_device_read(request, current_user.id)]
     devices = list_devices_for_user(session, current_user)
     return [_build_device_read(request, session, device) for device in devices]
 
@@ -96,6 +120,8 @@ def create_device(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("provision"))
     return create_device_for_user(session, current_user, payload)
 
 
@@ -106,6 +132,8 @@ async def create_device_setup_code(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("provision"))
     settings = get_settings()
     serial_number = payload.serial_number.strip()
     if not serial_number:
@@ -179,6 +207,8 @@ async def create_device_claim_token(
     current_user: User = Depends(get_current_user),
 ):
     del session
+    if is_demo_user(current_user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("provision"))
     settings = get_settings()
     identity = payload.device_identity
     expected_device_id = (identity.hardware_device_id or identity.device_id).strip()
@@ -265,6 +295,10 @@ def get_device(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_device_read(request, current_user.id)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -279,6 +313,10 @@ def update_device(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            raise api_error(403, "demo_account_read_only", demo_forbidden_message("modify"))
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = update_device_for_user(session, current_user, device_id, payload)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -291,6 +329,10 @@ def delete_device(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            raise api_error(403, "demo_account_read_only", demo_forbidden_message("delete"))
+        raise HTTPException(status_code=404, detail="Device not found.")
     deleted = delete_device_for_user(session, current_user, device_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -307,6 +349,10 @@ def release_device(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            raise api_error(403, "demo_account_read_only", demo_forbidden_message("release"))
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = release_device_for_user(session, current_user, device_id)
     if device is None or device.released_at is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -325,6 +371,10 @@ def get_device_summary(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_device_summary(request, current_user.id)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -379,6 +429,10 @@ def get_device_diagnostics(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_diagnostics(current_user.id, events_limit=events_limit)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -401,6 +455,19 @@ def get_device_timeline(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_timeline(
+                current_user.id,
+                limit=limit,
+                before=before,
+                after=after,
+                event_types=event_type,
+                severities=severity,
+                node_role=node_role,
+                correlation_id=correlation_id,
+            )
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -431,6 +498,16 @@ def get_device_readings(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_readings(
+                current_user.id,
+                limit=limit,
+                since=start,
+                until=end,
+                order=order,
+            )
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -451,6 +528,10 @@ def get_device_latest_image(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_latest_image(request, current_user.id)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -476,6 +557,10 @@ def get_device_images(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_images(request, current_user.id, limit=limit)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -504,6 +589,18 @@ def get_device_timelapse(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_timelapse(
+                request,
+                current_user.id,
+                days=days,
+                interval_minutes=interval_minutes,
+                max_frames=max_frames,
+                target_duration_seconds=target_duration_seconds,
+                playback_frame_ms=playback_frame_ms,
+            )
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -541,6 +638,17 @@ def refresh_device_timelapse(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_timelapse(
+                request,
+                current_user.id,
+                days=days,
+                interval_minutes=interval_minutes,
+                max_frames=max_frames,
+                target_duration_seconds=target_duration_seconds,
+            )
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -572,6 +680,10 @@ def create_light_command(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_light_command(current_user.id, payload)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -616,6 +728,10 @@ def create_pump_command(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            raise api_error(403, "demo_account_read_only", demo_forbidden_message("run pump commands on"))
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
@@ -648,6 +764,10 @@ def create_capture_command(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return demo_capture_command(current_user.id)
+        raise HTTPException(status_code=404, detail="Device not found.")
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")

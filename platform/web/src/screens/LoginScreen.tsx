@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
-import { getAppleAuthStartUrl, getGoogleAuthStartUrl, loginWithBackendFallback } from "@/api/auth";
+import { getAppleAuthStartUrl, getGoogleAuthStartUrl, loginWithBackendFallback, loginWithDemoAccount } from "@/api/auth";
 import { useSession } from "@/hooks/useSession";
 
 export function LoginScreen() {
@@ -57,6 +57,20 @@ export function LoginScreen() {
     }
   };
 
+  const startDemoAuth = async () => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const session = await loginWithDemoAccount();
+      signIn(session);
+      navigate("/devices", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start the demo account.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="centered-page">
       <div className="auth-card">
@@ -69,6 +83,9 @@ export function LoginScreen() {
           </button>
           <button className="apple-auth-button" type="button" onClick={startAppleAuth}>
             Continue with Apple
+          </button>
+          <button className="secondary-button" type="button" onClick={startDemoAuth} disabled={isSubmitting}>
+            {isSubmitting ? "Opening demo..." : "Try PlantLab Demo"}
           </button>
         </div>
         {authMode === "dev" ? (

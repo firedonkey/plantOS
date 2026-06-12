@@ -6,7 +6,7 @@ import { useSession } from "@/hooks/useSession";
 
 export function useDevices() {
   const autoRefreshMs = 10000;
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const [devices, setDevices] = useState<Device[]>([]);
   const [usedMock, setUsedMock] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,7 +20,8 @@ export function useDevices() {
     }
     setError(null);
     try {
-      const result = await listDevices(token ?? undefined);
+      const accessToken = await getAccessToken();
+      const result = await listDevices(accessToken ?? undefined);
       setDevices(result.devices);
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
@@ -31,7 +32,7 @@ export function useDevices() {
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [getAccessToken, token]);
 
   useEffect(() => {
     hasLoadedRef.current = false;

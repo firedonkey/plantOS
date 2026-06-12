@@ -19,7 +19,7 @@ type DeviceDiagnosticRecord = {
 };
 
 export function SupportDiagnosticsScreen() {
-  const { authMode, session, token } = useSession();
+  const { authMode, getAccessToken, session, token } = useSession();
   const [account, setAccount] = useState<CurrentUserProfile | null>(null);
   const [records, setRecords] = useState<DeviceDiagnosticRecord[]>([]);
   const [usedMock, setUsedMock] = useState(false);
@@ -31,6 +31,7 @@ export function SupportDiagnosticsScreen() {
     setIsLoading(true);
     setError(null);
     try {
+      const token = await getAccessToken();
       const [accountResult, devicesResult] = await Promise.all([
         fetchCurrentUserProfile(token ?? undefined, session?.email),
         listDevices(token ?? undefined),
@@ -64,7 +65,7 @@ export function SupportDiagnosticsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.email, token]);
+  }, [getAccessToken, session?.email, token]);
 
   useEffect(() => {
     void refresh();

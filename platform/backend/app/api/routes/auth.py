@@ -32,7 +32,15 @@ from app.services.standalone_auth import (
     revoke_refresh_token,
     rotate_refresh_session,
 )
-from app.services.users import delete_user_account, get_or_create_local_dev_user, get_user_by_id, upsert_apple_user, upsert_google_user
+from app.services.demo import demo_forbidden_message, is_demo_user
+from app.services.users import (
+    delete_user_account,
+    get_or_create_demo_user,
+    get_or_create_local_dev_user,
+    get_user_by_id,
+    upsert_apple_user,
+    upsert_google_user,
+)
 
 
 router = APIRouter(tags=["auth"])
@@ -64,6 +72,7 @@ def _auth_user_read(user: User) -> AuthUserRead:
         name=user.name,
         avatar_url=user.avatar_url,
         is_admin=(user.email or "").strip().lower() in settings.effective_admin_emails,
+        is_demo_user=bool(getattr(user, "is_demo_user", False)),
     )
 
 
@@ -445,6 +454,25 @@ def standalone_apple_mobile_login(
     )
 
 
+@router.post("/api/auth/demo", response_model=AuthRefreshRead)
+def demo_login(
+    response: Response,
+    session: Session = Depends(get_session),
+) -> AuthRefreshRead:
+    settings = get_settings()
+    user = get_or_create_demo_user(session)
+    refresh_bundle = create_refresh_session(settings, session, user.id)
+    access = issue_access_token(settings, user.id)
+    _set_refresh_cookie(response, refresh_bundle.token)
+    return _refresh_read(
+        user=user,
+        access_token=access.token,
+        expires_in=access.expires_in,
+        expires_at=access.expires_at.isoformat(),
+        refresh_token=refresh_bundle.token,
+    )
+
+
 @router.get("/api/me")
 def me(request: Request, session: Session = Depends(get_session)) -> CurrentUserRead:
     from app.api.deps import get_optional_current_user
@@ -464,6 +492,8 @@ def delete_me(request: Request, response: Response, session: Session = Depends(g
     from app.api.deps import get_current_user
 
     user = get_current_user(request, session)
+    if is_demo_user(user):
+        raise api_error(403, "demo_account_read_only", demo_forbidden_message("delete"))
     delete_user_account(session, user)
     _clear_refresh_cookie(response)
     return {"ok": True}

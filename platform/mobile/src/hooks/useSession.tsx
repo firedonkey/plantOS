@@ -1,6 +1,6 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 
-import { logoutProductionSession } from "@/api/auth";
+import { logoutProductionSession, refreshProductionSession } from "@/api/auth";
 import { getAuthMode, isDevAuthEnabled } from "@/api/config";
 import { AuthSession } from "@/types";
 import { clearAuthSession, loadAuthSession, saveAuthSession } from "@/storage/auth";
@@ -23,7 +23,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     loadAuthSession()
-      .then((stored) => {
+      .then(async (stored) => {
         if (!stored) {
           return;
         }
@@ -31,11 +31,20 @@ export function SessionProvider({ children }: PropsWithChildren) {
           void clearAuthSession();
           return;
         }
-        if (stored.mode === "production") {
+        if (stored.mode === "production" && (!stored.isDemo || !stored.refreshToken)) {
           void clearAuthSession();
           return;
         }
+        if (stored.mode === "production" && stored.isDemo && stored.refreshToken) {
+          const { session: refreshedSession } = await refreshProductionSession({ refreshToken: stored.refreshToken });
+          await saveAuthSession(refreshedSession);
+          setSession(refreshedSession);
+          return;
+        }
         setSession(stored);
+      })
+      .catch(() => {
+        void clearAuthSession();
       })
       .finally(() => setIsHydrated(true));
   }, []);

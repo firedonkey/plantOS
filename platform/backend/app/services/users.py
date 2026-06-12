@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.models import AuthHandoffCode, AuthRefreshSession, Device, User
 from app.services.devices import _delete_device_record
 
+DEMO_USER_EMAIL = "demo@plantlab.local"
+DEMO_USER_NAME = "PlantLab Demo"
+
 
 def _provider_fallback_email(provider: str, provider_sub: str) -> str:
     digest = sha256(provider_sub.encode("utf-8")).hexdigest()[:16]
@@ -44,6 +47,19 @@ def get_or_create_local_dev_user(session: Session, *, email: str) -> User:
         session.add(user)
         session.commit()
         session.refresh(user)
+    return user
+
+
+def get_or_create_demo_user(session: Session) -> User:
+    user = session.scalar(select(User).where(User.email == DEMO_USER_EMAIL))
+    if user is None:
+        user = User(email=DEMO_USER_EMAIL, name=DEMO_USER_NAME, is_demo_user=True)
+        session.add(user)
+    else:
+        user.name = user.name or DEMO_USER_NAME
+        user.is_demo_user = True
+    session.commit()
+    session.refresh(user)
     return user
 
 

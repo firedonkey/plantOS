@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
 import { AdminDiagnosticsScreen } from "./screens/AdminDiagnosticsScreen";
@@ -26,24 +27,40 @@ function ProtectedRoutes() {
   return <AppLayout />;
 }
 
+function ScrollToRouteTop() {
+  const { hash, pathname } = useLocation();
+
+  useEffect(() => {
+    if (hash) {
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0 });
+  }, [hash, pathname]);
+
+  return null;
+}
+
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingScreen />} />
-      <Route path="/demo" element={<PublicDemoScreen />} />
-      <Route path="/login" element={<LoginScreen />} />
-      <Route element={<ProtectedRoutes />}>
-        <Route path="devices" element={<DeviceListScreen />} />
-        <Route path="devices/add" element={<Navigate to="/devices" replace />} />
-        <Route path="devices/setup-finishing" element={<SetupFinishingScreen />} />
-        <Route path="devices/:deviceId" element={<DeviceDashboardScreen />} />
-        <Route path="devices/:deviceId/history" element={<HistoryScreen />} />
-        <Route path="devices/:deviceId/settings" element={<DeviceSettingsScreen />} />
-        <Route path="devices/:deviceId/remove" element={<RemoveDeviceScreen />} />
-        <Route path="settings" element={<SettingsScreen />} />
-        <Route path="support/diagnostics" element={<SupportDiagnosticsScreen />} />
-        <Route path="admin/diagnostics" element={<AdminDiagnosticsScreen />} />
-      </Route>
-    </Routes>
+    <>
+      <ScrollToRouteTop />
+      <Routes>
+        <Route path="/" element={<LandingScreen />} />
+        <Route path="/demo" element={<PublicDemoScreen />} />
+        <Route path="/login" element={<LoginScreen />} />
+        <Route element={<ProtectedRoutes />}>
+          <Route path="devices" element={<DeviceListScreen />} />
+          <Route path="devices/add" element={<Navigate to="/devices" replace />} />
+          <Route path="devices/setup-finishing" element={<SetupFinishingScreen />} />
+          <Route path="devices/:deviceId" element={<DeviceDashboardScreen />} />
+          <Route path="devices/:deviceId/history" element={<HistoryScreen />} />
+          <Route path="devices/:deviceId/settings" element={<DeviceSettingsScreen />} />
+          <Route path="devices/:deviceId/remove" element={<RemoveDeviceScreen />} />
+          <Route path="settings" element={<SettingsScreen />} />
+          <Route path="support/diagnostics" element={<SupportDiagnosticsScreen />} />
+          <Route path="admin/diagnostics" element={<AdminDiagnosticsScreen />} />
+        </Route>
+      </Routes>
+    </>
   );
 }

@@ -90,6 +90,9 @@ test("mobile login keeps local development sign-in available when dev auth is en
     "styles.localLoginPanel",
     "Continue with Google",
     "AppleAuthentication.AppleAuthenticationButton",
+    "loginWithDemoAccount",
+    "Try PlantLab Demo",
+    "onDemoAuth",
   ]) {
     assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

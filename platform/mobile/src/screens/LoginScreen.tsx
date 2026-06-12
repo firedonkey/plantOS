@@ -4,7 +4,7 @@ import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { getMobileGoogleAuthStartUrl, loginWithAppleIdentityToken, loginWithBackendFallback } from "@/api/auth";
+import { getMobileGoogleAuthStartUrl, loginWithAppleIdentityToken, loginWithBackendFallback, loginWithDemoAccount } from "@/api/auth";
 import { isDevAuthEnabled } from "@/api/config";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -88,6 +88,22 @@ export function LoginScreen() {
     }
   };
 
+  const onDemoAuth = async () => {
+    if (isSubmitting) {
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const { session } = await loginWithDemoAccount();
+      await signIn(session);
+      router.replace("/(app)/devices");
+    } catch (error) {
+      Alert.alert("Demo unavailable", error instanceof Error ? error.message : "Unknown error.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -139,6 +155,7 @@ export function LoginScreen() {
                 onPress={onAppleAuth}
               />
             ) : null}
+            <PrimaryButton label={isSubmitting ? "Opening demo..." : "Try PlantLab Demo"} onPress={onDemoAuth} disabled={isSubmitting} />
           </>
         ) : null}
         {showLocalLogin ? (

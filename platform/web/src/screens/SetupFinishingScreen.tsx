@@ -5,7 +5,7 @@ import { getSetupStatus } from "@/api/devices";
 import { useSession } from "@/hooks/useSession";
 
 export function SetupFinishingScreen() {
-  const { token } = useSession();
+  const { getAccessToken, token } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deviceName = searchParams.get("device_name") ?? "";
@@ -43,13 +43,14 @@ export function SetupFinishingScreen() {
         setIsLoading(true);
       }
       try {
+        const accessToken = await getAccessToken();
         const result = await getSetupStatus(
           {
             deviceName,
             location: location || undefined,
             expectImage,
           },
-          token ?? undefined,
+          accessToken ?? undefined,
         );
         if (cancelled) {
           return;
@@ -86,7 +87,7 @@ export function SetupFinishingScreen() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [deviceName, expectImage, location, navigate, token]);
+  }, [deviceName, expectImage, getAccessToken, location, navigate, token]);
 
   const waitingReason = status
     ? !status.deviceFound

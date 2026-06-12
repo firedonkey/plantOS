@@ -12,6 +12,7 @@ class AuthUserRead(BaseModel):
     name: str | None
     avatar_url: str | None
     is_admin: bool = False
+    is_demo_user: bool = False
 
 
 class AuthSessionRead(BaseModel):

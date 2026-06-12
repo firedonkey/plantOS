@@ -6,8 +6,6 @@ import { useSession } from "@/hooks/useSession";
 const proofPoints = [
   { label: "Camera timeline", detail: "Growth history" },
   { label: "Smart monitoring", detail: "Live plant state" },
-  { label: "OTA updates", detail: "Field-ready firmware" },
-  { label: "Mobile + web", detail: "Two product surfaces" },
   { label: "Device health", detail: "Readable reliability" },
 ];
 
@@ -55,25 +53,6 @@ const featureCards: Array<{
   },
 ];
 
-const reliabilityItems = [
-  {
-    title: "Device health monitoring",
-    body: "See when the planter is online, updating, or needs attention.",
-  },
-  {
-    title: "Diagnostics timeline",
-    body: "Review readable events instead of digging through raw logs.",
-  },
-  {
-    title: "OTA update readiness",
-    body: "Keep firmware up to date without plugging into a computer.",
-  },
-  {
-    title: "Camera and Wi-Fi visibility",
-    body: "Know when camera or connection state changes.",
-  },
-];
-
 const useCases = [
   {
     title: "Plant hobbyists",
@@ -107,7 +86,6 @@ export function LandingScreen() {
           <span>PlantLab</span>
         </Link>
         <nav className="landing-nav-links" aria-label="Landing navigation">
-          <a href="#how-it-works">How it works</a>
           <a href="#use-cases">Use cases</a>
           <Link className="landing-signin-link" to={dashboardHref}>
             {dashboardLabel}
@@ -190,30 +168,6 @@ export function LandingScreen() {
           </div>
         </section>
 
-        <section className="landing-section landing-app-preview-section" aria-labelledby="app-preview-title">
-          <div className="section-heading landing-section-centered">
-            <div className="eyebrow">App experience</div>
-            <h2 id="app-preview-title">Glanceable on mobile. Spacious on web.</h2>
-            <p>
-              PlantLab keeps the same product story across devices: plant state, image history, controls, and health
-              signals remain visible without turning the interface into a debug console.
-            </p>
-          </div>
-          <AppExperiencePreview />
-        </section>
-
-        <section id="how-it-works" className="landing-band" aria-labelledby="how-title">
-          <div>
-            <div className="eyebrow">How it works</div>
-            <h2 id="how-title">Pair once. Watch continuously. Understand changes over time.</h2>
-          </div>
-          <div className="landing-steps">
-            <StepItem number="1" title="Connect PlantLab" body="Use the mobile app to provision and link the device." />
-            <StepItem number="2" title="Watch your plant grow" body="Camera captures and readings build a history automatically." />
-            <StepItem number="3" title="Understand what changed" body="Health states, updates, and events stay readable from web or mobile." />
-          </div>
-        </section>
-
         <section className="landing-section landing-two-column landing-growth-section" aria-labelledby="growth-title">
           <GrowthShowcase />
           <div className="section-heading">
@@ -223,38 +177,6 @@ export function LandingScreen() {
               PlantLab's camera history and growth timelapse make it easier to compare days, weeks, and small changes
               without taking manual photos.
             </p>
-          </div>
-        </section>
-
-        <section className="landing-section landing-two-column" aria-labelledby="reliability-title">
-          <div className="section-heading">
-            <div className="eyebrow">Diagnostics and reliability</div>
-            <h2 id="reliability-title">Know when your device is healthy, connected, and up to date.</h2>
-            <p>
-              PlantLab keeps reliability visible with device health, OTA update status, and a readable activity timeline
-              when something needs attention.
-            </p>
-          </div>
-          <div className="landing-reliability-showcase" aria-label="PlantLab reliability preview">
-            <div className="landing-update-card">
-              <span>Firmware</span>
-              <strong>1.0.4 ready</strong>
-              <div className="landing-progress-bar">
-                <span />
-              </div>
-              <small>Update can run over the air.</small>
-            </div>
-            <div className="landing-reliability-list">
-              {reliabilityItems.map((item) => (
-                <div key={item.title}>
-                  <span />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <small>{item.body}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
@@ -332,56 +254,6 @@ function CapabilityPreview({ visual, metric, state }: { visual: CapabilityVisual
   );
 }
 
-function AppExperiencePreview() {
-  return (
-    <div className="landing-app-preview" aria-label="PlantLab web and mobile app preview">
-      <div className="landing-web-preview">
-        <div className="landing-preview-toolbar">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="landing-preview-body">
-          <div className="landing-preview-hero">
-            <small>Device overview</small>
-            <strong>Simulator Plant</strong>
-            <span>Healthy and connected</span>
-          </div>
-          <div className="landing-preview-grid">
-            <div>
-              <span>Air temp</span>
-              <strong>26.4 C</strong>
-            </div>
-            <div>
-              <span>Humidity</span>
-              <strong>41%</strong>
-            </div>
-            <div>
-              <span>Light</span>
-              <strong>65%</strong>
-            </div>
-          </div>
-          <div className="landing-preview-chart">
-            <span />
-          </div>
-        </div>
-      </div>
-      <div className="landing-mobile-preview">
-        <div className="landing-mobile-notch" />
-        <div className="landing-mobile-card landing-mobile-card-hero">
-          <span>PlantLab</span>
-          <strong>Healthy</strong>
-        </div>
-        <div className="landing-mobile-image" />
-        <div className="landing-mobile-card">
-          <span>Latest capture</span>
-          <strong>just now</strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function GrowthShowcase() {
   return (
     <div className="landing-growth-showcase" aria-label="PlantLab growth history preview">
@@ -443,17 +315,5 @@ function ProductPreview() {
         <span>Image captured</span>
       </div>
     </div>
-  );
-}
-
-function StepItem({ number, title, body }: { number: string; title: string; body: string }) {
-  return (
-    <article className="landing-step">
-      <span>{number}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{body}</p>
-      </div>
-    </article>
   );
 }
