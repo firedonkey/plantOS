@@ -101,7 +101,8 @@ void setup() {
   Serial.println("[camera-test] board: Seeed XIAO ESP32-S3 Sense");
   Serial.println("[camera-test] manual mode: [space] or c = capture and save now");
 
-  if (!g_camera.begin()) {
+  XiaoCameraOptions camera_options = makeDefaultXiaoCameraOptions();
+  if (!g_camera.begin(camera_options)) {
     Serial.println("[camera-test] camera init failed. Check camera module and pin map.");
     return;
   }

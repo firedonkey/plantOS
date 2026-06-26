@@ -9,7 +9,9 @@
 // PlantLab v2 - Phase 1 local bring-up
 // Board: ESP32-S3-DevKitC-1-N32R16V
 
+#ifndef BOARD_NAME
 #define BOARD_NAME "ESP32-S3-DevKitC-1-N32R16V"
+#endif
 
 // Sensors
 #define PIN_SOIL_MOISTURE_ADC 1

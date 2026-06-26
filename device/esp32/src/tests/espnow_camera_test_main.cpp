@@ -252,7 +252,8 @@ void setup() {
   Serial.printf("[espnow-camera] local MAC: %s\n", WiFi.macAddress().c_str());
   Serial.printf("[espnow-camera] channel: %u\n", static_cast<unsigned int>(ESPNOW_TEST_WIFI_CHANNEL));
 
-  g_camera_ready = g_camera.begin();
+  XiaoCameraOptions camera_options = makeDefaultXiaoCameraOptions();
+  g_camera_ready = g_camera.begin(camera_options);
   if (g_camera_ready) {
     Serial.println("[espnow-camera] camera initialized");
   } else {

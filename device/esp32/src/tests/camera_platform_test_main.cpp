@@ -658,7 +658,8 @@ bool initCamera() {
     return true;
   }
 
-  if (!g_camera.begin()) {
+  XiaoCameraOptions camera_options = makeDefaultXiaoCameraOptions();
+  if (!g_camera.begin(camera_options)) {
     Serial.println("[camera-node] camera init failed");
     recordDiagnosticError("camera_init_failed", "camera init failed");
     return false;
