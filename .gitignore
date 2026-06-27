@@ -11,6 +11,14 @@ venv/
 .DS_Store
 stress-reports/
 
+# Root runtime data. Keep rules precise so future small fixtures can be tracked
+# under explicit fixture directories.
+/data/*.db
+/data/*.sqlite
+/data/*.sqlite3
+/data/uploads/
+/data/demo-account-uploads/
+
 device/data/logs/*.csv
 device/data/logs/*.json
 device/data/images/*.jpg

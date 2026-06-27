@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "start": "expo start",
     "start:dev": "bash scripts/mobile/start_dev_client.sh --host lan",
