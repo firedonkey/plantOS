@@ -55,14 +55,14 @@ test("mobile dashboard shows the new water hardware surface without pump or mois
   const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
 
   for (const requiredText of [
-    'label="Water temp"',
-    'label="Water level"',
-    "<Text style={styles.sectionTitle}>Grow LED</Text>",
-    '"Turn on"',
-    '"Turn off"',
+    'label="Water Temp"',
+    'label="Water Level"',
+    "Grow Light Control",
     "nextLightAction",
     "formatWaterLevel",
-    "ToggleButton",
+    "lightTogglePending",
+    "hasLightIntensitySupport",
+    'runCommand("light_intensity"',
     'accessibilityRole="switch"',
   ]) {
     assert.match(dashboardSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

@@ -13,9 +13,9 @@ export default function DevicesLayout() {
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Devices" }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="add" options={{ title: "Add device" }} />
-      <Stack.Screen name="[deviceId]/index" options={{ title: "Device" }} />
+      <Stack.Screen name="[deviceId]/index" options={{ headerShown: false }} />
       <Stack.Screen name="[deviceId]/history" options={{ title: "History" }} />
       <Stack.Screen name="[deviceId]/settings" options={{ title: "Device settings" }} />
     </Stack>

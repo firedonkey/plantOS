@@ -1,19 +1,29 @@
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 
 import { deleteAccount } from "@/api/auth";
 import { getApiBaseUrl } from "@/api/config";
-import { Card } from "@/components/Card";
+import { DashboardTopNav, Dot, EvtCard, EvtInfoRow } from "@/components/evt/EvtComponents";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { useDevices } from "@/hooks/useDevices";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
+import { formatDeviceStatus } from "@/utils/formatting";
 
 export function SettingsScreen() {
   const { authMode, session, signOut, token } = useSession();
+  const { devices, refresh, isLoading } = useDevices();
+  const currentDevice = devices[0];
   const userName = session?.name?.trim() || session?.email || "Signed out";
-  const userEmail = session?.email?.trim();
+  const apiUrl = getApiBaseUrl() || "Not configured";
+  const modeLabel = session?.mode ? `${session.mode} (${authMode})` : `Signed out (${authMode})`;
+
+  const logout = async () => {
+    await signOut();
+    router.replace("/login");
+  };
 
   const confirmDeleteAccount = () => {
     Alert.alert(
@@ -39,67 +49,99 @@ export function SettingsScreen() {
   };
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>SETTINGS</Text>
-        <Text style={styles.title}>App settings</Text>
-      </View>
+    <Screen onRefresh={refresh} refreshing={isLoading}>
+      <Text style={styles.screenTitle}>Dashboard</Text>
+      <DashboardTopNav active="settings" />
 
-      <Card variant="elevated">
-        <Text style={styles.label}>User name</Text>
-        <Text style={styles.value}>{userName}</Text>
-        {userEmail && userEmail !== userName ? <Text style={styles.note}>{userEmail}</Text> : null}
-      </Card>
+      <EvtCard compact>
+        <View style={styles.hardwareStatus}>
+          <Text style={styles.rowLabel}>Hardware status</Text>
+          <View style={styles.statusValue}>
+            <Dot color={currentDevice?.status === "offline" ? theme.colors.danger : theme.colors.success} size={6} />
+            <Text style={styles.onlineText}>{currentDevice ? formatDeviceStatus(currentDevice.status) : "No device"}</Text>
+          </View>
+        </View>
+      </EvtCard>
 
-      <Card variant="elevated">
-        <Text style={styles.label}>API URL</Text>
-        <Text style={styles.value}>{getApiBaseUrl() || "Not configured"}</Text>
-      </Card>
+      <EvtCard compact>
+        <EvtInfoRow label="Account" value={userName} />
+        <EvtInfoRow label="API website address" value={apiUrl} />
+        <EvtInfoRow label="Conversation mode" value={modeLabel} />
+        <EvtInfoRow label="remarks" value={Constants.expoConfig?.version ? `App version ${Constants.expoConfig.version}` : "No app version configured"} />
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => currentDevice ? router.push(`/(app)/devices/${currentDevice.id}/settings`) : router.push("/(app)/devices/add")}
+        >
+          <View style={styles.equipmentRow}>
+            <Text style={styles.rowLabel}>Equipment settings</Text>
+            <Text style={styles.rowValue} numberOfLines={1}>
+              {currentDevice ? "Open device settings" : "Add a device first"}
+            </Text>
+          </View>
+        </Pressable>
+      </EvtCard>
 
-      <Card>
-        <Text style={styles.label}>Session mode</Text>
-        <Text style={styles.value}>{session?.mode ?? "Signed out"} ({authMode})</Text>
-      </Card>
+      <PrimaryButton label="log out" tone="secondary" onPress={logout} />
 
-      <Card variant="inset">
-        <Text style={styles.label}>Auth note</Text>
-        <Text style={styles.note}>Production mobile auth supports Sign in with Apple and backend Google handoff. Refresh-token persistence will remain disabled until secure storage is enabled.</Text>
-      </Card>
-
-      <Card>
-        <Text style={styles.label}>App version</Text>
-        <Text style={styles.value}>{Constants.expoConfig?.version ?? "0.1.0"}</Text>
-      </Card>
-
-      <Card variant="inset">
-        <Text style={styles.label}>Device settings</Text>
-        <Text style={styles.note}>Open a device to edit labels, recover Wi-Fi setup, prepare transfer, or view reset guidance.</Text>
-      </Card>
-
-      <PrimaryButton
-        label="Log out"
-        onPress={async () => {
-          await signOut();
-          router.replace("/login");
-        }}
-      />
-
-      <Card variant="inset">
-        <Text style={styles.label}>Account deletion</Text>
+      <EvtCard compact>
+        <Text style={styles.dangerTitle}>Account deletion</Text>
         <Text style={styles.note}>Delete your PlantLab account and remove associated devices and history from the backend.</Text>
         <PrimaryButton label="Delete account" tone="danger" disabled={!token} onPress={confirmDeleteAccount} />
-      </Card>
-
-      <Text style={styles.note}>Push notifications require an Expo development build or native capability work.</Text>
+      </EvtCard>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 8 },
-  eyebrow: { fontSize: theme.typography.eyebrow, fontWeight: "800", color: theme.colors.accent },
-  title: { fontSize: theme.typography.screenTitle, fontWeight: "800", color: theme.colors.textPrimary },
-  label: { fontSize: theme.typography.body, color: theme.colors.textSecondary },
-  value: { fontSize: 17, fontWeight: "800", color: theme.colors.textPrimary },
-  note: { fontSize: theme.typography.body, color: theme.colors.textSecondary, lineHeight: 20 },
+  screenTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  hardwareStatus: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 45,
+    paddingHorizontal: 10,
+  },
+  statusValue: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+  onlineText: {
+    color: theme.colors.success,
+    fontSize: theme.evtTypography.body,
+  },
+  equipmentRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    minHeight: 45,
+    paddingHorizontal: 10,
+  },
+  rowLabel: {
+    color: theme.colors.textPrimary,
+    flex: 1,
+    fontSize: theme.evtTypography.body,
+  },
+  rowValue: {
+    color: theme.colors.textMuted,
+    flex: 1,
+    fontSize: theme.evtTypography.body,
+    textAlign: "right",
+  },
+  dangerTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: theme.evtTypography.body,
+    fontWeight: "900",
+  },
+  note: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.evtTypography.body,
+    lineHeight: 19,
+  },
 });

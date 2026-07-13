@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import type { ImageSourcePropType } from "react-native";
 
 import { getMobileGoogleAuthStartUrl, loginWithAppleIdentityToken, loginWithBackendFallback, loginWithDemoAccount } from "@/api/auth";
 import { isDevAuthEnabled } from "@/api/config";
+import { evtAssets } from "@/assets/evtAssets";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useSession } from "@/hooks/useSession";
@@ -15,10 +17,12 @@ export function LoginScreen() {
   const { authMode, signIn } = useSession();
   const [loginName, setLoginName] = useState("dev@plantlab.local");
   const [password, setPassword] = useState("password");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const showProductionAuth = authMode === "production";
   const showLocalLogin = isDevAuthEnabled();
+  const localSubmitDisabled = isSubmitting || !loginName.trim() || !password;
 
   useEffect(() => {
     if (!showProductionAuth) {
@@ -30,9 +34,19 @@ export function LoginScreen() {
       .catch(() => setIsAppleAvailable(false));
   }, [showProductionAuth]);
 
+  const helperCopy = useMemo(
+    () => (showProductionAuth ? "Sign in to monitor your PlantLab devices." : "Use a local test account for this development build."),
+    [showProductionAuth],
+  );
+
   const onSubmit = async () => {
+    if (localSubmitDisabled) {
+      setErrorMessage("Enter an account and PIN before logging in.");
+      return;
+    }
     try {
       setIsSubmitting(true);
+      setErrorMessage(null);
       const email = normalizeLocalLoginEmail(loginName);
       const session = await loginWithBackendFallback({ email, password });
       await signIn(session);
@@ -41,7 +55,9 @@ export function LoginScreen() {
       }
       router.replace("/(app)/devices");
     } catch (error) {
-      Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unknown error.");
+      const message = error instanceof Error ? error.message : "Unknown error.";
+      setErrorMessage(message);
+      Alert.alert("Login failed", message);
     } finally {
       setIsSubmitting(false);
     }
@@ -49,10 +65,13 @@ export function LoginScreen() {
 
   const onProductionAuth = async () => {
     try {
+      setErrorMessage(null);
       const startUrl = getMobileGoogleAuthStartUrl("plantlab://auth/callback");
       await Linking.openURL(startUrl);
     } catch (error) {
-      Alert.alert("Production auth unavailable", error instanceof Error ? error.message : "Unknown error.");
+      const message = error instanceof Error ? error.message : "Unknown error.";
+      setErrorMessage(message);
+      Alert.alert("Google login unavailable", message);
     }
   };
 
@@ -62,6 +81,7 @@ export function LoginScreen() {
     }
     try {
       setIsSubmitting(true);
+      setErrorMessage(null);
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -82,7 +102,9 @@ export function LoginScreen() {
       if (isAppleCancelError(error)) {
         return;
       }
-      Alert.alert("Apple sign-in failed", error instanceof Error ? error.message : "Unknown error.");
+      const message = error instanceof Error ? error.message : "Unknown error.";
+      setErrorMessage(message);
+      Alert.alert("Apple login failed", message);
     } finally {
       setIsSubmitting(false);
     }
@@ -94,94 +116,169 @@ export function LoginScreen() {
     }
     try {
       setIsSubmitting(true);
+      setErrorMessage(null);
       const { session } = await loginWithDemoAccount();
       await signIn(session);
       router.replace("/(app)/devices");
     } catch (error) {
-      Alert.alert("Demo unavailable", error instanceof Error ? error.message : "Unknown error.");
+      const message = error instanceof Error ? error.message : "Unknown error.";
+      setErrorMessage(message);
+      Alert.alert("Demo unavailable", message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>PLANTLAB MOBILE</Text>
-        <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.subtitle}>
-          {showProductionAuth
-            ? "Sign in to sync and manage your PlantLab devices."
-            : "Use a local test account for this development build."}
-        </Text>
-      </View>
-
-      {showProductionAuth ? (
-        <View style={styles.productVisual} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <View style={styles.growLight} />
-          <View style={styles.lightBeam} />
-          <View style={styles.plantScene}>
-            <View style={styles.leftLeaf} />
-            <View style={styles.stem} />
-            <View style={styles.rightLeaf} />
+    <ImageBackground source={evtAssets.authLeafFrame} resizeMode="cover" style={styles.background}>
+      <Screen transparentBackground>
+        <View style={styles.authContent}>
+          <View style={styles.brandBlock}>
+            <Image source={evtAssets.plantLabLeafLogo} style={styles.leafLogo} resizeMode="contain" />
+            <Text style={styles.logoText}>PLANT<Text style={styles.logoAccent}>LAB</Text></Text>
+            <Text style={styles.heroTitle}>PLANT INTELLIGENCE MONITORING PLATFORM</Text>
+            <Text style={styles.helperText}>{helperCopy}</Text>
           </View>
-          <View style={styles.planter} />
-        </View>
-      ) : null}
 
-      <View style={styles.form}>
-        {showProductionAuth ? (
-          <>
-            <Pressable
-              disabled={isSubmitting}
-              onPress={onProductionAuth}
-              style={({ pressed }) => [
-                styles.googleButton,
-                isSubmitting && styles.disabledButton,
-                pressed && !isSubmitting && styles.pressedButton,
-              ]}
-            >
-              <View style={styles.googleIcon}>
-                <Text style={styles.googleIconText}>G</Text>
-              </View>
-              <Text style={styles.googleButtonLabel}>Continue with Google</Text>
-            </Pressable>
-            {isAppleAvailable ? (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={8}
-                style={styles.appleButton}
-                onPress={onAppleAuth}
+          {showLocalLogin ? (
+            <View style={styles.form}>
+              <AuthField
+                accessibilityLabel="Account"
+                autoCapitalize="none"
+                autoComplete="email"
+                icon={evtAssets.accountIcon}
+                keyboardType="email-address"
+                onChangeText={setLoginName}
+                placeholder="Please enter account"
+                value={loginName}
               />
+              <AuthField
+                accessibilityLabel="PIN"
+                autoComplete="password"
+                icon={evtAssets.lockIcon}
+                onChangeText={setPassword}
+                placeholder="Enter your PIN"
+                secureTextEntry
+                trailingIcon={evtAssets.eyeIcon}
+                value={password}
+              />
+              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+              <PrimaryButton label={isSubmitting ? "LOGGING IN..." : "LOGIN"} onPress={onSubmit} disabled={localSubmitDisabled} />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => Alert.alert("Password reset", "Password reset is not available in this mobile build yet.")}
+                style={styles.forgotButton}
+              >
+                <Text style={styles.forgotText}>Forgot Password?</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={styles.socialStack}>
+            {showProductionAuth ? (
+              <>
+                <SocialButton
+                  disabled={isSubmitting}
+                  icon={evtAssets.googleIcon}
+                  label="Login with google"
+                  onPress={onProductionAuth}
+                />
+                {isAppleAvailable ? (
+                  <SocialButton
+                    dark
+                    disabled={isSubmitting}
+                    icon={evtAssets.appleIcon}
+                    label="login with Apple"
+                    onPress={onAppleAuth}
+                  />
+                ) : null}
+              </>
             ) : null}
-            <PrimaryButton label={isSubmitting ? "Opening demo..." : "Try PlantLab Demo"} onPress={onDemoAuth} disabled={isSubmitting} />
-          </>
-        ) : null}
-        {showLocalLogin ? (
-          <View style={[styles.localLoginFields, showProductionAuth ? styles.localLoginPanel : null]}>
-            <Text style={styles.localLoginTitle}>Local development sign-in</Text>
-            <TextInput
-              value={loginName}
-              onChangeText={setLoginName}
-              style={styles.input}
-              placeholder="Username or email"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-            />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              style={styles.input}
-              placeholder="Password"
-              secureTextEntry
-            />
-            <PrimaryButton label={isSubmitting ? "Signing in..." : "Continue locally"} onPress={onSubmit} disabled={isSubmitting} />
+            <Pressable accessibilityRole="button" disabled={isSubmitting} onPress={onDemoAuth} style={styles.demoButton}>
+              <Text style={styles.demoButtonText}>{isSubmitting ? "Opening demo..." : "Try PlantLab Demo"}</Text>
+            </Pressable>
           </View>
-        ) : null}
-      </View>
-    </Screen>
+
+          <View style={styles.signupRow}>
+            <Text style={styles.signupMuted}>Don't have an account?</Text>
+            <Pressable accessibilityRole="button" onPress={() => router.push("/register" as never)}>
+              <Text style={styles.signupLink}>Sign Up</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Screen>
+    </ImageBackground>
+  );
+}
+
+function AuthField({
+  accessibilityLabel,
+  autoCapitalize,
+  autoComplete,
+  icon,
+  keyboardType,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  trailingIcon,
+  value,
+}: {
+  accessibilityLabel: string;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoComplete?: "email" | "password";
+  icon: ImageSourcePropType;
+  keyboardType?: "default" | "email-address" | "phone-pad" | "number-pad";
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  secureTextEntry?: boolean;
+  trailingIcon?: ImageSourcePropType;
+  value: string;
+}) {
+  return (
+    <View style={styles.field}>
+      <Image source={icon} style={styles.fieldIcon} resizeMode="contain" />
+      <TextInput
+        accessibilityLabel={accessibilityLabel}
+        autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
+        autoCorrect={false}
+        keyboardType={keyboardType}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.textMuted}
+        secureTextEntry={secureTextEntry}
+        style={styles.input}
+        value={value}
+      />
+      {trailingIcon ? <Image source={trailingIcon} style={styles.trailingIcon} resizeMode="contain" /> : null}
+    </View>
+  );
+}
+
+function SocialButton({
+  dark = false,
+  disabled,
+  icon,
+  label,
+  onPress,
+}: {
+  dark?: boolean;
+  disabled?: boolean;
+  icon: ImageSourcePropType;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.socialButton, dark ? styles.socialButtonDark : null, disabled ? styles.disabled : null, pressed ? styles.pressed : null]}
+    >
+      <Image source={icon} style={styles.socialIcon} resizeMode="contain" />
+      <Text style={[styles.socialLabel, dark ? styles.socialLabelDark : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -211,170 +308,150 @@ function isAppleCancelError(error: unknown): boolean {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    gap: 10,
-    marginTop: 42,
+  background: {
+    flex: 1,
   },
-  eyebrow: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: theme.colors.accent,
+  authContent: {
+    gap: 20,
+    minHeight: 680,
+    paddingTop: 28,
   },
-  title: {
-    fontSize: 38,
-    fontWeight: "800",
-    color: theme.colors.textPrimary,
+  brandBlock: {
+    alignItems: "center",
+    gap: 8,
   },
-  subtitle: {
-    fontSize: 16,
+  leafLogo: {
+    height: 56,
+    width: 56,
+  },
+  logoText: {
+    color: "#6f6f6f",
+    fontSize: 21,
+    fontWeight: "600",
+    letterSpacing: 0,
+  },
+  logoAccent: {
+    color: theme.colors.secondaryGreen,
+  },
+  heroTitle: {
+    color: theme.colors.darkGreen,
+    fontSize: 17,
+    fontWeight: "900",
     lineHeight: 24,
-    color: theme.colors.textSecondary,
+    marginTop: 18,
+    maxWidth: 300,
+    textAlign: "center",
+  },
+  helperText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.evtTypography.meta,
+    textAlign: "center",
   },
   form: {
-    gap: 12,
+    gap: 14,
+    marginTop: 8,
   },
-  localLoginPanel: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderSoft,
-    marginTop: 6,
-    paddingTop: 16,
-  },
-  localLoginFields: {
-    gap: 12,
-  },
-  localLoginTitle: {
-    color: theme.colors.textSecondary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  productVisual: {
-    height: 132,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surfaceMuted,
+  field: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderColor: theme.colors.darkGreen,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.colors.borderSoft,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    marginTop: 2,
-  },
-  growLight: {
-    position: "absolute",
-    top: 22,
-    width: 86,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: theme.colors.textPrimary,
-    opacity: 0.86,
-  },
-  lightBeam: {
-    position: "absolute",
-    top: 31,
-    width: 124,
-    height: 66,
-    borderRadius: 8,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: "rgba(47, 133, 90, 0.14)",
-    backgroundColor: "rgba(47, 133, 90, 0.04)",
-  },
-  plantScene: {
-    width: 82,
-    height: 58,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    marginTop: 24,
-  },
-  stem: {
-    width: 4,
-    height: 42,
-    borderRadius: 2,
-    backgroundColor: theme.colors.accent,
-  },
-  leftLeaf: {
-    position: "absolute",
-    bottom: 24,
-    left: 22,
-    width: 28,
-    height: 14,
-    borderTopLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    backgroundColor: theme.colors.accent,
-    transform: [{ rotate: "-18deg" }],
-  },
-  rightLeaf: {
-    position: "absolute",
-    bottom: 32,
-    right: 22,
-    width: 30,
-    height: 15,
-    borderTopRightRadius: 15,
-    borderBottomLeftRadius: 15,
-    backgroundColor: "#44a16d",
-    transform: [{ rotate: "18deg" }],
-  },
-  planter: {
-    width: 88,
-    height: 18,
-    borderRadius: 6,
-    backgroundColor: theme.colors.textPrimary,
-    opacity: 0.9,
-    marginTop: -1,
-  },
-  appleButton: {
-    width: "100%",
-    height: 50,
-  },
-  googleButton: {
-    minHeight: 50,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: "#c2ced6",
-    backgroundColor: "#fbfdfc",
-    alignItems: "center",
-    justifyContent: "center",
     flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
-    shadowColor: "#10251a",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    minHeight: 47,
+    paddingHorizontal: 18,
   },
-  googleIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.white,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  googleIconText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#4285F4",
-  },
-  googleButtonLabel: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: theme.colors.textPrimary,
-  },
-  pressedButton: {
-    opacity: 0.84,
-  },
-  disabledButton: {
-    opacity: 0.55,
+  fieldIcon: {
+    height: 18,
+    tintColor: theme.colors.darkGreen,
+    width: 18,
   },
   input: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
+    color: theme.colors.textPrimary,
+    flex: 1,
+    fontSize: theme.evtTypography.body,
+    minHeight: 47,
+    paddingHorizontal: 18,
+  },
+  trailingIcon: {
+    height: 16,
+    tintColor: theme.colors.darkGreen,
+    width: 16,
+  },
+  errorText: {
+    color: theme.colors.danger,
+    fontSize: theme.evtTypography.meta,
+    fontWeight: "700",
+  },
+  forgotButton: {
+    alignSelf: "flex-end",
+    minHeight: 32,
+    justifyContent: "center",
+  },
+  forgotText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.evtTypography.meta,
+  },
+  socialStack: {
+    gap: 12,
+  },
+  socialButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
     borderColor: theme.colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 38,
+    minHeight: 47,
+    paddingHorizontal: 20,
+  },
+  socialButtonDark: {
+    backgroundColor: "#000000",
+    borderColor: "#000000",
+  },
+  socialIcon: {
+    height: 20,
+    width: 20,
+  },
+  socialLabel: {
+    color: theme.colors.textPrimary,
+    fontSize: theme.evtTypography.bodyLarge,
+    fontWeight: "700",
+  },
+  socialLabelDark: {
+    color: theme.colors.white,
+  },
+  demoButton: {
+    alignItems: "center",
+    minHeight: 36,
+    justifyContent: "center",
+  },
+  demoButtonText: {
+    color: theme.colors.darkGreen,
+    fontSize: theme.evtTypography.body,
+    fontWeight: "800",
+  },
+  signupRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 14,
+    justifyContent: "center",
+    marginTop: "auto",
+    paddingBottom: 12,
+  },
+  signupMuted: {
+    color: theme.colors.textMuted,
+    fontSize: theme.evtTypography.meta,
+  },
+  signupLink: {
+    color: theme.colors.darkGreen,
+    fontSize: theme.evtTypography.meta,
+  },
+  disabled: {
+    opacity: 0.56,
+  },
+  pressed: {
+    opacity: 0.82,
   },
 });

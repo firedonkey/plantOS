@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const readText = (path: string) => readFile(join(testDir, path), "utf8");
+const escaped = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
 test("shared polish primitives use theme tokens and stable feedback surfaces", async () => {
   const [cardSource, emptyStateSource, feedbackSource, skeletonSource, statusChipSource, themeSource] = await Promise.all([
@@ -61,13 +62,15 @@ test("device dashboard has polished loading, setup, controls, and empty states",
     '<FeedbackBanner tone="error" message={error} />',
     '<SkeletonCard />',
     '<EmptyState title="Waiting for first reading"',
-    "Primary readings",
-    "<Text style={styles.sectionTitle}>Grow LED</Text>",
-    "Capture image",
-    "Sensor trends",
-    "formatDeviceContext",
+    "Sensor Status",
+    "Grow Light Control",
+    "Latest Capture",
+    "Sensor Trends",
+    "Device Settings",
+    'runCommand("capture_image")',
+    "formatLightState",
   ]) {
-    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(source, escaped(requiredText));
   }
 
   assert.doesNotMatch(source, /runPump|label="Pump"|soilMoisturePercent/);
@@ -83,18 +86,19 @@ test("mobile login keeps local development sign-in available when dev auth is en
   for (const requiredText of [
     'const showProductionAuth = authMode === "production";',
     "const showLocalLogin = isDevAuthEnabled();",
-    "Local development sign-in",
     "dev@plantlab.local",
-    "Continue locally",
+    "Please enter account",
+    "Enter your PIN",
+    "LOGIN",
     "keyboardType=\"email-address\"",
-    "styles.localLoginPanel",
-    "Continue with Google",
-    "AppleAuthentication.AppleAuthenticationButton",
+    "Login with google",
+    "AppleAuthentication.signInAsync",
+    "loginWithAppleIdentityToken",
     "loginWithDemoAccount",
     "Try PlantLab Demo",
     "onDemoAuth",
   ]) {
-    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(source, escaped(requiredText));
   }
 
   assert.doesNotMatch(source, /showLocalLogin = authMode === "dev"/);
@@ -110,11 +114,11 @@ test("mobile settings surfaces the signed-in user name", async () => {
 
   for (const requiredText of [
     "const userName = session?.name?.trim() || session?.email || \"Signed out\";",
-    "<Text style={styles.label}>User name</Text>",
-    "<Text style={styles.value}>{userName}</Text>",
-    "{userEmail && userEmail !== userName ? <Text style={styles.note}>{userEmail}</Text> : null}",
+    '<EvtInfoRow label="Account" value={userName} />',
+    '<EvtInfoRow label="API website address" value={apiUrl} />',
+    '<PrimaryButton label="log out" tone="secondary" onPress={logout} />',
   ]) {
-    assert.match(settingsSource, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(settingsSource, escaped(requiredText));
   }
 
   assert.match(typeSource, /name\?: string/);
@@ -139,27 +143,20 @@ test("device dashboard gates grow LED intensity controls on capability support",
   const source = await readText("../src/screens/DeviceDashboardScreen.tsx");
 
   for (const requiredText of [
-    "const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);",
-    "lightIntensitySupported ? (",
-    "LightIntensitySlider",
-    'onCommit={(value) => runCommand("light_intensity", { intensityPercent: value })}',
-    "scrollEnabled={!sliderActive}",
-    "onInteractionChange={setSliderActive}",
-    "new Animated.Value(committedValue)",
-    "measureInWindow",
-    "event.nativeEvent.pageX",
-    'accessibilityLabel="Grow LED intensity"',
-    'accessibilityRole="adjustable"',
-    "Brightness",
+    "const lightIntensitySupported = hasLightIntensitySupport(dashboard.hardwareHealth?.primary?.capabilities);",
+    "lightIntensitySupported",
+    'onPress={() => runCommand("light_intensity", { intensityPercent: value })}',
+    'accessibilityLabel={`Set grow light to ${value}%`}',
+    'accessibilityRole="switch"',
     "capabilities.light_intensity_control === true",
     "capabilities.light_dimming === true",
     "capabilities.light_pwm === true",
     '["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase())',
   ]) {
-    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(source, escaped(requiredText));
   }
 
-  assert.doesNotMatch(source, /LightIntensityStepper|Decrease grow LED intensity|Increase grow LED intensity|Set grow LED intensity|Slide to set brightness|locationX/);
+  assert.doesNotMatch(source, /Decrease grow LED intensity|Increase grow LED intensity|Slide to set brightness|locationX/);
 });
 
 test("device list replaces blank loading and empty screens with reusable polished states", async () => {
@@ -169,11 +166,15 @@ test("device list replaces blank loading and empty screens with reusable polishe
     "SkeletonCard",
     '<EmptyState title="No devices yet"',
     '<FeedbackBanner tone="error" message={error} />',
-    "Mock data mode",
+    "Simulator data is active.",
     "Add device",
-    'Card variant="elevated"',
+    "PlantLabHeader",
+    "Latest Capture",
+    "Environment Overview",
+    "Attention Needed",
+    "Growth Story",
   ]) {
-    assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(source, escaped(requiredText));
   }
 });
 
