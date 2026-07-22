@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS device_hardware_ids (
   hardware_device_id TEXT PRIMARY KEY,
   device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
   node_role TEXT NOT NULL DEFAULT 'single_board',
+  camera_role TEXT,
   node_index INTEGER,
   display_name TEXT,
   hardware_model TEXT,
@@ -45,6 +46,10 @@ CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_device_id
 
 CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_node_role
   ON device_hardware_ids(node_role);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_device_hardware_ids_device_camera_role
+  ON device_hardware_ids(device_id, camera_role)
+  WHERE node_role = 'camera' AND camera_role IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS device_access_tokens (
   id BIGSERIAL PRIMARY KEY,

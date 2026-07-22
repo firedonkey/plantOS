@@ -21,7 +21,7 @@ def test_actuator_state_change_emits_once_for_meaningful_change():
         events = _events(client, "ACTUATOR_STATE_CHANGED")
         assert len(events) == 1
         data = events[0].metadata_json["data"]
-        assert data["actuator"] == "ambient_light"
+        assert data["actuator"] == "grow_light"
         assert data["previous"] == {"enabled": False, "brightness_percent": 0}
         assert data["current"] == {"enabled": True, "brightness_percent": 65}
     finally:
@@ -198,7 +198,7 @@ def test_timeline_summaries_handle_state_change_events():
                         metadata_json={
                             "node_role": "master",
                             "data": {
-                                "actuator": "ambient_light",
+                                "actuator": "grow_light",
                                 "previous": {"enabled": False, "brightness_percent": 0},
                                 "current": {"enabled": True, "brightness_percent": 65},
                             },
@@ -232,7 +232,7 @@ def test_timeline_summaries_handle_state_change_events():
 
         assert response.status_code == 200
         summaries = [event["summary"] for event in response.json()["events"]]
-        assert "Ambient light changed: off -> 65%" in summaries
+        assert "Grow light changed: off -> 65%" in summaries
         assert "Wi-Fi signal degraded: -58 -> -82 dBm" in summaries
         assert "Command polling stale for 305s" in summaries
     finally:
@@ -308,9 +308,9 @@ def _heartbeat(
             "node_status": node_status,
             "firmware_version": "1.0.0",
             "hardware_model": "esp32_master",
-            "capabilities": ["ota", "ambient_led", "camera_gateway"],
+            "capabilities": ["ota", "grow_light", "camera_gateway"],
             "actuators": {
-                "ambient_light": {
+                "grow_light": {
                     "enabled": light_enabled,
                     "brightness_percent": brightness,
                 }

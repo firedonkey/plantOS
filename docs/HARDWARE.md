@@ -34,7 +34,8 @@ Verified in `device/esp32/include/config.h`:
 
 | Purpose | GPIO / value |
 | --- | --- |
-| Soil moisture ADC | GPIO1 |
+| Addressable WS2811 ambient LED belt DIN | GPIO1 |
+| Soil moisture ADC | Disabled / unassigned (`PIN_SOIL_MOISTURE_ADC=-1`) |
 | DHT22 data | GPIO4 |
 | Water temperature OneWire | GPIO5 |
 | Water level touch | GPIO13 |
@@ -49,7 +50,45 @@ Verified in `device/esp32/include/config.h`:
 Needs verification:
 
 - `config.h` marks water sensor defaults as placeholders until confirmed against the wired master board.
+- GPIO1 was previously a placeholder soil-moisture ADC pin. It is now reserved
+  for the EVT WS2811 ambient LED belt DIN, so soil moisture needs a separate confirmed
+  ADC-capable GPIO before it is re-enabled.
 - Touch thresholds and moisture calibration defaults need real enclosure/wiring calibration.
+
+## Addressable LED Belt
+
+EVT firmware support is for a 24V WS2811 addressable RGB FCOB belt connected to
+the ESP32-S3 master board:
+
+- Power: 24V LED supply.
+- Ground: LED supply ground and ESP32 ground must be common.
+- Data: `GPIO1` -> WS2811 DIN through the board's data path.
+- Physical emitters: about 630 LEDs.
+- Logical WS2811 pixels: default `14`; this is the value used by firmware
+  effects and frame generation.
+- Color order: default `RGB`.
+- Brightness: startup off, default on brightness `26/255` (about 10%), maximum
+  brightness `51/255` (20%).
+
+Physical LED count and logical WS2811 pixel count are intentionally separate.
+The firmware allocates and updates logical WS2811 pixels, not the 630 physical
+emitters. The FastLED transport keeps a bounded EVT logical capacity of
+`AMBIENT_LED_BELT_MAX_LOGICAL_PIXELS` so `logical_pixel_count` can be changed during EVT
+without source edits, while active frames still report and operate on the
+configured logical count.
+
+Bench validation checklist:
+
+1. Verify 24V at the ambient LED belt supply input and common GND between supply and
+   ESP32 before connecting DIN.
+2. Boot/reset the ESP32 and confirm the belt stays dark through startup.
+3. Send a 1-10% single-color command first; do not start with full white.
+4. Confirm red, green, blue, then dim white match the expected physical color
+   order. If not, change `color_order` before increasing brightness.
+5. Confirm the walking-pixel diagnostic advances by logical WS2811 segments. If
+   the segment count is wrong, change `logical_pixel_count`.
+6. Keep diagnostic brightness at or below 10% unless the power wiring and thermal
+   behavior have already been validated.
 
 ## Camera Pin Map
 

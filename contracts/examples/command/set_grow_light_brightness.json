@@ -8,7 +8,7 @@
   "sent_at": "2026-05-27T12:00:00Z",
   "payload": {
     "command_id": "cmd_01HXLIGHT",
-    "command_type": "SET_LIGHT_BRIGHTNESS",
+    "command_type": "SET_GROW_LIGHT_BRIGHTNESS",
     "target": {
       "node_role": "master",
       "hardware_device_id": "pl-esp32-64e0a80af6e8"

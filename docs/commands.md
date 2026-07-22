@@ -15,7 +15,7 @@ queued -> sent -> acked -> in_progress -> completed
 
 Supported v1 command types:
 
-- `SET_LIGHT_BRIGHTNESS`
+- `SET_GROW_LIGHT_BRIGHTNESS`
 - `CAPTURE_IMAGE`
 - `REBOOT`
 - `START_OTA`

@@ -137,8 +137,14 @@ def _payload_matches_polling_node(payload: CommandPayload, poller_node: DeviceNo
     poller_role = _node_role_for_contract(poller_node.node_role).value
     target_role = payload.target.node_role.value
     target_hardware_device_id = payload.target.hardware_device_id
-    if target_hardware_device_id and target_hardware_device_id == poller_node.hardware_device_id:
-        return True
+    if target_hardware_device_id:
+        if target_hardware_device_id == poller_node.hardware_device_id:
+            return True
+        # The master is the ESP-NOW gateway for camera commands even when the
+        # backend also names the physical camera node.
+        if poller_role == NodeRole.MASTER.value and target_role == NodeRole.CAMERA.value:
+            return True
+        return False
     if target_role == poller_role:
         return True
     # Current product topology lets the master act as the camera gateway. This

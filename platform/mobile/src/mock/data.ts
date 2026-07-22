@@ -6,6 +6,8 @@ const latestImage: LatestImage = {
   id: "mock-image-1",
   url: "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&fit=crop&w=1200&q=80",
   capturedAt: now.toISOString(),
+  cameraRole: "top",
+  sourceHardwareDeviceId: "pl-cam-top-mock",
 };
 
 const recentImages: LatestImage[] = [
@@ -14,11 +16,15 @@ const recentImages: LatestImage[] = [
     id: "mock-image-2",
     url: "https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=1200&q=80",
     capturedAt: new Date(now.getTime() - 45 * 60 * 1000).toISOString(),
+    cameraRole: "side",
+    sourceHardwareDeviceId: "pl-cam-side-mock",
   },
   {
     id: "mock-image-3",
     url: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80",
     capturedAt: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+    cameraRole: "top",
+    sourceHardwareDeviceId: "pl-cam-top-mock",
   },
 ];
 
@@ -104,12 +110,22 @@ const hardwareHealth: HardwareHealth = {
   },
   cameras: [
     {
-      hardwareDeviceId: "pl-cam-mock",
+      hardwareDeviceId: "pl-cam-top-mock",
       nodeRole: "camera",
+      cameraRole: "top",
       nodeIndex: 1,
-      displayName: "Camera 1",
+      displayName: "Top camera",
       status: "online",
       lastSeenAt: new Date(now.getTime() - 45 * 1000).toISOString(),
+    },
+    {
+      hardwareDeviceId: "pl-cam-side-mock",
+      nodeRole: "camera",
+      cameraRole: "side",
+      nodeIndex: 2,
+      displayName: "Side camera",
+      status: "online",
+      lastSeenAt: new Date(now.getTime() - 75 * 1000).toISOString(),
     },
   ],
   lastHeartbeatAt: new Date(now.getTime() - 15 * 1000).toISOString(),

@@ -200,6 +200,8 @@ bool build_default_provisioning_payload(CameraProvisioningPayload* payload) {
       ESPNOW_PROVISION_CONFIG_VERSION,
       ESPNOW_PROVISION_CAMERA_NODE_INDEX,
       ESPNOW_PROVISION_PLATFORM_DEVICE_ID,
+      CameraRoleCode::kTop,
+      0,
       PLANTLAB_WIFI_SSID,
       PLANTLAB_WIFI_PASSWORD,
       PLANTLAB_PLATFORM_URL,
@@ -232,9 +234,11 @@ void start_provisioning_request() {
       ESPNOW_PROVISION_ACK_TIMEOUT_MS,
       ESPNOW_PROVISION_MAX_RETRIES);
   Serial.printf(
-      "[espnow-master] provisioning request=%u prepared camera_index=%u platform_device_id=%u\n",
+      "[espnow-master] provisioning request=%u prepared camera_index=%u camera_role=%s phase_s=%u platform_device_id=%u\n",
       static_cast<unsigned int>(request_id),
       static_cast<unsigned int>(payload.camera_node_index),
+      espnow_camera_role_label(payload.camera_role),
+      static_cast<unsigned int>(payload.capture_phase_seconds),
       static_cast<unsigned int>(payload.platform_device_id));
 }
 

@@ -28,7 +28,7 @@ def test_contract_poll_returns_typed_command_envelope_and_sent_events():
         assert envelope["hardware_device_id"] == "master-01"
         assert envelope["node_role"] == "master"
         assert envelope["payload"]["command_id"] == f"cmd_{command_id}"
-        assert envelope["payload"]["command_type"] == "SET_LIGHT_BRIGHTNESS"
+        assert envelope["payload"]["command_type"] == "SET_GROW_LIGHT_BRIGHTNESS"
         assert envelope["payload"]["target"]["node_role"] == "master"
         assert envelope["payload"]["params"]["brightness_percent"] == 65
 
@@ -98,6 +98,56 @@ def test_contract_poll_returns_camera_command_to_camera_node():
         assert commands[0]["payload"]["command_type"] == "CAPTURE_IMAGE"
         assert commands[0]["payload"]["target"]["node_role"] == "camera"
         assert commands[0]["payload"]["target"]["hardware_device_id"] == "camera-01"
+    finally:
+        teardown_overrides()
+
+
+def test_contract_poll_targets_specific_camera_role_without_leaking_to_other_camera():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        _add_node(client, device_id, hardware_device_id="camera-top", node_role="camera", camera_role="top")
+        _add_node(client, device_id, hardware_device_id="camera-side", node_role="camera", camera_role="side")
+        create_response = client.post(f"/api/devices/{device_id}/commands/capture", json={"camera_role": "top"})
+        command_id = create_response.json()["command_id"]
+        _use_device_token_auth()
+
+        side_response = _poll(client, hardware_device_id="camera-side", node_role="camera")
+        top_response = _poll(client, hardware_device_id="camera-top", node_role="camera")
+
+        assert side_response.status_code == 200
+        assert side_response.json()["commands"] == []
+        assert top_response.status_code == 200
+        assert len(top_response.json()["commands"]) == 1
+        top_command = top_response.json()["commands"][0]
+        assert top_command["payload"]["command_id"] == f"cmd_{command_id}"
+        assert top_command["payload"]["target"]["hardware_device_id"] == "camera-top"
+        assert top_command["payload"]["target"]["camera_role"] == "top"
+        assert top_command["payload"]["params"]["camera_role"] == "top"
+    finally:
+        teardown_overrides()
+
+
+def test_contract_poll_all_camera_capture_has_no_specific_target_hardware_id():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        _add_node(client, device_id, hardware_device_id="camera-top", node_role="camera", camera_role="top")
+        _add_node(client, device_id, hardware_device_id="camera-side", node_role="camera", camera_role="side")
+        create_response = client.post(f"/api/devices/{device_id}/commands/capture", json={"camera_role": "all"})
+        command_id = create_response.json()["command_id"]
+        _use_device_token_auth()
+
+        top_response = _poll(client, hardware_device_id="camera-top", node_role="camera")
+
+        assert top_response.status_code == 200
+        commands = top_response.json()["commands"]
+        assert len(commands) == 1
+        assert commands[0]["payload"]["command_id"] == f"cmd_{command_id}"
+        assert commands[0]["payload"]["target"]["node_role"] == "camera"
+        assert commands[0]["payload"]["target"].get("hardware_device_id") is None
+        assert commands[0]["payload"]["target"].get("camera_role") is None
+        assert commands[0]["payload"]["params"]["camera_role"] == "all"
     finally:
         teardown_overrides()
 
@@ -210,6 +260,48 @@ def test_contract_poll_returns_reboot_command_to_master_node():
         teardown_overrides()
 
 
+def test_contract_poll_returns_ambient_led_belt_command_to_master_node():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={
+                "target": "ambient_led_belt",
+                "action": "set",
+                "value": {
+                    "mode": "solid",
+                    "enabled": True,
+                    "brightness": 26,
+                    "color": {"r": 255, "g": 0, "b": 0},
+                    "logical_pixel_count": 14,
+                    "color_order": "RGB",
+                },
+            },
+        )
+        command_id = create_response.json()["id"]
+        _use_device_token_auth()
+
+        response = _poll(client, hardware_device_id="master-01", node_role="master")
+
+        assert response.status_code == 200
+        commands = response.json()["commands"]
+        assert len(commands) == 1
+        assert commands[0]["payload"]["command_id"] == f"cmd_{command_id}"
+        assert commands[0]["payload"]["command_type"] == "SET_AMBIENT_LED_BELT"
+        assert commands[0]["payload"]["target"]["node_role"] == "master"
+        assert commands[0]["payload"]["params"] == {
+            "mode": "solid",
+            "enabled": True,
+            "brightness": 26,
+            "color": {"r": 255, "g": 0, "b": 0},
+            "logical_pixel_count": 14,
+            "color_order": "RGB",
+        }
+    finally:
+        teardown_overrides()
+
+
 def test_legacy_polling_still_works_after_contract_poll_endpoint_added():
     client, device_id, _ = build_client_with_devices()
     try:
@@ -246,7 +338,7 @@ def test_contract_poll_command_result_ack_flow_still_works():
                 "sent_at": "2026-05-27T12:00:03Z",
                 "payload": {
                     "command_id": f"cmd_{command_id}",
-                    "command_type": "SET_LIGHT_BRIGHTNESS",
+                    "command_type": "SET_GROW_LIGHT_BRIGHTNESS",
                     "status": "acked",
                 },
             },
@@ -262,15 +354,16 @@ def test_contract_poll_command_result_ack_flow_still_works():
         teardown_overrides()
 
 
-def _add_node(client, device_id: int, *, hardware_device_id: str, node_role: str) -> None:
+def _add_node(client, device_id: int, *, hardware_device_id: str, node_role: str, camera_role: str | None = None) -> None:
     with client.testing_session_local() as session:
         session.add(
             DeviceNode(
                 device_id=device_id,
                 hardware_device_id=hardware_device_id,
                 node_role=node_role,
+                camera_role=camera_role,
                 hardware_model="esp32-s3-devkitc-1" if node_role == "master" else "xiao_esp32s3_camera",
-                display_name=node_role.title(),
+                display_name=f"{camera_role.title()} camera" if camera_role else node_role.title(),
                 status="online",
                 capabilities={
                     "light_control": True,

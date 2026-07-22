@@ -40,6 +40,20 @@ int main() {
   status.has_light_state = true;
   status.light_on = true;
   status.light_intensity_percent = 45;
+  status.has_ambient_led_belt_state = true;
+  status.ambient_led_belt.available = true;
+  status.ambient_led_belt.enabled = true;
+  status.ambient_led_belt.mode = "solid";
+  status.ambient_led_belt.brightness = 26;
+  status.ambient_led_belt.max_brightness = 51;
+  status.ambient_led_belt.color_r = 255;
+  status.ambient_led_belt.color_g = 0;
+  status.ambient_led_belt.color_b = 0;
+  status.ambient_led_belt.logical_pixel_count = 14;
+  status.ambient_led_belt.physical_led_count = 630;
+  status.ambient_led_belt.color_order = "RGB";
+  status.ambient_led_belt.data_gpio = 1;
+  status.ambient_led_belt.diagnostic_active = false;
   status.pump_on = false;
   status.message = "heartbeat";
   status.software_version = "0.2.3";
@@ -104,8 +118,8 @@ int main() {
   assert(std::string(doc["payload"]["firmware_version"] | "") == "0.2.3");
   assert(std::string(doc["payload"]["hardware_model"] | "") == "esp32_master");
   assert(std::string(doc["payload"]["hardware_version"] | "") == "ESP32-S3-DevKitC-1-N32R16V");
-  assert((doc["payload"]["actuators"]["ambient_light"]["enabled"] | false) == true);
-  assert((doc["payload"]["actuators"]["ambient_light"]["brightness_percent"] | 0) == 45);
+  assert((doc["payload"]["actuators"]["grow_light"]["enabled"] | false) == true);
+  assert((doc["payload"]["actuators"]["grow_light"]["brightness_percent"] | 0) == 45);
   assert((doc["payload"]["runtime"]["capture_interval_seconds"] | 0) == 3600);
   assert(std::string(doc["payload"]["runtime"]["ota_status"] | "") == "idle");
   assert(std::string(doc["payload"]["runtime"]["provisioning_status"] | "") == "normal");
@@ -117,6 +131,20 @@ int main() {
   assert((doc["payload"]["runtime"]["last_command_poll_latency_ms"] | 0) == 112);
   assert((doc["payload"]["runtime"]["command_poll_stale_seconds"] | 0) == 4);
   assert(std::string(doc["payload"]["runtime"]["time_sync_status"] | "") == "unsynchronized");
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["available"] | false) == true);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["enabled"] | false) == true);
+  assert(std::string(doc["payload"]["runtime"]["ambient_led_belt"]["mode"] | "") == "solid");
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["brightness"] | 0) == 26);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["max_brightness"] | 0) == 51);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["color"]["r"] | 0) == 255);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["color"]["g"] | -1) == 0);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["color"]["b"] | -1) == 0);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["logical_pixel_count"] | 0) == 14);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["physical_led_count"] | 0) == 630);
+  assert(std::string(doc["payload"]["runtime"]["ambient_led_belt"]["color_order"] | "") == "RGB");
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["data_gpio"] | 0) == 1);
+  assert((doc["payload"]["runtime"]["ambient_led_belt"]["diagnostic_active"] | true) == false);
+  assert(!doc["payload"]["runtime"]["ambient_led_belt"].containsKey("last_error"));
 
   plantlab::time_sync::setSynchronizedTimeForTesting(1767225600);
   platform_client_host_test::reset_http_capture();
@@ -212,7 +240,7 @@ int main() {
         "sent_at": "2026-05-27T12:00:00Z",
         "payload": {
           "command_id": "cmd_88",
-          "command_type": "SET_LIGHT_BRIGHTNESS",
+          "command_type": "SET_GROW_LIGHT_BRIGHTNESS",
           "target": {
             "node_role": "master",
             "hardware_device_id": "master-01"
@@ -235,8 +263,8 @@ int main() {
   assert(commands[0].contract_native);
   assert(commands[0].id == 88);
   assert(std::string(commands[0].command_id.c_str()) == "cmd_88");
-  assert(std::string(commands[0].command_type.c_str()) == "SET_LIGHT_BRIGHTNESS");
-  assert(std::string(commands[0].target.c_str()) == "light");
+  assert(std::string(commands[0].command_type.c_str()) == "SET_GROW_LIGHT_BRIGHTNESS");
+  assert(std::string(commands[0].target.c_str()) == "grow_light");
   assert(std::string(commands[0].action.c_str()) == "set_intensity");
   assert(std::string(commands[0].value.c_str()) == "55");
 
@@ -262,7 +290,7 @@ int main() {
   assert(std::string(result_doc["hardware_device_id"] | "") == "master-01");
   assert(std::string(result_doc["node_role"] | "") == "master");
   assert(std::string(result_doc["payload"]["command_id"] | "") == "cmd_88");
-  assert(std::string(result_doc["payload"]["command_type"] | "") == "SET_LIGHT_BRIGHTNESS");
+  assert(std::string(result_doc["payload"]["command_type"] | "") == "SET_GROW_LIGHT_BRIGHTNESS");
   assert(std::string(result_doc["payload"]["status"] | "") == "acked");
   assert((result_doc["payload"]["result"]["light_on"] | false) == true);
   assert((result_doc["payload"]["result"]["light_intensity_percent"] | 0) == 55);

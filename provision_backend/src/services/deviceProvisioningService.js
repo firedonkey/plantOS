@@ -17,14 +17,64 @@ function buildDefaultDeviceName(deviceId) {
   return `PlantLab ${deviceId}`;
 }
 
-function buildDefaultNodeDisplayName(nodeRole, nodeIndex) {
+function buildDefaultNodeDisplayName(nodeRole, nodeIndex, cameraRole) {
   if (nodeRole === "master") {
     return "Master";
   }
   if (nodeRole === "camera") {
+    if (cameraRole === "top") {
+      return "Top camera";
+    }
+    if (cameraRole === "side") {
+      return "Side camera";
+    }
     return nodeIndex ? `Camera ${nodeIndex}` : "Camera";
   }
   return "Device";
+}
+
+async function validateCameraRoleAssignment(client, payload) {
+  if (payload.node_role !== "camera" || !payload.camera_role) {
+    return;
+  }
+
+  const existingRoleResult = await client.query(
+    `
+      SELECT camera_role
+      FROM device_hardware_ids
+      WHERE hardware_device_id = $1
+      FOR UPDATE
+    `,
+    [payload.device_id]
+  );
+  const existingRole = existingRoleResult.rows[0]?.camera_role;
+  if (existingRole && existingRole !== payload.camera_role) {
+    throw new ApiError(
+      409,
+      "camera_role_change_requires_reprovisioning",
+      "This camera node is already assigned to a different camera role."
+    );
+  }
+
+  const duplicateRoleResult = await client.query(
+    `
+      SELECT hardware_device_id
+      FROM device_hardware_ids
+      WHERE device_id = $1
+        AND node_role = 'camera'
+        AND camera_role = $2
+        AND hardware_device_id <> $3
+      FOR UPDATE
+    `,
+    [payload.platform_device_id, payload.camera_role, payload.device_id]
+  );
+  if (duplicateRoleResult.rows.length > 0) {
+    throw new ApiError(
+      409,
+      "camera_role_already_assigned",
+      `This PlantLab already has a ${payload.camera_role} camera node.`
+    );
+  }
 }
 
 function normalizeBleDeviceIdentity(identity) {
@@ -64,12 +114,15 @@ async function ensureDeviceAccessTokenRecord(client, deviceId, deviceAccessToken
 }
 
 async function upsertDeviceHardwareNode(client, payload) {
+  await validateCameraRoleAssignment(client, payload);
+
   await client.query(
     `
       INSERT INTO device_hardware_ids (
         hardware_device_id,
         device_id,
         node_role,
+        camera_role,
         node_index,
         display_name,
         hardware_model,
@@ -81,11 +134,12 @@ async function upsertDeviceHardwareNode(client, payload) {
         updated_at,
         last_seen_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, NOW(), NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, NOW(), NOW(), NOW())
       ON CONFLICT (hardware_device_id) DO UPDATE
       SET
         device_id = EXCLUDED.device_id,
         node_role = EXCLUDED.node_role,
+        camera_role = COALESCE(EXCLUDED.camera_role, device_hardware_ids.camera_role),
         node_index = EXCLUDED.node_index,
         display_name = EXCLUDED.display_name,
         hardware_model = EXCLUDED.hardware_model,
@@ -100,8 +154,9 @@ async function upsertDeviceHardwareNode(client, payload) {
       payload.device_id,
       payload.platform_device_id,
       payload.node_role,
+      payload.node_role === "camera" ? payload.camera_role || null : null,
       payload.node_index,
-      payload.display_name || buildDefaultNodeDisplayName(payload.node_role, payload.node_index),
+      payload.display_name || buildDefaultNodeDisplayName(payload.node_role, payload.node_index, payload.camera_role),
       payload.hardware_model || null,
       payload.hardware_version,
       payload.software_version,
@@ -531,6 +586,7 @@ export async function registerDeviceFromClaim(payload) {
       status: "online",
       device_access_token: deviceAccessToken,
       node_role: payload.node_role,
+      camera_role: payload.node_role === "camera" ? payload.camera_role ?? null : null,
       node_index: payload.node_index ?? null
     };
   });

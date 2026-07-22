@@ -62,7 +62,7 @@ Initial command checkpoint:
 | --- | --- |
 | `341` diagnostics request | completed, `diagnostics heartbeat sent` |
 | `342` camera capture | completed, `camera uploaded a new image` |
-| `343` light set intensity `50` | completed, `growing light intensity set to 50%` |
+| `343` light set intensity `50` | completed, `grow light intensity set to 50%` |
 
 Initial image validation:
 

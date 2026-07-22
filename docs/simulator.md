@@ -29,7 +29,7 @@ python3 tools/simulator/simulator.py \
   --device-id 1 \
   --device-token YOUR_REAL_DEVICE_API_TOKEN \
   --devices 1 \
-  --camera-nodes 1 \
+  --camera-nodes 2 \
   --sensor-interval 10 \
   --image-interval 300
 ```
@@ -68,7 +68,7 @@ export PLANTLAB_DEVICE_TOKEN=YOUR_REAL_DEVICE_API_TOKEN
 Then:
 
 ```bash
-python3 tools/simulator/simulator.py --devices 1 --camera-nodes 1
+python3 tools/simulator/simulator.py --devices 1 --camera-nodes 2
 ```
 
 If you see `diagnostics endpoint is unavailable` or `contract command polling
@@ -105,7 +105,7 @@ Common options:
 - `--device-id`: backend device id
 - `--device-token`: backend device `api_token`
 - `--devices`: number of simulated master nodes for the same backend device
-- `--camera-nodes`: camera nodes per simulated master
+- `--camera-nodes`: camera nodes per simulated master; the first two default to `top` and `side`
 - `--scenario`: scenario name, repeatable
 - `--heartbeat-interval`: seconds between heartbeat envelopes
 - `--sensor-interval`: seconds between fake sensor readings
@@ -153,7 +153,7 @@ python3 tools/simulator/simulator.py \
 
 The simulator polls `GET /api/hardware/commands/poll` and handles:
 
-- `SET_LIGHT_BRIGHTNESS`
+- `SET_GROW_LIGHT_BRIGHTNESS`
 - `CAPTURE_IMAGE`
 - `REQUEST_DIAGNOSTICS`
 - `START_OTA`
@@ -182,8 +182,10 @@ The values drift over time instead of staying flat:
 - light state and brightness
 
 Camera nodes upload a generated PNG to `/api/image` at startup and then every
-`--image-interval` seconds. The multipart request includes an `IMAGE_UPLOAD`
-contract envelope in the `metadata` form field. `CAPTURE_IMAGE` commands also
+`--image-interval` seconds. The multipart request includes `camera_node_id`,
+`camera_role`, and an `IMAGE_UPLOAD` contract envelope in the `metadata` form
+field. With two camera nodes, the simulator assigns `top` to phase offset `0`
+seconds and `side` to phase offset `30` seconds. `CAPTURE_IMAGE` commands also
 upload a generated PNG when the backend image endpoint is available. The image
 is generated locally with the Python standard library and uses the real
 multipart upload path, so the web dashboard gallery should populate without

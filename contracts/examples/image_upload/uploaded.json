@@ -8,6 +8,8 @@
   "sent_at": "2026-05-27T12:00:00Z",
   "payload": {
     "status": "uploaded",
+    "camera_node_id": "pl-cam-1c1df816a398",
+    "camera_role": "top",
     "source_hardware_device_id": "pl-cam-1c1df816a398",
     "source_node_role": "camera",
     "captured_at": "2026-05-27T11:59:58Z",

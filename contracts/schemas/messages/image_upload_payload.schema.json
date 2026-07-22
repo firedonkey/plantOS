@@ -13,6 +13,14 @@
       "type": "integer",
       "minimum": 1
     },
+    "camera_node_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "camera_role": {
+      "$ref": "../common/enums.schema.json#/$defs/CameraRole"
+    },
     "source_hardware_device_id": {
       "type": "string",
       "minLength": 1,

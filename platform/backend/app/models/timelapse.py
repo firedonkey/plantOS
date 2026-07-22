@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -16,6 +16,7 @@ class DeviceTimelapseSnapshot(Base):
             "interval_minutes",
             "max_frames",
             "target_duration_seconds",
+            "camera_role",
             name="uq_device_timelapse_snapshot_window",
         ),
     )
@@ -26,6 +27,7 @@ class DeviceTimelapseSnapshot(Base):
     interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     max_frames: Mapped[int] = mapped_column(Integer, nullable=False)
     target_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    camera_role: Mapped[str] = mapped_column(String(20), nullable=False, default="top")
     playback_frame_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     total_image_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frame_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -11,6 +11,7 @@ class MoistureSensor {
   MoistureSensor(int adc_pin, int sample_count, int sample_delay_ms);
   void begin();
   MoistureReading read();
+  bool enabled() const;
 
  private:
   static float adc_to_percent(int raw_adc);

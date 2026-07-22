@@ -3,6 +3,21 @@ import { Link } from "react-router-dom";
 import appIcon from "@/assets/app-icon-512.png";
 import { useSession } from "@/hooks/useSession";
 
+const landingGrowthFrameModules = import.meta.glob<string>("../assets/demo/growth/*.jpg", {
+  eager: true,
+  import: "default",
+});
+
+const landingGrowthFrameUrls = Object.entries(landingGrowthFrameModules)
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([, src]) => src);
+
+const landingGrowthStart = landingGrowthFrameUrls[0] ?? "";
+const landingGrowthMiddle = landingGrowthFrameUrls[Math.floor(landingGrowthFrameUrls.length / 2)] ?? landingGrowthStart;
+const landingGrowthLatest = landingGrowthFrameUrls[landingGrowthFrameUrls.length - 1] ?? landingGrowthStart;
+const landingCaptureStripFrames = [landingGrowthStart, landingGrowthMiddle, landingGrowthLatest].filter(Boolean);
+const landingTimelineFrames = selectLandingTimelineFrames(landingGrowthFrameUrls, 6);
+
 const proofPoints = [
   { label: "Camera timeline", detail: "Growth history" },
   { label: "Smart monitoring", detail: "Live plant state" },
@@ -228,9 +243,11 @@ function CapabilityPreview({ visual, metric, state }: { visual: CapabilityVisual
         ) : null}
         {visual === "capture" ? (
           <div className="landing-mini-camera-strip">
-            <span />
-            <span />
-            <span />
+            {landingCaptureStripFrames.map((src, index) => (
+              <span key={src}>
+                <img src={src} alt="" loading={index === landingCaptureStripFrames.length - 1 ? "eager" : "lazy"} />
+              </span>
+            ))}
           </div>
         ) : null}
         {visual === "track" ? (
@@ -259,19 +276,20 @@ function GrowthShowcase() {
     <div className="landing-growth-showcase" aria-label="PlantLab growth history preview">
       <div className="landing-growth-before-after">
         <div>
+          <img src={landingGrowthStart} alt="Early PlantLab demo capture showing a young basil plant." loading="lazy" />
           <span>Day 1</span>
         </div>
         <div>
+          <img src={landingGrowthLatest} alt="Latest PlantLab demo capture showing mature basil leaves." loading="lazy" />
           <span>Day 7</span>
         </div>
       </div>
       <div className="landing-growth-timeline" aria-label="Camera capture progression">
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
+        {landingTimelineFrames.map((src) => (
+          <span key={src}>
+            <img src={src} alt="" loading="lazy" />
+          </span>
+        ))}
       </div>
       <div className="landing-growth-caption">
         <strong>30s growth story</strong>
@@ -292,8 +310,11 @@ function ProductPreview() {
         </div>
       </div>
       <div className="landing-product-photo">
-        <span>Latest capture</span>
-        <strong>New leaf visible</strong>
+        <img src={landingGrowthLatest} alt="Latest PlantLab demo capture showing basil leaves." />
+        <div>
+          <span>Latest capture</span>
+          <strong>New leaf visible</strong>
+        </div>
       </div>
       <div className="landing-product-panel">
         <div>
@@ -316,4 +337,16 @@ function ProductPreview() {
       </div>
     </div>
   );
+}
+
+function selectLandingTimelineFrames(frames: string[], count: number) {
+  if (frames.length <= count) {
+    return frames;
+  }
+
+  const lastIndex = frames.length - 1;
+  return Array.from({ length: count }, (_, index) => {
+    const frameIndex = Math.round((index / Math.max(count - 1, 1)) * lastIndex);
+    return frames[frameIndex];
+  }).filter((src): src is string => Boolean(src));
 }

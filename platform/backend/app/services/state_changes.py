@@ -178,8 +178,8 @@ def emit_command_actuator_state_change(
     current: dict[str, Any],
     occurred_at: datetime | None,
 ) -> None:
-    previous_state = _clean_ambient_light(previous)
-    current_state = _clean_ambient_light(current)
+    previous_state = _clean_grow_light(previous)
+    current_state = _clean_grow_light(current)
     if previous_state == current_state:
         return
     target_node = _target_node_for_command(session, command)
@@ -195,7 +195,7 @@ def emit_command_actuator_state_change(
         correlation_id=f"cmd_{command.id}",
         data={
             "source": "command_result",
-            "actuator": "ambient_light",
+            "actuator": "grow_light",
             "previous": previous_state,
             "current": current_state,
         },
@@ -214,8 +214,8 @@ def _emit_actuator_change(
     correlation_id: str | None,
     occurred_at: datetime | None,
 ) -> None:
-    previous_state = _clean_ambient_light((previous.get("actuators") or {}).get("ambient_light"))
-    current_state = _clean_ambient_light((current.get("actuators") or {}).get("ambient_light"))
+    previous_state = _clean_grow_light(_grow_light_payload(previous))
+    current_state = _clean_grow_light(_grow_light_payload(current))
     if previous_state == current_state:
         return
     if not previous_state and not current_state:
@@ -230,7 +230,7 @@ def _emit_actuator_change(
         correlation_id=correlation_id,
         data={
             "source": "heartbeat",
-            "actuator": "ambient_light",
+            "actuator": "grow_light",
             "previous": previous_state,
             "current": current_state,
         },
@@ -534,7 +534,14 @@ def _runtime_int(payload: dict[str, Any], key: str) -> int | None:
     return _int(runtime.get(key))
 
 
-def _clean_ambient_light(value: Any) -> dict[str, Any]:
+def _grow_light_payload(payload: dict[str, Any]) -> Any:
+    actuators = payload.get("actuators")
+    if not isinstance(actuators, dict):
+        return None
+    return actuators.get("grow_light") or actuators.get("ambient_light")
+
+
+def _clean_grow_light(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     cleaned: dict[str, Any] = {}

@@ -23,6 +23,7 @@ const bleDeviceIdentitySchema = z
     hardware_version: z.string().trim().max(120).optional().nullable(),
     software_version: z.string().trim().max(120).optional().nullable(),
     node_role: z.string().trim().max(40).optional().nullable(),
+    camera_role: z.enum(["top", "side"]).optional().nullable(),
     display_name: z.string().trim().max(120).optional().nullable(),
     ble_name: z.string().trim().max(120).optional().nullable(),
     serial_number: z.string().trim().max(120).optional().nullable()
@@ -89,6 +90,7 @@ export const registerDeviceSchema = z.object({
     .max(60, "software_version is too long."),
   capabilities: z.record(z.string(), capabilityValueSchema).default({}),
   node_role: z.enum(["single_board", "master", "camera"]).default("single_board"),
+  camera_role: z.enum(["top", "side"]).optional(),
   node_index: z.number().int().positive().optional(),
   display_name: z.string().trim().max(120, "display_name is too long.").optional(),
   hardware_model: z.string().trim().max(120, "hardware_model is too long.").optional(),
@@ -104,5 +106,6 @@ export const registerDeviceResponseSchema = z.object({
   status: z.string(),
   device_access_token: z.string(),
   node_role: z.enum(["single_board", "master", "camera"]).optional(),
+  camera_role: z.enum(["top", "side"]).nullable().optional(),
   node_index: z.number().int().positive().nullable().optional()
 });

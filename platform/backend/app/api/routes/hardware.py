@@ -368,15 +368,17 @@ def _normalize_heartbeat_payload(
             _raise_protocol_error(exc)
         _validate_contract_device_id(message.device_id, device_id)
         heartbeat = message.payload
-        ambient_light = heartbeat.actuators.ambient_light if heartbeat.actuators else None
+        grow_light = None
+        if heartbeat.actuators:
+            grow_light = heartbeat.actuators.grow_light or heartbeat.actuators.ambient_light
         return (
             HardwareHeartbeatCreate(
                 hardware_device_id=message.hardware_device_id,
                 node_role=message.node_role.value,
                 status=heartbeat.node_status.value,
                 software_version=heartbeat.firmware_version,
-                light_on=ambient_light.enabled if ambient_light else None,
-                light_intensity_percent=ambient_light.brightness_percent if ambient_light else None,
+                light_on=grow_light.enabled if grow_light else None,
+                light_intensity_percent=grow_light.brightness_percent if grow_light else None,
                 message=heartbeat.node_status.value,
                 diagnostics=_diagnostics_from_heartbeat_payload(heartbeat),
             ),

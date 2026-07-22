@@ -54,6 +54,7 @@ bool buildHeartbeatEnvelope(
     const char* firmware_version,
     const char* hardware_model,
     const char* hardware_version,
+    const char* camera_role,
     uint32_t uptime_seconds,
     bool has_wifi_rssi_dbm,
     int wifi_rssi_dbm,
@@ -77,13 +78,28 @@ bool buildHeartbeatEnvelope(
     uint32_t last_command_poll_latency_ms,
     bool has_command_poll_stale_seconds,
     uint32_t command_poll_stale_seconds,
+    bool include_ambient_led_belt_state,
+    bool ambient_led_belt_available,
+    bool ambient_led_belt_enabled,
+    const char* ambient_led_belt_mode,
+    int ambient_led_belt_brightness,
+    int ambient_led_belt_max_brightness,
+    int ambient_led_belt_color_r,
+    int ambient_led_belt_color_g,
+    int ambient_led_belt_color_b,
+    int ambient_led_belt_logical_pixel_count,
+    int ambient_led_belt_physical_led_count,
+    const char* ambient_led_belt_color_order,
+    int ambient_led_belt_data_gpio,
+    bool ambient_led_belt_diagnostic_active,
+    const char* ambient_led_belt_last_error,
     String* body) {
   if (body == nullptr || hardware_device_id == nullptr || String(hardware_device_id).length() == 0 ||
       firmware_version == nullptr || String(firmware_version).length() == 0) {
     return false;
   }
 
-  StaticJsonDocument<1792> doc;
+  StaticJsonDocument<2304> doc;
   addBaseEnvelope(
       doc,
       device_id,
@@ -113,11 +129,17 @@ bool buildHeartbeatEnvelope(
   if (hardware_version != nullptr && String(hardware_version).length() > 0) {
     payload["hardware_version"] = hardware_version;
   }
+  if (camera_role != nullptr && String(camera_role).length() > 0) {
+    payload["camera_role"] = camera_role;
+  }
 
   JsonArray capabilities = payload.createNestedArray("capabilities");
   capabilities.add(PLANTLAB_CAPABILITY_OTA);
+  if (include_ambient_led_belt_state) {
+    capabilities.add(PLANTLAB_CAPABILITY_AMBIENT_LED_BELT);
+  }
   if (include_light_state) {
-    capabilities.add(PLANTLAB_CAPABILITY_AMBIENT_LED);
+    capabilities.add(PLANTLAB_CAPABILITY_GROW_LIGHT);
     capabilities.add(PLANTLAB_CAPABILITY_LIGHT_CONTROL);
     if (light_brightness_percent >= 0) {
       capabilities.add(PLANTLAB_CAPABILITY_LIGHT_INTENSITY);
@@ -129,10 +151,10 @@ bool buildHeartbeatEnvelope(
 
   if (include_light_state) {
     JsonObject actuators = payload.createNestedObject("actuators");
-    JsonObject ambient_light = actuators.createNestedObject("ambient_light");
-    ambient_light["enabled"] = light_enabled;
+    JsonObject grow_light = actuators.createNestedObject("grow_light");
+    grow_light["enabled"] = light_enabled;
     if (light_brightness_percent >= 0) {
-      ambient_light["brightness_percent"] = light_brightness_percent;
+      grow_light["brightness_percent"] = light_brightness_percent;
     }
   }
 
@@ -147,6 +169,7 @@ bool buildHeartbeatEnvelope(
       (last_command_poll_error != nullptr && String(last_command_poll_error).length() > 0) ||
       has_last_command_poll_latency_ms ||
       has_command_poll_stale_seconds ||
+      include_ambient_led_belt_state ||
       plantlab::time_sync::statusName() != nullptr) {
     JsonObject runtime = payload.createNestedObject("runtime");
     if (has_capture_interval_seconds) {
@@ -181,6 +204,26 @@ bool buildHeartbeatEnvelope(
     }
     if (has_command_poll_stale_seconds) {
       runtime["command_poll_stale_seconds"] = command_poll_stale_seconds;
+    }
+    if (include_ambient_led_belt_state) {
+      JsonObject ambient_led_belt = runtime.createNestedObject("ambient_led_belt");
+      ambient_led_belt["available"] = ambient_led_belt_available;
+      ambient_led_belt["enabled"] = ambient_led_belt_enabled;
+      ambient_led_belt["mode"] = safeText(ambient_led_belt_mode, "off");
+      ambient_led_belt["brightness"] = ambient_led_belt_brightness;
+      ambient_led_belt["max_brightness"] = ambient_led_belt_max_brightness;
+      JsonObject color = ambient_led_belt.createNestedObject("color");
+      color["r"] = ambient_led_belt_color_r;
+      color["g"] = ambient_led_belt_color_g;
+      color["b"] = ambient_led_belt_color_b;
+      ambient_led_belt["logical_pixel_count"] = ambient_led_belt_logical_pixel_count;
+      ambient_led_belt["physical_led_count"] = ambient_led_belt_physical_led_count;
+      ambient_led_belt["color_order"] = safeText(ambient_led_belt_color_order, "RGB");
+      ambient_led_belt["data_gpio"] = ambient_led_belt_data_gpio;
+      ambient_led_belt["diagnostic_active"] = ambient_led_belt_diagnostic_active;
+      if (ambient_led_belt_last_error != nullptr && String(ambient_led_belt_last_error).length() > 0) {
+        ambient_led_belt["last_error"] = ambient_led_belt_last_error;
+      }
     }
     runtime["time_sync_status"] = plantlab::time_sync::statusName();
     char last_ntp_sync_at[32]{};

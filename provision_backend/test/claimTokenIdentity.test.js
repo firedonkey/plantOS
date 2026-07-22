@@ -18,6 +18,7 @@ test("claim token schema accepts BLE identity without serial number", () => {
   assert.match(source, /device_id:[\s\S]*?min\(3, "device_identity\.device_id is required\."\)/);
   assert.match(source, /hardware_device_id: z\.string\(\)\.trim\(\)\.min\(3\)\.max\(120\)\.optional\(\)\.nullable\(\)/);
   assert.match(source, /software_version: z\.string\(\)\.trim\(\)\.max\(120\)\.optional\(\)\.nullable\(\)/);
+  assert.match(source, /camera_role: z\.enum\(\["top", "side"\]\)\.optional\(\)\.nullable\(\)/);
   assert.match(source, /ble_name: z\.string\(\)\.trim\(\)\.max\(120\)\.optional\(\)\.nullable\(\)/);
   assert.match(source, /serial_number: z\.string\(\)\.trim\(\)\.max\(120\)\.optional\(\)\.nullable\(\)/);
   assert.match(source, /device_identity: bleDeviceIdentitySchema\.optional\(\)/);
@@ -33,6 +34,7 @@ test("register schema still requires claim token and device id", () => {
   assert.match(source, /claim_token:[\s\S]*?min\(6, "claim_token is required\."\)/);
   assert.match(source, /hardware_version:[\s\S]*?min\(1, "hardware_version is required\."\)/);
   assert.match(source, /software_version:[\s\S]*?min\(1, "software_version is required\."\)/);
+  assert.match(source, /camera_role: z\.enum\(\["top", "side"\]\)\.optional\(\)/);
   assert.match(source, /factory_reset: z\.boolean\(\)\.default\(false\)/);
   assert.match(source, /attach_to_platform_device_id: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
 });
@@ -51,6 +53,9 @@ test("provision service persists expected identity and rejects mismatched regist
   const source = readSource("src/services/deviceProvisioningService.js");
 
   assert.match(source, /function normalizeBleDeviceIdentity/);
+  assert.match(source, /validateCameraRoleAssignment/);
+  assert.match(source, /camera_role_already_assigned/);
+  assert.match(source, /camera_role_change_requires_reprovisioning/);
   assert.match(source, /expectedDeviceId: hardwareDeviceId/);
   assert.match(source, /expected_device_id,\s*\n\s*device_identity,/);
   assert.match(source, /deviceIdentity \? JSON\.stringify\(deviceIdentity\) : null/);

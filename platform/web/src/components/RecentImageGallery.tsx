@@ -42,7 +42,7 @@ export function RecentImageGallery({
         <div>
           <h3>Plant camera</h3>
           <p className="subtitle">
-            {latestImage ? `Latest capture ${formatImageAge(latestImage.capturedAt)}` : "Watch new captures appear as the camera uploads them."}
+            {latestImage ? `${formatCameraRole(latestImage.cameraRole)} capture ${formatImageAge(latestImage.capturedAt)}` : "Watch new captures appear as the camera uploads them."}
           </p>
         </div>
         {onCapture ? (
@@ -78,7 +78,7 @@ export function RecentImageGallery({
             <figcaption>
               <div>
                 <span>{selectedImage?.id === latestImage?.id ? "Latest capture" : "Selected capture"}</span>
-                <strong>{selectedImage ? formatImageAge(selectedImage.capturedAt) : "Waiting"}</strong>
+                <strong>{selectedImage ? `${formatCameraRole(selectedImage.cameraRole)} - ${formatImageAge(selectedImage.capturedAt)}` : "Waiting"}</strong>
               </div>
               <small>{selectedImage ? new Date(selectedImage.capturedAt).toLocaleString() : "No capture time"}</small>
             </figcaption>
@@ -104,7 +104,7 @@ export function RecentImageGallery({
                     ) : (
                       <span>{image.url ? "Unavailable" : "Loading"}</span>
                     )}
-                    <small>{formatImageAge(image.capturedAt)}</small>
+                    <small>{formatCameraRole(image.cameraRole)} - {formatImageAge(image.capturedAt)}</small>
                   </button>
                 );
               })}
@@ -115,6 +115,8 @@ export function RecentImageGallery({
                 <strong>{selectedImage.id}</strong>
                 <span>Captured</span>
                 <strong>{new Date(selectedImage.capturedAt).toLocaleString()}</strong>
+                <span>Camera</span>
+                <strong>{formatCameraRole(selectedImage.cameraRole)}</strong>
               </div>
             ) : null}
           </aside>
@@ -122,6 +124,13 @@ export function RecentImageGallery({
       )}
     </div>
   );
+}
+
+function formatCameraRole(role: LatestImage["cameraRole"]) {
+  if (role === "side") {
+    return "Side";
+  }
+  return "Top";
 }
 
 function formatImageAge(timestamp: string) {

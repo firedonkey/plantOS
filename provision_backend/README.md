@@ -73,6 +73,8 @@ Accepts:
   "claim_token": "PL-ABC123XYZ",
   "hardware_version": "rev_a",
   "software_version": "0.1.0",
+  "node_role": "camera",
+  "camera_role": "top",
   "capabilities": {
     "camera": true,
     "pump": true,

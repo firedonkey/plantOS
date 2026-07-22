@@ -1,6 +1,10 @@
+import type { CameraRole } from "@/contracts/deviceProtocol";
+
 export type DeviceConnectionState = "online" | "offline" | "unknown" | "degraded" | "stale" | "warning" | "waiting";
 export type FirmwareOtaStatus = "idle" | "available" | "downloading" | "installing" | "success" | "failed";
 export type FriendlyHardwareStatus = "online" | "recently_seen" | "offline" | "needs_attention";
+
+export type { CameraRole };
 
 export type HardwareDiagnostics = {
   schemaVersion?: number;
@@ -41,6 +45,7 @@ export type Device = {
 export type HardwareNodeHealth = {
   hardwareDeviceId: string;
   nodeRole?: string;
+  cameraRole?: CameraRole;
   nodeIndex?: number;
   displayName?: string;
   status: DeviceConnectionState | "provisioning" | "error";
@@ -117,6 +122,8 @@ export type LatestImage = {
   id: string;
   url: string;
   capturedAt: string;
+  cameraRole?: CameraRole;
+  sourceHardwareDeviceId?: string;
 };
 
 export type TimelapseFrame = LatestImage;

@@ -21,6 +21,11 @@ class NodeRole(str, Enum):
     ACTUATOR = "actuator"
 
 
+class CameraRole(str, Enum):
+    TOP = "top"
+    SIDE = "side"
+
+
 class MessageType(str, Enum):
     HEARTBEAT = "HEARTBEAT"
     DIAGNOSTICS = "DIAGNOSTICS"
@@ -91,7 +96,9 @@ class EventType(str, Enum):
 
 
 class CommandType(str, Enum):
+    SET_GROW_LIGHT_BRIGHTNESS = "SET_GROW_LIGHT_BRIGHTNESS"
     SET_LIGHT_BRIGHTNESS = "SET_LIGHT_BRIGHTNESS"
+    SET_AMBIENT_LED_BELT = "SET_AMBIENT_LED_BELT"
     CAPTURE_IMAGE = "CAPTURE_IMAGE"
     REBOOT = "REBOOT"
     START_OTA = "START_OTA"
@@ -199,13 +206,35 @@ class ContractModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class HeartbeatAmbientLightState(ContractModel):
+class HeartbeatGrowLightState(ContractModel):
     enabled: bool | None = None
     brightness_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class HeartbeatActuatorState(ContractModel):
-    ambient_light: HeartbeatAmbientLightState | None = None
+    grow_light: HeartbeatGrowLightState | None = None
+    ambient_light: HeartbeatGrowLightState | None = None
+
+
+class HeartbeatAmbientLedBeltColor(ContractModel):
+    r: int | None = Field(default=None, ge=0, le=255)
+    g: int | None = Field(default=None, ge=0, le=255)
+    b: int | None = Field(default=None, ge=0, le=255)
+
+
+class HeartbeatAmbientLedBeltState(ContractModel):
+    available: bool | None = None
+    enabled: bool | None = None
+    mode: str | None = Field(default=None, pattern="^(off|solid|breathe|pulse|chase|rainbow|diagnostic)$")
+    brightness: int | None = Field(default=None, ge=0, le=255)
+    max_brightness: int | None = Field(default=None, ge=0, le=255)
+    color: HeartbeatAmbientLedBeltColor | None = None
+    logical_pixel_count: int | None = Field(default=None, ge=1, le=120)
+    physical_led_count: int | None = Field(default=None, ge=1)
+    color_order: str | None = Field(default=None, pattern="^(RGB|RBG|GRB|GBR|BRG|BGR)$")
+    data_gpio: int | None = Field(default=None, ge=0, le=48)
+    diagnostic_active: bool | None = None
+    last_error: str | None = Field(default=None, max_length=160)
 
 
 class HeartbeatRuntimeState(ContractModel):
@@ -220,6 +249,7 @@ class HeartbeatRuntimeState(ContractModel):
     last_command_poll_error: str | None = Field(default=None, max_length=160)
     last_command_poll_latency_ms: int | None = Field(default=None, ge=0, le=300_000)
     command_poll_stale_seconds: int | None = Field(default=None, ge=0, le=86_400)
+    ambient_led_belt: HeartbeatAmbientLedBeltState | None = None
     time_sync_status: str | None = Field(default=None, min_length=1, max_length=80)
     last_ntp_sync_at: datetime | None = None
 
@@ -233,6 +263,7 @@ class HeartbeatPayload(ContractModel):
     firmware_version: str = Field(min_length=1, max_length=120)
     hardware_model: str | None = Field(default=None, min_length=1, max_length=120)
     hardware_version: str | None = Field(default=None, min_length=1, max_length=120)
+    camera_role: CameraRole | None = None
     capabilities: list[str] | None = Field(default=None, max_length=32)
     actuators: HeartbeatActuatorState | None = None
     runtime: HeartbeatRuntimeState | None = None
@@ -264,6 +295,7 @@ class DiagnosticsPayload(ContractModel):
 class CommandTarget(ContractModel):
     node_role: CommandTargetRole
     hardware_device_id: str | None = Field(default=None, max_length=120)
+    camera_role: CameraRole | None = None
 
 
 class RetryPolicy(ContractModel):
@@ -319,6 +351,8 @@ class OTAStatusPayload(ContractModel):
 class ImageUploadPayload(ContractModel):
     status: ImageUploadStatus
     image_id: int | None = Field(default=None, ge=1)
+    camera_node_id: str | None = Field(default=None, min_length=1, max_length=120)
+    camera_role: CameraRole | None = None
     source_hardware_device_id: str | None = Field(default=None, min_length=1, max_length=120)
     source_node_role: NodeRole | None = None
     captured_at: datetime | None = None

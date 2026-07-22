@@ -292,20 +292,20 @@ def demo_light_command(user_id: int | None, payload: LightCommandRequest) -> Dev
         state.light_intensity_percent = payload.intensity_percent
         action = CommandAction.SET_INTENSITY
         value = str(payload.intensity_percent)
-        message = f"Demo light brightness set to {payload.intensity_percent}%."
-        summary = f"SET_LIGHT_BRIGHTNESS completed at {payload.intensity_percent}%"
+        message = f"Demo grow-light brightness set to {payload.intensity_percent}%."
+        summary = f"SET_GROW_LIGHT_BRIGHTNESS completed at {payload.intensity_percent}%"
     else:
         state.light_on = payload.state == "on"
         action = CommandAction.ON if state.light_on else CommandAction.OFF
         value = None
-        message = f"Demo light turned {'on' if state.light_on else 'off'}."
-        summary = f"Light turned {'on' if state.light_on else 'off'}"
+        message = f"Demo grow light turned {'on' if state.light_on else 'off'}."
+        summary = f"Grow light turned {'on' if state.light_on else 'off'}"
     return _record_simulated_command(
         state,
-        target=CommandTarget.LIGHT,
+        target=CommandTarget.GROW_LIGHT,
         action=action,
         value=value,
-        command_name="light",
+        command_name="grow_light",
         message=message,
         event_summary=summary,
         hardware_device_id=DEMO_MASTER_ID,
@@ -386,10 +386,10 @@ def _seed_state(state: DemoState) -> None:
     state.commands = [
         DemoCommand(
             id=DEMO_COMMAND_ID_BASE - 1,
-            target=CommandTarget.LIGHT.value,
+            target=CommandTarget.GROW_LIGHT.value,
             action=CommandAction.SET_INTENSITY.value,
             value="72",
-            message="Demo light schedule applied.",
+            message="Demo grow-light schedule applied.",
             created_at=now - timedelta(minutes=18),
         )
     ]

@@ -98,6 +98,7 @@ export async function ensureProvisioningSchema(pool) {
       hardware_device_id TEXT PRIMARY KEY,
       device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
       node_role TEXT NOT NULL DEFAULT 'single_board',
+      camera_role TEXT,
       node_index INTEGER,
       display_name TEXT,
       hardware_model TEXT,
@@ -114,6 +115,11 @@ export async function ensureProvisioningSchema(pool) {
   await pool.query(`
     ALTER TABLE device_hardware_ids
       ADD COLUMN IF NOT EXISTS node_role TEXT NOT NULL DEFAULT 'single_board'
+  `);
+
+  await pool.query(`
+    ALTER TABLE device_hardware_ids
+      ADD COLUMN IF NOT EXISTS camera_role TEXT
   `);
 
   await pool.query(`
@@ -144,6 +150,12 @@ export async function ensureProvisioningSchema(pool) {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_device_hardware_ids_node_role
       ON device_hardware_ids(node_role)
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_device_hardware_ids_device_camera_role
+      ON device_hardware_ids(device_id, camera_role)
+      WHERE node_role = 'camera' AND camera_role IS NOT NULL
   `);
 
   await pool.query(`

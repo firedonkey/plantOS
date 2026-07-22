@@ -20,6 +20,8 @@
 #include "contracts/plantlab_contracts.h"
 #include "espnow_test_protocol.h"
 #include "firmware_version.h"
+#include "ambient_led_belt/ambient_led_belt_controller.h"
+#include "ambient_led_belt/ambient_led_belt_fastled_transport.h"
 #include "ota/ota_update_manager.h"
 #include "platform/platform_client.h"
 #include "provisioning/ble_provisioning.h"
@@ -58,6 +60,10 @@ constexpr char kConfigKeyPendingBackendUrl[] = "pend_backend";
 constexpr char kConfigKeyPendingPlatformUrl[] = "pend_plat";
 constexpr char kConfigKeyPendingAttachDeviceId[] = "pend_attach";
 constexpr char kConfigKeyBootCounter[] = "boot_count";
+constexpr char kConfigKeyAmbientLedBeltLogicalCount[] = "amb_led_log";
+constexpr char kConfigKeyAmbientLedBeltColorOrder[] = "amb_led_ord";
+constexpr char kConfigKeyAmbientLedBeltMaxBrightness[] = "amb_led_max";
+constexpr char kConfigKeyAmbientLedBeltDefaultBrightness[] = "amb_led_def";
 constexpr char kProvisioningApName[] = "PlantLab-Setup";
 constexpr const char* kSoftwareVersion = plantlab::kMasterSoftwareVersion;
 constexpr uint16_t kProvisioningPort = 8080;
@@ -70,6 +76,8 @@ constexpr uint8_t kBleWifiScanMaxRetries = 3;
 constexpr uint32_t kFactoryResetHoldMs = 20000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
 constexpr uint16_t kDefaultCameraNodeIndex = 1;
+constexpr CameraRoleCode kDefaultCameraRole = CameraRoleCode::kTop;
+constexpr uint16_t kDefaultCameraCapturePhaseSeconds = 0;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
@@ -106,6 +114,7 @@ struct PendingCaptureCommand {
   bool contract_native = false;
   String contract_command_id;
   String contract_command_type;
+  uint8_t camera_role = 0;
   uint32_t request_id = 0;
   unsigned long started_at_ms = 0;
   unsigned long last_result_attempt_ms = 0;
@@ -174,6 +183,8 @@ PowerButton g_power_button(
     POWER_BUTTON_DEBOUNCE_MS,
     POWER_BUTTON_LONG_PRESS_MS);
 StatusLed g_status_led(PIN_STATUS_LED, STATUS_LED_ON_LEVEL, STATUS_LED_OFF_LEVEL);
+plantlab::ambient_led_belt::FastAmbientLedBeltTransport g_ambient_led_belt_transport;
+plantlab::ambient_led_belt::AmbientLedBeltController g_ambient_led_belt(&g_ambient_led_belt_transport);
 Preferences g_preferences;
 WebServer g_web_server(kProvisioningPort);
 plantlab::BleProvisioningService g_ble_provisioning;
@@ -286,6 +297,10 @@ void stopBleWifiScanRadio();
 void initReliabilityBootCounter();
 bool ensureMasterDeviceNodeRegistered(unsigned long now);
 bool platform_enabled();
+bool loadAmbientLedBeltConfig();
+bool saveAmbientLedBeltConfig();
+void clearAmbientLedBeltConfig();
+String masterCapabilitiesJson();
 DeviceConfig normalizedConfig(DeviceConfig config);
 bool saveConfigCandidate(const DeviceConfig& candidate);
 bool savePendingConfigCandidate(const DeviceConfig& candidate);
@@ -504,6 +519,147 @@ String nextReadingIdempotencyKey() {
   return stableHardwareDeviceId() + ":" + String(g_boot_counter) + ":" + String(g_reading_sequence);
 }
 
+String masterCapabilitiesJson() {
+  StaticJsonDocument<1024> capabilities;
+  capabilities["sensors"] = true;
+  capabilities["actuators"] = true;
+  capabilities["esp_now"] = true;
+  capabilities["light_control"] = true;
+  capabilities["light_intensity_control"] = g_growing_light.supports_intensity_control();
+  capabilities["light_intensity_min_percent"] = 0;
+  capabilities["light_intensity_max_percent"] = 100;
+  JsonArray light_control_modes = capabilities.createNestedArray("light_control_modes");
+  light_control_modes.add("on_off");
+  if (g_growing_light.supports_intensity_control()) {
+    light_control_modes.add("intensity");
+  }
+  capabilities["moisture_sensor"] = g_moisture.enabled();
+  capabilities["water_temperature_sensor"] = true;
+  capabilities["water_level_sensor"] = true;
+  capabilities["temperature_sensor"] = true;
+  capabilities["humidity_sensor"] = true;
+
+  const plantlab::ambient_led_belt::AmbientLedBeltState& belt = g_ambient_led_belt.state();
+  capabilities["ambient_led_belt"] = true;
+  capabilities["ambient_led_belt_available"] = belt.available;
+  capabilities["ambient_led_belt_data_gpio"] = belt.data_gpio;
+  capabilities["ambient_led_belt_logical_pixel_count"] = belt.logical_pixel_count;
+  capabilities["ambient_led_belt_physical_led_count"] = belt.physical_led_count;
+  capabilities["ambient_led_belt_color_order"] = plantlab::ambient_led_belt::colorOrderName(belt.color_order);
+  capabilities["ambient_led_belt_max_brightness"] = g_ambient_led_belt.config().maximum_brightness;
+
+  String json;
+  serializeJson(capabilities, json);
+  return json;
+}
+
+bool ambientLedBeltPinConflict(const plantlab::ambient_led_belt::AmbientLedBeltConfig& config, String* error) {
+  if (PIN_SOIL_MOISTURE_ADC >= 0 && PIN_SOIL_MOISTURE_ADC == config.data_gpio) {
+    if (error != nullptr) {
+      *error = "ambient LED belt DIN conflicts with soil moisture ADC GPIO";
+    }
+    return true;
+  }
+  return false;
+}
+
+bool loadAmbientLedBeltConfig() {
+  plantlab::ambient_led_belt::AmbientLedBeltConfig config = plantlab::ambient_led_belt::defaultConfig();
+  if (!g_preferences.begin(kPreferencesNamespace, true)) {
+    Serial.println("[ambient-led-belt] Preferences unavailable, using defaults");
+  } else {
+    const int stored_logical_count =
+        g_preferences.getInt(kConfigKeyAmbientLedBeltLogicalCount, config.logical_pixel_count);
+    const String stored_color_order =
+        g_preferences.getString(kConfigKeyAmbientLedBeltColorOrder, plantlab::ambient_led_belt::colorOrderName(config.color_order));
+    const int stored_max_brightness =
+        g_preferences.getInt(kConfigKeyAmbientLedBeltMaxBrightness, config.maximum_brightness);
+    const int stored_default_brightness =
+        g_preferences.getInt(kConfigKeyAmbientLedBeltDefaultBrightness, config.default_brightness);
+    g_preferences.end();
+
+    if (stored_logical_count > 0 && stored_logical_count <= AMBIENT_LED_BELT_MAX_LOGICAL_PIXELS) {
+      config.logical_pixel_count = static_cast<uint16_t>(stored_logical_count);
+    } else {
+      Serial.printf("[ambient-led-belt] ignoring invalid stored logical_pixel_count=%d\n", stored_logical_count);
+    }
+    plantlab::ambient_led_belt::ColorOrder order;
+    if (plantlab::ambient_led_belt::parseColorOrder(stored_color_order, &order)) {
+      config.color_order = order;
+    } else {
+      Serial.printf("[ambient-led-belt] ignoring invalid stored color_order=%s\n", stored_color_order.c_str());
+    }
+    if (stored_max_brightness > 0 && stored_max_brightness <= 255) {
+      config.maximum_brightness = static_cast<uint8_t>(stored_max_brightness);
+      config.diagnostic_max_brightness =
+          std::min<uint8_t>(config.diagnostic_max_brightness, config.maximum_brightness);
+    } else {
+      Serial.printf("[ambient-led-belt] ignoring invalid stored max_brightness=%d\n", stored_max_brightness);
+    }
+    if (stored_default_brightness >= 0 && stored_default_brightness <= config.maximum_brightness) {
+      config.default_brightness = static_cast<uint8_t>(stored_default_brightness);
+    } else {
+      Serial.printf("[ambient-led-belt] ignoring invalid stored default_brightness=%d\n", stored_default_brightness);
+    }
+  }
+
+  String error;
+  if (ambientLedBeltPinConflict(config, &error)) {
+    Serial.printf("[ambient-led-belt] unavailable: %s\n", error.c_str());
+    g_ambient_led_belt.configure(config, nullptr);
+    g_ambient_led_belt.markUnavailable(error);
+    return false;
+  }
+  if (!g_ambient_led_belt.configure(config, &error)) {
+    Serial.printf("[ambient-led-belt] config invalid, using defaults: %s\n", error.c_str());
+    plantlab::ambient_led_belt::AmbientLedBeltConfig defaults = plantlab::ambient_led_belt::defaultConfig();
+    if (!g_ambient_led_belt.configure(defaults, &error)) {
+      Serial.printf("[ambient-led-belt] default config invalid: %s\n", error.c_str());
+      return false;
+    }
+  }
+  Serial.printf(
+      "[ambient-led-belt] config gpio=GPIO%d logical_pixels=%u physical_leds=%u color_order=%s max_brightness=%u default_brightness=%u startup=off\n",
+      g_ambient_led_belt.config().data_gpio,
+      static_cast<unsigned int>(g_ambient_led_belt.config().logical_pixel_count),
+      static_cast<unsigned int>(g_ambient_led_belt.config().physical_led_count),
+      plantlab::ambient_led_belt::colorOrderName(g_ambient_led_belt.config().color_order),
+      static_cast<unsigned int>(g_ambient_led_belt.config().maximum_brightness),
+      static_cast<unsigned int>(g_ambient_led_belt.config().default_brightness));
+  return true;
+}
+
+bool saveAmbientLedBeltConfig() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[ambient-led-belt] failed to open Preferences for config save");
+    return false;
+  }
+  const plantlab::ambient_led_belt::AmbientLedBeltConfig& config = g_ambient_led_belt.config();
+  const size_t logical_written = g_preferences.putInt(kConfigKeyAmbientLedBeltLogicalCount, config.logical_pixel_count);
+  const size_t order_written =
+      g_preferences.putString(kConfigKeyAmbientLedBeltColorOrder, plantlab::ambient_led_belt::colorOrderName(config.color_order));
+  const size_t max_written = g_preferences.putInt(kConfigKeyAmbientLedBeltMaxBrightness, config.maximum_brightness);
+  const size_t default_written = g_preferences.putInt(kConfigKeyAmbientLedBeltDefaultBrightness, config.default_brightness);
+  g_preferences.end();
+  const bool saved = logical_written > 0 && order_written > 0 && max_written > 0 && default_written > 0;
+  Serial.printf("[ambient-led-belt] config save %s\n", saved ? "succeeded" : "failed");
+  return saved;
+}
+
+void clearAmbientLedBeltConfig() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[ambient-led-belt] failed to open Preferences for config reset");
+    return;
+  }
+  g_preferences.remove(kConfigKeyAmbientLedBeltLogicalCount);
+  g_preferences.remove(kConfigKeyAmbientLedBeltColorOrder);
+  g_preferences.remove(kConfigKeyAmbientLedBeltMaxBrightness);
+  g_preferences.remove(kConfigKeyAmbientLedBeltDefaultBrightness);
+  g_preferences.end();
+  g_ambient_led_belt.clear();
+  Serial.println("[ambient-led-belt] config reset to defaults");
+}
+
 bool ensureMasterDeviceNodeRegistered(unsigned long now) {
   if (!platform_enabled() || !g_wifi_ready) {
     return false;
@@ -517,10 +673,7 @@ bool ensureMasterDeviceNodeRegistered(unsigned long now) {
   g_last_master_node_register_attempt_ms = now;
 
   String error;
-  const char* capabilities_json =
-      g_growing_light.supports_intensity_control()
-          ? "{\"sensors\":true,\"actuators\":true,\"esp_now\":true,\"light_control\":true,\"light_intensity_control\":true,\"light_intensity_min_percent\":0,\"light_intensity_max_percent\":100,\"light_control_modes\":[\"on_off\",\"intensity\"],\"water_temperature_sensor\":true,\"water_level_sensor\":true}"
-          : "{\"sensors\":true,\"actuators\":true,\"esp_now\":true,\"light_control\":true,\"light_intensity_control\":false,\"light_control_modes\":[\"on_off\"],\"water_temperature_sensor\":true,\"water_level_sensor\":true}";
+  const String capabilities_json = masterCapabilitiesJson();
   const bool registered = g_platform_client->register_device_node(
       stableHardwareDeviceId().c_str(),
       "master",
@@ -528,7 +681,8 @@ bool ensureMasterDeviceNodeRegistered(unsigned long now) {
       "esp32_master",
       BOARD_NAME,
       kSoftwareVersion,
-      capabilities_json,
+      capabilities_json.c_str(),
+      nullptr,
       &error);
   if (registered) {
     g_master_node_registered = true;
@@ -584,6 +738,8 @@ bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
       kCameraProvisioningConfigVersion,
       kDefaultCameraNodeIndex,
       static_cast<uint32_t>(g_config.platform_device_id),
+      kDefaultCameraRole,
+      kDefaultCameraCapturePhaseSeconds,
       g_config.wifi_ssid.c_str(),
       g_config.wifi_password.c_str(),
       platform_url.c_str(),
@@ -664,6 +820,8 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
 
   if (kind == EspNowMessageKind::kHealthReport) {
     const uint32_t flags = packet.value_u32_1;
+    const uint8_t camera_role = static_cast<uint8_t>((packet.value_u32_2 >> 16) & 0xFFu);
+    const uint16_t camera_index = static_cast<uint16_t>(packet.value_u32_2 & 0xFFFFu);
     const bool wifi_ready = (flags & ESPNOW_HEALTH_FLAG_WIFI_READY) != 0;
     const bool node_registered = (flags & ESPNOW_HEALTH_FLAG_NODE_REGISTERED) != 0;
     const bool config_ready = (flags & ESPNOW_HEALTH_FLAG_CONFIG_READY) != 0;
@@ -677,10 +835,11 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       g_camera_target_mac_known = true;
     }
     Serial.printf(
-        "[camera-provisioning] health report request=%u flags=%lu camera_index=%lu from %s\n",
+        "[camera-provisioning] health report request=%u flags=%lu camera_role=%s camera_index=%u from %s\n",
         static_cast<unsigned int>(packet.request_id),
         static_cast<unsigned long>(flags),
-        static_cast<unsigned long>(packet.value_u32_2),
+        camera_role == 0 ? "unknown" : espnow_camera_role_label(camera_role),
+        static_cast<unsigned int>(camera_index),
         mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
     if (wifi_ready && node_registered && config_ready && !g_camera_runtime_ready) {
       g_camera_runtime_ready = true;
@@ -694,11 +853,12 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
     }
     if (is_pending_capture_health && wifi_ready && node_registered && config_ready) {
       Serial.printf(
-          "[platform] capture health fallback command_id=%d request=%u flags=%lu camera_index=%lu\n",
+          "[platform] capture health fallback command_id=%d request=%u flags=%lu camera_role=%s camera_index=%u\n",
           g_pending_capture_command.command_id,
           static_cast<unsigned int>(packet.request_id),
           static_cast<unsigned long>(flags),
-          static_cast<unsigned long>(packet.value_u32_2));
+          camera_role == 0 ? "unknown" : espnow_camera_role_label(camera_role),
+          static_cast<unsigned int>(camera_index));
       queuePendingCaptureCommandResult("completed", "camera uploaded a new image");
     }
     return;
@@ -917,7 +1077,11 @@ void serviceCameraProvisioning(unsigned long now) {
   sendCameraProvisioningPacket(now);
 }
 
-bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true, bool mark_schedule = true) {
+bool sendEspNowCaptureCommand(
+    uint32_t now,
+    bool retry_available = true,
+    bool mark_schedule = true,
+    uint8_t camera_role = static_cast<uint8_t>(CameraRoleCode::kTop)) {
   if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
@@ -931,9 +1095,9 @@ bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true, bool ma
   packet.request_id = g_next_espnow_request_id++;
   packet.timestamp_ms = now;
   packet.value_u32_1 = 0;
-  packet.value_u32_2 = 0;
+  packet.value_u32_2 = camera_role;
 
-  const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
+  const uint8_t* target_mac = kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
     ++g_diagnostic_error_counters.espnow_failures;
     recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
@@ -956,14 +1120,19 @@ bool sendEspNowCaptureCommand(uint32_t now, bool retry_available = true, bool ma
   }
   markCameraCaptureInFlight(packet.request_id, 0, now, retry_available && !g_scheduled_capture_retry_pending);
   Serial.printf(
-      "[camera-schedule] capture request=%u sent interval_ms=%lu target=%s\n",
+      "[camera-schedule] capture request=%u sent interval_ms=%lu camera_role=%s target=%s\n",
       static_cast<unsigned int>(packet.request_id),
       static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      camera_role == 0 ? "any" : espnow_camera_role_label(camera_role),
       macToString(target_mac).c_str());
   return true;
 }
 
-bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int command_id = 0) {
+bool sendEspNowCaptureCommand(
+    uint32_t now,
+    uint32_t* request_id_out,
+    int command_id = 0,
+    uint8_t camera_role = static_cast<uint8_t>(CameraRoleCode::kTop)) {
   if (!g_espnow_ready || g_camera_capture_in_flight.active) {
     return false;
   }
@@ -977,9 +1146,9 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
   packet.request_id = g_next_espnow_request_id++;
   packet.timestamp_ms = now;
   packet.value_u32_1 = command_id > 0 ? static_cast<uint32_t>(command_id) : 0;
-  packet.value_u32_2 = 0;
+  packet.value_u32_2 = camera_role;
 
-  const uint8_t* target_mac = g_camera_target_mac_known ? g_camera_target_mac : kEspNowBroadcastMac;
+  const uint8_t* target_mac = kEspNowBroadcastMac;
   if (!ensureEspNowPeer(target_mac)) {
     ++g_diagnostic_error_counters.espnow_failures;
     recordDiagnosticError("espnow_peer_failed", "ESP-NOW peer add failed");
@@ -1003,10 +1172,11 @@ bool sendEspNowCaptureCommand(uint32_t now, uint32_t* request_id_out, int comman
   markCameraCaptureInFlight(packet.request_id, command_id, now, false);
 
   Serial.printf(
-      "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu target=%s\n",
+      "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu camera_role=%s target=%s\n",
       static_cast<unsigned int>(packet.request_id),
       static_cast<unsigned long>(packet.value_u32_1),
       static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      camera_role == 0 ? "any" : espnow_camera_role_label(camera_role),
       macToString(target_mac).c_str());
   return true;
 }
@@ -1093,9 +1263,11 @@ void clearPendingCaptureCommand() {
 
 void clearCameraCaptureFlight() {
   g_camera_capture_in_flight = CameraCaptureFlight{};
+  g_ambient_led_belt.resumeAfterCameraCapture(millis());
 }
 
 void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now, bool retry_available) {
+  g_ambient_led_belt.suspendForCameraCapture(now);
   g_camera_capture_in_flight.active = true;
   g_camera_capture_in_flight.delivery_failed = false;
   g_camera_capture_in_flight.retry_available = retry_available;
@@ -1193,6 +1365,19 @@ void markPendingCaptureCommandInProgress(int command_id) {
   }
 }
 
+uint8_t cameraRoleCodeFromString(const String& value) {
+  String normalized = value;
+  normalized.trim();
+  normalized.toLowerCase();
+  if (normalized == "top") {
+    return static_cast<uint8_t>(CameraRoleCode::kTop);
+  }
+  if (normalized == "side") {
+    return static_cast<uint8_t>(CameraRoleCode::kSide);
+  }
+  return 0;
+}
+
 bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long now) {
   if (g_pending_capture_command.active) {
     Serial.printf(
@@ -1219,6 +1404,8 @@ bool startPendingCaptureCommand(const PlatformCommand& command, unsigned long no
   g_pending_capture_command.contract_native = command.contract_native;
   g_pending_capture_command.contract_command_id = command.command_id;
   g_pending_capture_command.contract_command_type = command.command_type;
+  g_pending_capture_command.camera_role = cameraRoleCodeFromString(
+      command.target_camera_role.length() > 0 ? command.target_camera_role : command.value);
   g_pending_capture_command.request_id = 0;
   g_pending_capture_command.started_at_ms = now;
   g_pending_capture_command.last_result_attempt_ms = 0;
@@ -1244,7 +1431,11 @@ bool dispatchPendingCaptureCommand(unsigned long now) {
   }
 
   uint32_t request_id = 0;
-  if (!sendEspNowCaptureCommand(now, &request_id, g_pending_capture_command.command_id)) {
+  if (!sendEspNowCaptureCommand(
+          now,
+          &request_id,
+          g_pending_capture_command.command_id,
+          g_pending_capture_command.camera_role)) {
     const String message =
         g_camera_target_mac_known ? "failed to send capture request to camera" : "camera node is not reachable";
     if (!reportPendingCaptureCommandResult(
@@ -1267,10 +1458,11 @@ bool dispatchPendingCaptureCommand(unsigned long now) {
   g_pending_capture_command.dispatched = true;
   g_pending_capture_command.request_id = request_id;
   Serial.printf(
-      "[platform] capture command %d forwarded to camera request=%u target=%s at_ms=%lu\n",
+      "[platform] capture command %d forwarded to camera request=%u camera_role=%s target=%s at_ms=%lu\n",
       g_pending_capture_command.command_id,
       static_cast<unsigned int>(request_id),
-      g_camera_target_mac_known ? macToString(g_camera_target_mac).c_str() : "broadcast",
+      g_pending_capture_command.camera_role == 0 ? "any" : espnow_camera_role_label(g_pending_capture_command.camera_role),
+      "broadcast",
       static_cast<unsigned long>(now));
   return true;
 }
@@ -1741,7 +1933,9 @@ void resetCameraProvisioningRuntime() {
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
-      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
+      static_cast<uint32_t>(kDefaultCameraCapturePhaseSeconds) * 1000UL,
+      millis());
 }
 
 DeviceConfig normalizedConfig(DeviceConfig config) {
@@ -2832,6 +3026,13 @@ bool registerProvisionedDevice() {
   if (g_growing_light.supports_intensity_control()) {
     light_control_modes.add("intensity");
   }
+  capabilities["ambient_led_belt"] = true;
+  capabilities["ambient_led_belt_available"] = g_ambient_led_belt.state().available;
+  capabilities["ambient_led_belt_data_gpio"] = g_ambient_led_belt.state().data_gpio;
+  capabilities["ambient_led_belt_logical_pixel_count"] = g_ambient_led_belt.state().logical_pixel_count;
+  capabilities["ambient_led_belt_physical_led_count"] = g_ambient_led_belt.state().physical_led_count;
+  capabilities["ambient_led_belt_color_order"] = plantlab::ambient_led_belt::colorOrderName(g_ambient_led_belt.state().color_order);
+  capabilities["ambient_led_belt_max_brightness"] = g_ambient_led_belt.config().maximum_brightness;
   capabilities["temperature_sensor"] = true;
   capabilities["humidity_sensor"] = true;
 
@@ -2916,6 +3117,7 @@ void startFactoryReset() {
   teardownEspNow("factory_reset");
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_OFF);
+  clearAmbientLedBeltConfig();
   clearConfig();
   scheduleRestart(2000UL, "factory_reset");
   Serial.println("[provisioning] credentials cleared, reboot scheduled");
@@ -2970,7 +3172,7 @@ PlatformReading read_platform_reading() {
     }
   }
 
-  if (!moisture.valid) {
+  if (g_moisture.enabled() && !moisture.valid) {
     Serial.println("[moisture] read failed");
   } else {
     if (kVerboseSensorPollingLogs) {
@@ -3071,6 +3273,22 @@ PlatformStatus platform_status(const String& message) {
   status.command_poll_stale_seconds = g_last_command_poll_completed_ms > 0
                                           ? ageSecondsSince(now, g_last_command_poll_completed_ms)
                                           : static_cast<uint32_t>(now / 1000UL);
+  const plantlab::ambient_led_belt::AmbientLedBeltState& belt = g_ambient_led_belt.state();
+  status.has_ambient_led_belt_state = true;
+  status.ambient_led_belt.available = belt.available;
+  status.ambient_led_belt.enabled = belt.enabled;
+  status.ambient_led_belt.mode = plantlab::ambient_led_belt::modeName(belt.mode);
+  status.ambient_led_belt.brightness = belt.effective_brightness;
+  status.ambient_led_belt.max_brightness = g_ambient_led_belt.config().maximum_brightness;
+  status.ambient_led_belt.color_r = belt.requested_color.r;
+  status.ambient_led_belt.color_g = belt.requested_color.g;
+  status.ambient_led_belt.color_b = belt.requested_color.b;
+  status.ambient_led_belt.logical_pixel_count = belt.logical_pixel_count;
+  status.ambient_led_belt.physical_led_count = belt.physical_led_count;
+  status.ambient_led_belt.color_order = plantlab::ambient_led_belt::colorOrderName(belt.color_order);
+  status.ambient_led_belt.data_gpio = belt.data_gpio;
+  status.ambient_led_belt.diagnostic_active = belt.diagnostic_active;
+  status.ambient_led_belt.last_error = belt.last_error;
   status.diagnostics.valid = true;
   status.diagnostics.has_uptime_seconds = true;
   status.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
@@ -3315,9 +3533,61 @@ bool reportPendingCaptureCommandResult(const char* status, const char* message, 
   return reportPlatformCommandResult(command, status, message, error_code);
 }
 
+bool handleAmbientLedBeltCommand(const PlatformCommand& command, String* message, const char** error_code) {
+  plantlab::ambient_led_belt::AmbientLedBeltCommand led_command;
+  String parse_error;
+  const String payload = command.ambient_led_belt_payload_json.length() > 0 ? command.ambient_led_belt_payload_json : command.value;
+  if (payload.length() == 0 || !plantlab::ambient_led_belt::parseCommandJson(payload, &led_command, &parse_error)) {
+    if (message != nullptr) {
+      *message = parse_error.length() > 0 ? parse_error : "invalid ambient LED belt command";
+    }
+    if (error_code != nullptr) {
+      *error_code = PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+    }
+    return false;
+  }
+
+  String apply_message;
+  String apply_error;
+  if (!g_ambient_led_belt.applyCommand(led_command, &apply_message, &apply_error)) {
+    if (message != nullptr) {
+      *message = apply_error.length() > 0 ? apply_error : "ambient LED belt command failed";
+    }
+    if (error_code != nullptr) {
+      *error_code = apply_error.indexOf("invalid") >= 0 ? PLANTLAB_COMMAND_ERROR_INVALID_PARAMS
+                                                        : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR;
+    }
+    return false;
+  }
+  if (led_command.save_config && !saveAmbientLedBeltConfig()) {
+    if (message != nullptr) {
+      *message = "ambient LED belt command applied but config save failed";
+    }
+    if (error_code != nullptr) {
+      *error_code = PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR;
+    }
+    return false;
+  }
+  if (message != nullptr) {
+    *message = apply_message.length() > 0 ? apply_message : "ambient LED belt command applied";
+  }
+  if (error_code != nullptr) {
+    *error_code = nullptr;
+  }
+  Serial.printf(
+      "[ambient-led-belt] command applied mode=%s enabled=%u brightness=%u logical_pixels=%u color_order=%s\n",
+      plantlab::ambient_led_belt::modeName(g_ambient_led_belt.state().mode),
+      g_ambient_led_belt.state().enabled ? 1U : 0U,
+      static_cast<unsigned int>(g_ambient_led_belt.state().requested_brightness),
+      static_cast<unsigned int>(g_ambient_led_belt.state().logical_pixel_count),
+      plantlab::ambient_led_belt::colorOrderName(g_ambient_led_belt.state().color_order));
+  return true;
+}
+
 void execute_platform_command(const PlatformCommand& command) {
   String message;
   bool success = true;
+  const char* command_error_code = nullptr;
 
   if (command.contract_native) {
     Serial.printf(
@@ -3339,28 +3609,36 @@ void execute_platform_command(const PlatformCommand& command) {
     }
   }
 
-  if (command.target == "light") {
+  if (command.target == "grow_light" || command.target == "light") {
     if (command.action == "on") {
       g_growing_light.set_on(true);
-      message = "growing light turned on";
+      message = "grow light turned on";
     } else if (command.action == "off") {
       g_growing_light.set_on(false);
-      message = "growing light turned off";
+      message = "grow light turned off";
     } else if (command.action == "set_intensity") {
       int intensity_percent = 0;
       if (!g_growing_light.supports_intensity_control()) {
         success = false;
-        message = "growing light intensity control is not supported";
+        message = "grow light intensity control is not supported";
       } else if (!parseLightIntensityPercent(command.value, &intensity_percent)) {
         success = false;
-        message = "invalid growing light intensity";
+        message = "invalid grow light intensity";
       } else {
         g_growing_light.set_intensity_percent(intensity_percent);
-        message = "growing light intensity set to " + String(intensity_percent) + "%";
+        message = "grow light intensity set to " + String(intensity_percent) + "%";
       }
     } else {
       success = false;
-      message = "unsupported growing light command";
+      message = "unsupported grow light command";
+    }
+  } else if (command.target == "ambient_led_belt") {
+    if (command.action == "set") {
+      success = handleAmbientLedBeltCommand(command, &message, &command_error_code);
+    } else {
+      success = false;
+      command_error_code = PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+      message = "unsupported ambient LED belt command";
     }
   } else if (command.target == "pump") {
     if (command.action == "run") {
@@ -3441,15 +3719,16 @@ void execute_platform_command(const PlatformCommand& command) {
     ++g_diagnostic_error_counters.upload_failures;
     recordDiagnosticError("heartbeat_upload_failed", "heartbeat upload failed");
   }
-  recordLastCommandResult(command.id, success ? "completed" : "failed", message, success ? "ok" : "command_failed");
+  const bool rejected = !success && command_error_code == PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+  recordLastCommandResult(command.id, success ? "completed" : rejected ? "rejected" : "failed", message, success ? "ok" : "command_failed");
   if (!success) {
     recordDiagnosticError("command_failed", message);
   }
   if (!reportPlatformCommandResult(
           command,
-          success ? PLANTLAB_COMMAND_STATUS_COMPLETED : PLANTLAB_COMMAND_STATUS_FAILED,
+          success ? PLANTLAB_COMMAND_STATUS_COMPLETED : rejected ? PLANTLAB_COMMAND_STATUS_REJECTED : PLANTLAB_COMMAND_STATUS_FAILED,
           message.c_str(),
-          success ? nullptr : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR)) {
+          success ? nullptr : command_error_code != nullptr ? command_error_code : PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR)) {
     Serial.println("[platform] command result update failed");
   } else {
     Serial.printf("[platform] command %d handled: %s\n", command.id, message.c_str());
@@ -3498,6 +3777,9 @@ void poll_platform_commands(unsigned long now) {
 }
 
 void setup() {
+  pinMode(AMBIENT_LED_BELT_DATA_GPIO, OUTPUT);
+  digitalWrite(AMBIENT_LED_BELT_DATA_GPIO, LOW);
+
   Serial.begin(115200);
   delay(1000);
 
@@ -3511,6 +3793,7 @@ void setup() {
   Serial.printf("Provisioning env: %s\n", PLANTLAB_ENV_LABEL);
   Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
+  Serial.printf("WS2811 ambient LED belt DIN pin: GPIO%d\n", AMBIENT_LED_BELT_DATA_GPIO);
   Serial.printf("PCB grow LED control pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
   Serial.printf("Legacy pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
   Serial.printf("Provisioning button pin: GPIO%d\n", PIN_POWER_BUTTON);
@@ -3526,6 +3809,7 @@ void setup() {
       PLANTLAB_CAMERA_CAPTURE_ENABLED ? "enabled" : "disabled",
       static_cast<unsigned long>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS));
   initReliabilityBootCounter();
+  const bool ambient_led_belt_config_ok = loadAmbientLedBeltConfig();
 
   pinMode(PIN_STATUS_LED, OUTPUT);
   pinMode(PIN_POWER_BUTTON, INPUT_PULLUP);
@@ -3539,18 +3823,32 @@ void setup() {
   g_water_level.begin();
   g_growing_light.begin();
   g_pump.begin();
+  if (ambient_led_belt_config_ok) {
+    String led_error;
+    if (g_ambient_led_belt.begin(&led_error)) {
+      Serial.println("[ambient-led-belt] initialized OFF");
+    } else {
+      Serial.printf("[ambient-led-belt] unavailable after init: %s\n", led_error.c_str());
+    }
+  }
 
   Serial.println("[dht22] sensor initialized");
-  Serial.println("[moisture] sensor initialized");
+  if (g_moisture.enabled()) {
+    Serial.println("[moisture] sensor initialized");
+  } else {
+    Serial.println("[moisture] sensor disabled: GPIO1 reserved for WS2811 ambient LED belt DIN");
+  }
   Serial.println("[water-temp] sensor initialized");
   Serial.println("[water-level] touch sensor initialized");
-  Serial.println("[growing-light] initialized OFF");
+  Serial.println("[grow-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
   plantlab::time_sync::begin();
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
-      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS);
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
+      static_cast<uint32_t>(kDefaultCameraCapturePhaseSeconds) * 1000UL,
+      millis());
 
   loadConfig();
   if (hasWifiCredentials()) {
@@ -3567,6 +3865,7 @@ void loop() {
   checkProvisioningButton();
   g_status_led.update(now);
   g_pump.update();
+  g_ambient_led_belt.tick(now);
 
   if (g_provisioning_mode) {
     serviceBleProvisioning(now);

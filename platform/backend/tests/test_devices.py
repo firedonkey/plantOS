@@ -342,6 +342,48 @@ def test_device_images_api_returns_recent_images_with_limit():
         teardown_overrides()
 
 
+def test_device_image_api_filters_by_camera_role_and_defaults_latest_to_top():
+    client, _ = build_client_with_user()
+    try:
+        create_response = client.post("/api/devices", json={"name": "Kitchen Rose"})
+        device_id = create_response.json()["id"]
+        base_time = datetime.now(timezone.utc)
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/top.jpg",
+                    source_hardware_device_id="cam-top",
+                    camera_role="top",
+                    timestamp=base_time,
+                )
+            )
+            session.add(
+                Image(
+                    device_id=device_id,
+                    path="device-1/side.jpg",
+                    source_hardware_device_id="cam-side",
+                    camera_role="side",
+                    timestamp=base_time + timedelta(minutes=1),
+                )
+            )
+            session.commit()
+
+        latest_response = client.get(f"/api/devices/{device_id}/images/latest")
+        side_response = client.get(f"/api/devices/{device_id}/images?camera_role=side")
+        all_response = client.get(f"/api/devices/{device_id}/images?camera_role=all")
+
+        assert latest_response.status_code == 200
+        assert latest_response.json()["camera_role"] == "top"
+        assert side_response.status_code == 200
+        assert [image["camera_role"] for image in side_response.json()] == ["side"]
+        assert all_response.status_code == 200
+        assert [image["camera_role"] for image in all_response.json()] == ["side", "top"]
+    finally:
+        teardown_overrides()
+
+
 def test_device_image_apis_return_signed_urls_for_gcs_images(monkeypatch):
     signed_calls = []
 
@@ -510,7 +552,7 @@ def test_device_command_wrapper_apis():
         light_payload = light_response.json()
         assert light_payload["status"] == "accepted"
         assert light_payload["device_id"] == device_id
-        assert light_payload["command"] == "light"
+        assert light_payload["command"] == "grow_light"
         assert light_payload["action"] == "on"
         assert light_payload["queued"] is True
         assert light_payload["command_status"] == "pending"
@@ -543,14 +585,14 @@ def test_device_command_wrapper_apis():
         assert intensity_response.status_code == 201
         intensity_payload = intensity_response.json()
         assert intensity_payload["status"] == "accepted"
-        assert intensity_payload["command"] == "light"
+        assert intensity_payload["command"] == "grow_light"
         assert intensity_payload["action"] == "set_intensity"
         assert intensity_payload["value"] == "65"
 
         with next(app.dependency_overrides[get_session]()) as session:
             intensity_command = session.get(Command, intensity_payload["command_id"])
             assert intensity_command is not None
-            assert intensity_command.target == CommandTarget.LIGHT
+            assert intensity_command.target == CommandTarget.GROW_LIGHT
             assert intensity_command.action == CommandAction.SET_INTENSITY
             assert intensity_command.value == "65"
 
@@ -573,12 +615,14 @@ def test_device_command_wrapper_apis():
         assert capture_payload["queued"] is True
         assert capture_payload["command_status"] == "pending"
         assert capture_payload["message"] == "Capture command queued."
+        assert capture_payload["camera_role"] == "top"
 
         with next(app.dependency_overrides[get_session]()) as session:
             capture_command = session.get(Command, capture_payload["command_id"])
             assert capture_command is not None
             assert capture_command.target == CommandTarget.CAMERA
             assert capture_command.action == CommandAction.CAPTURE
+            assert json.loads(capture_command.value) == {"reason": "manual", "camera_role": "top"}
     finally:
         teardown_overrides()
 
@@ -857,7 +901,7 @@ def test_device_summary_exposes_stale_diagnostics_and_last_failed_command():
             session.add(
                 Command(
                     device_id=device_id,
-                    target=CommandTarget.LIGHT,
+                    target=CommandTarget.GROW_LIGHT,
                     action=CommandAction.ON,
                     status=CommandStatus.COMPLETED,
                     message="light turned on",
@@ -1744,7 +1788,7 @@ def test_latest_device_activity_uses_reading_image_and_device_command_timestamps
 def test_completed_command_overrides_stale_reading_state():
     reading_time = datetime(2026, 4, 16, 19, 0, tzinfo=timezone.utc)
     command = SimpleNamespace(
-        target="light",
+        target="grow_light",
         action="on",
         status="completed",
         light_on=True,

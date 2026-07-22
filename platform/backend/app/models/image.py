@@ -21,6 +21,7 @@ class Image(Base):
         default=None,
         index=True,
     )
+    camera_role: Mapped[Optional[str]] = mapped_column(String(20), default=None, index=True)
     path: Mapped[str] = mapped_column(String(500))
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

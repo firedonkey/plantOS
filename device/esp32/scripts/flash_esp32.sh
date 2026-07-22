@@ -148,6 +148,8 @@ Environment:
   --test-wifi            Dedicated XIAO Wi-Fi test firmware (env: wifi-test)
   --test-touch           Dedicated touch-button debug firmware (env: touch-test)
   --test-button-led      Dedicated physical-button + status-led test firmware (env: button-led-test)
+  --test-led-panel       Dedicated red/white LED panel test firmware (env: led-panel-test)
+  --test-ambient-led-belt Dedicated bottom WS2811 ambient LED belt test firmware (env: ambient-led-belt-test)
   --test-espnow-master   Dedicated ESP-NOW master link-test firmware (env: espnow-master-test)
   --test-espnow-camera   Dedicated ESP-NOW camera link-test firmware (env: espnow-camera-test)
 
@@ -209,6 +211,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --test-button-led)
       ENV_NAME="button-led-test"
+      shift
+      ;;
+    --test-led-panel)
+      ENV_NAME="led-panel-test"
+      shift
+      ;;
+    --test-ambient-led-belt)
+      ENV_NAME="ambient-led-belt-test"
       shift
       ;;
     --test-espnow-master)

@@ -11,6 +11,8 @@ void test_runtime_config_accepts_valid_payload() {
       2,
       1,
       15,
+      CameraRoleCode::kSide,
+      30,
       "PlantLabWiFi",
       "camera-pass",
       "http://192.168.0.55:8000",
@@ -23,6 +25,8 @@ void test_runtime_config_accepts_valid_payload() {
   assert(config.config_version == 2);
   assert(config.camera_node_index == 1);
   assert(config.platform_device_id == 15);
+  assert(config.camera_role == static_cast<uint8_t>(CameraRoleCode::kSide));
+  assert(config.capture_phase_seconds == 30);
   assert(strcmp(config.wifi_ssid, "PlantLabWiFi") == 0);
   assert(strcmp(config.wifi_password, "camera-pass") == 0);
   assert(strcmp(config.platform_url, "http://192.168.0.55:8000") == 0);
@@ -34,6 +38,7 @@ void test_runtime_config_rejects_incomplete_payload() {
   payload.config_version = 1;
   payload.camera_node_index = 1;
   payload.platform_device_id = 12;
+  payload.camera_role = static_cast<uint8_t>(CameraRoleCode::kTop);
   strcpy(payload.wifi_ssid, "ssid");
 
   CameraNodeRuntimeConfig config{};

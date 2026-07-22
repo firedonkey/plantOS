@@ -36,6 +36,7 @@ def build_command_payload(session: Session, command: Command) -> CommandPayload 
         target=CommandTarget(
             node_role=target_role,
             hardware_device_id=target_node.hardware_device_id if target_node is not None else None,
+            camera_role=_camera_role(command),
         ),
         params=_command_params(command),
         timeout_ms=_timeout_ms(command),
@@ -109,8 +110,10 @@ def event_type_for_result_status(status: str) -> EventType:
 def _command_type(command: Command) -> CommandType | None:
     target = _value(command.target)
     action = _value(command.action)
-    if target == "light" and action in {"on", "off", "set_intensity"}:
-        return CommandType.SET_LIGHT_BRIGHTNESS
+    if target in {"grow_light", "light"} and action in {"on", "off", "set_intensity"}:
+        return CommandType.SET_GROW_LIGHT_BRIGHTNESS
+    if target == "ambient_led_belt" and action == "set":
+        return CommandType.SET_AMBIENT_LED_BELT
     if target == "camera" and action == "capture":
         return CommandType.CAPTURE_IMAGE
     if target == "ota" and action == "start":
@@ -129,18 +132,25 @@ def _legacy_command_type(command: Command) -> str:
 def _command_params(command: Command) -> dict[str, Any]:
     target = _value(command.target)
     action = _value(command.action)
-    if target == "light" and action == "set_intensity":
+    if target in {"grow_light", "light"} and action == "set_intensity":
         try:
             brightness = int(command.value or 0)
         except ValueError:
             brightness = 0
         return {"brightness_percent": max(0, min(100, brightness))}
-    if target == "light" and action == "on":
+    if target in {"grow_light", "light"} and action == "on":
         return {"brightness_percent": 100}
-    if target == "light" and action == "off":
+    if target in {"grow_light", "light"} and action == "off":
         return {"brightness_percent": 0}
+    if target == "ambient_led_belt" and action == "set":
+        params = _json_command_value(command.value)
+        return params if isinstance(params, dict) else {}
     if target == "camera" and action == "capture":
-        return {"reason": "manual"}
+        params = {"reason": "manual"}
+        capture_params = _json_command_value(command.value)
+        if isinstance(capture_params, dict):
+            params.update(capture_params)
+        return params
     if target == "ota" and action == "start":
         return _ota_command_params(command.value)
     if target == "diagnostics" and action == "request":
@@ -157,13 +167,20 @@ def _target_role(command: Command) -> CommandTargetRole:
 def _target_node(session: Session, command: Command) -> DeviceNode | None:
     target_role = _target_role(command).value
     roles = ("camera",) if target_role == "camera" else ("master", "single_board")
-    return session.scalar(
+    if target_role == "camera" and _camera_role_is_all(command):
+        return None
+    query = (
         select(DeviceNode)
         .where(DeviceNode.device_id == command.device_id)
         .where(DeviceNode.node_role.in_(roles))
-        .order_by(DeviceNode.node_index, DeviceNode.hardware_device_id)
-        .limit(1)
     )
+    camera_role = _camera_role(command)
+    if target_role == "camera" and camera_role is not None:
+        if camera_role == "top":
+            query = query.where((DeviceNode.camera_role == camera_role) | (DeviceNode.camera_role.is_(None)))
+        else:
+            query = query.where(DeviceNode.camera_role == camera_role)
+    return session.scalar(query.order_by(DeviceNode.node_index, DeviceNode.hardware_device_id).limit(1))
 
 
 def _timeout_ms(command: Command) -> int:
@@ -187,6 +204,37 @@ def _ota_command_params(value: str | None) -> dict[str, Any]:
             return {"target_version": text}
         return parsed if isinstance(parsed, dict) else {"target_version": text}
     return {"target_version": text}
+
+
+def _camera_role(command: Command) -> str | None:
+    if _value(command.target) != "camera":
+        return None
+    params = _json_command_value(command.value)
+    if not isinstance(params, dict):
+        return None
+    role = str(params.get("camera_role") or "").strip().lower()
+    if role in {"top", "side"}:
+        return role
+    return None
+
+
+def _camera_role_is_all(command: Command) -> bool:
+    if _value(command.target) != "camera":
+        return False
+    params = _json_command_value(command.value)
+    if not isinstance(params, dict):
+        return False
+    return str(params.get("camera_role") or "").strip().lower() == "all"
+
+
+def _json_command_value(value: str | None) -> Any:
+    text = str(value or "").strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
 
 
 def _event_severity(event_type: EventType) -> DiagnosticSeverity:

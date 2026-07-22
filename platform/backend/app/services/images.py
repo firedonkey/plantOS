@@ -4,6 +4,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.contracts import CameraRole
 from app.core.settings import Settings
 from app.models import Image
 from app.services.storage import get_image_storage
@@ -23,6 +24,7 @@ def save_uploaded_image(
     device_id: int,
     source_hardware_device_id: str | None,
     settings: Settings,
+    camera_role: str | CameraRole | None = None,
     captured_at: datetime | None = None,
 ) -> Image:
     suffix = ALLOWED_IMAGE_TYPES.get(upload_file.content_type or "")
@@ -33,6 +35,7 @@ def save_uploaded_image(
     image = Image(
         device_id=device_id,
         source_hardware_device_id=source_hardware_device_id,
+        camera_role=_camera_role_value(camera_role),
         path=stored_file.path,
         timestamp=captured_at or datetime.now(timezone.utc),
     )
@@ -46,14 +49,17 @@ def list_recent_images_for_device(
     session: Session,
     device_id: int,
     limit: int = 12,
+    camera_role: str | CameraRole | None = None,
 ) -> list[Image]:
+    query = (
+        select(Image)
+        .where(Image.device_id == device_id)
+        .order_by(Image.timestamp.desc())
+        .limit(limit)
+    )
+    query = _filter_camera_role(query, camera_role)
     return list(
-        session.scalars(
-            select(Image)
-            .where(Image.device_id == device_id)
-            .order_by(Image.timestamp.desc())
-            .limit(limit)
-        )
+        session.scalars(query)
     )
 
 
@@ -65,15 +71,18 @@ def list_timelapse_images_for_device(
     end: datetime,
     interval_minutes: int,
     max_frames: int,
+    camera_role: str | CameraRole | None = None,
 ) -> tuple[list[Image], int]:
+    query = (
+        select(Image)
+        .where(Image.device_id == device_id)
+        .where(Image.timestamp >= start)
+        .where(Image.timestamp <= end)
+        .order_by(Image.timestamp.asc(), Image.id.asc())
+    )
+    query = _filter_camera_role(query, camera_role)
     images = list(
-        session.scalars(
-            select(Image)
-            .where(Image.device_id == device_id)
-            .where(Image.timestamp >= start)
-            .where(Image.timestamp <= end)
-            .order_by(Image.timestamp.asc(), Image.id.asc())
-        )
+        session.scalars(query)
     )
     if not images:
         return [], 0
@@ -111,3 +120,26 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _filter_camera_role(query, camera_role: str | CameraRole | None):
+    normalized = _camera_role_value(camera_role)
+    if normalized is None or normalized == "all":
+        return query
+    if normalized == CameraRole.TOP.value:
+        return query.where((Image.camera_role == CameraRole.TOP.value) | (Image.camera_role.is_(None)))
+    return query.where(Image.camera_role == normalized)
+
+
+def _camera_role_value(camera_role: str | CameraRole | None) -> str | None:
+    if camera_role is None:
+        return None
+    value = str(getattr(camera_role, "value", camera_role)).strip().lower()
+    if not value:
+        return None
+    if value == "all":
+        return value
+    allowed = {role.value for role in CameraRole}
+    if value not in allowed:
+        raise ValueError("Unsupported camera role.")
+    return value

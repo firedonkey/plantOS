@@ -184,6 +184,7 @@ def test_device_node_register_creates_camera_node_for_token_device():
         assert payload["hardware_device_id"] == "cam-live-01"
         assert payload["node_role"] == "camera"
         assert payload["node_index"] == 1
+        assert payload["camera_role"] == "top"
         assert payload["display_name"] == "Camera 1"
         assert payload["hardware_model"] == "xiao_esp32s3_camera"
         assert payload["capabilities"] == {"camera": True}
@@ -193,6 +194,81 @@ def test_device_node_register_creates_camera_node_for_token_device():
             node = get_node_by_hardware_id(session, "cam-live-01")
             assert node is not None
             assert node.device_id == device_id
+            assert node.camera_role == "top"
+    finally:
+        teardown_overrides()
+
+
+def test_device_node_register_rejects_duplicate_camera_role():
+    client, TestingSessionLocal, _, device_id = build_client_with_device()
+    try:
+        with TestingSessionLocal() as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-top-01",
+                node_role="camera",
+                node_index=1,
+                camera_role="top",
+                display_name="Top Camera",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/device-nodes/register",
+            json={
+                "device_id": device_id,
+                "hardware_device_id": "cam-top-02",
+                "node_role": "camera",
+                "node_index": 2,
+                "camera_role": "top",
+                "display_name": "Second Top Camera",
+                "capabilities": {"camera": True},
+                "status": "online",
+            },
+            headers={"X-Device-Token": "test-device-token"},
+        )
+
+        assert response.status_code == 409
+        assert "top" in response.text
+    finally:
+        teardown_overrides()
+
+
+def test_device_node_register_accepts_explicit_side_camera():
+    client, TestingSessionLocal, _, device_id = build_client_with_device()
+    try:
+        with TestingSessionLocal() as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-top-01",
+                node_role="camera",
+                node_index=1,
+                camera_role="top",
+                display_name="Top Camera",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/device-nodes/register",
+            json={
+                "device_id": device_id,
+                "hardware_device_id": "cam-side-01",
+                "node_role": "camera",
+                "node_index": 2,
+                "camera_role": "side",
+                "display_name": "Side Camera",
+                "capabilities": {"camera": True},
+                "status": "online",
+            },
+            headers={"X-Device-Token": "test-device-token"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["hardware_device_id"] == "cam-side-01"
+        assert payload["camera_role"] == "side"
     finally:
         teardown_overrides()
 

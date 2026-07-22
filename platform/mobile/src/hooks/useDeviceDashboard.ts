@@ -2,12 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RangeKey } from "@/components/ReadingTrendSection";
 import { getDeviceDashboard, getDeviceTimelapse, sendDeviceCommand } from "@/api/devices";
-import { DeviceCommand, DeviceDashboard } from "@/types";
+import { CameraRole, DeviceCommand, DeviceDashboard } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
 type OptimisticLightState = {
   lightOn: boolean;
   lightIntensityPercent?: number;
+};
+
+type CommandOptions = {
+  intensityPercent?: number;
+  cameraRole?: CameraRole | "all";
+  cameraNodeId?: string;
 };
 
 export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
@@ -199,7 +205,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   );
 
   const runCommand = useCallback(
-    async (action: DeviceCommand["action"], options?: { intensityPercent?: number }) => {
+    async (action: DeviceCommand["action"], options?: CommandOptions) => {
       if (isActionBlocked(action)) {
         setCommandTone("info");
         setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);

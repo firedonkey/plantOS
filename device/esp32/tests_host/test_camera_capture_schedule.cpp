@@ -26,11 +26,19 @@ void test_schedule_respects_interval_after_first_request() {
   assert(!capture_schedule_should_request(state, 12000UL, true));
   assert(capture_schedule_should_request(state, 16001UL, true));
 }
+
+void test_schedule_respects_initial_phase_offset() {
+  MasterCaptureScheduleState state{};
+  capture_schedule_init(&state, true, 15000UL, 30000UL, 1000UL);
+  assert(!capture_schedule_should_request(state, 30000UL, true));
+  assert(capture_schedule_should_request(state, 31000UL, true));
+}
 }  // namespace
 
 int main() {
   test_disabled_schedule_never_requests();
   test_schedule_waits_for_runtime_ready();
   test_schedule_respects_interval_after_first_request();
+  test_schedule_respects_initial_phase_offset();
   return 0;
 }

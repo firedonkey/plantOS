@@ -224,6 +224,69 @@ def test_upload_image_stores_attached_camera_source(tmp_path, monkeypatch):
         teardown_overrides()
 
 
+def test_upload_image_stores_camera_role_from_registered_node(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-side-01",
+                node_role="camera",
+                node_index=2,
+                camera_role="side",
+                display_name="Side Camera",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "camera_node_id": "cam-side-01", "camera_role": "side"},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["source_hardware_device_id"] == "cam-side-01"
+        assert payload["camera_role"] == "side"
+    finally:
+        teardown_overrides()
+
+
+def test_upload_image_rejects_camera_role_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
+    client, device_id, _ = build_client_with_device(str(tmp_path))
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
+    try:
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="cam-top-01",
+                node_role="camera",
+                node_index=1,
+                camera_role="top",
+                display_name="Top Camera",
+                status="online",
+            )
+
+        response = client.post(
+            "/api/image",
+            data={"device_id": str(device_id), "camera_node_id": "cam-top-01", "camera_role": "side"},
+            files={"file": ("plant.jpg", b"fake-jpeg", "image/jpeg")},
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 409
+    finally:
+        teardown_overrides()
+
+
 def test_upload_image_accepts_contract_metadata_and_emits_event(tmp_path, monkeypatch):
     monkeypatch.setenv("PLANTLAB_UPLOAD_DIR", str(tmp_path))
     client, device_id, _ = build_client_with_device(str(tmp_path))
@@ -809,9 +872,13 @@ def _image_upload_envelope(
     content_type: str | None = None,
     upload_ms: int | None = None,
     failure_reason: str | None = None,
+    camera_role: str | None = None,
+    camera_node_id: str | None = None,
 ) -> dict:
     payload = {
         "status": status,
+        "camera_node_id": camera_node_id,
+        "camera_role": camera_role,
         "source_hardware_device_id": hardware_device_id,
         "source_node_role": "camera",
         "captured_at": captured_at,

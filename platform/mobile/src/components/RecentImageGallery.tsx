@@ -32,7 +32,7 @@ export function RecentImageGallery({
       <View style={styles.header}>
         <SectionHeader
           title="Camera"
-          subtitle={latestImage ? `Latest capture ${formatImageAge(latestImage.capturedAt)}` : "Latest device captures appear here."}
+          subtitle={latestImage ? `${formatCameraRole(latestImage.cameraRole)} capture ${formatImageAge(latestImage.capturedAt)}` : "Latest device captures appear here."}
         />
         {onCapture ? (
           <View style={styles.captureButton}>
@@ -100,9 +100,16 @@ function GalleryImage({
           onError={() => setFailedImageKeys((current) => ({ ...current, [imageKey]: true }))}
         />
       )}
-      <Text style={styles.meta}>Captured {formatTimestamp(image.capturedAt)}</Text>
+      <Text style={styles.meta}>{formatCameraRole(image.cameraRole)} camera - {formatTimestamp(image.capturedAt)}</Text>
     </View>
   );
+}
+
+function formatCameraRole(role: LatestImage["cameraRole"]) {
+  if (role === "side") {
+    return "Side";
+  }
+  return "Top";
 }
 
 function shouldUseImageHeaders(url: string): boolean {

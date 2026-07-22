@@ -167,7 +167,7 @@ def test_hardware_pending_commands_include_light_intensity_contract():
         assert len(payload) == 1
         assert payload[0]["id"] == command_id
         assert payload[0]["device_id"] == device_id
-        assert payload[0]["target"] == "light"
+        assert payload[0]["target"] == "grow_light"
         assert payload[0]["action"] == "set_intensity"
         assert payload[0]["value"] == "65"
         assert payload[0]["status"] == "in_progress"

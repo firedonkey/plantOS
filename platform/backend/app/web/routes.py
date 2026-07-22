@@ -710,10 +710,10 @@ def _latest_completed_command_state(commands: list, reading_timestamp: datetime)
             continue
 
         target = _enum_value(command.target)
-        if target == "light" and "light" not in state and command.light_on is not None:
+        if target in {"grow_light", "light"} and "light" not in state and command.light_on is not None:
             state["light"] = command.light_on
         light_intensity_percent = getattr(command, "light_intensity_percent", None)
-        if target == "light" and "light_intensity" not in state and light_intensity_percent is not None:
+        if target in {"grow_light", "light"} and "light_intensity" not in state and light_intensity_percent is not None:
             state["light_intensity"] = light_intensity_percent
         if target == "pump" and "pump" not in state and command.pump_on is not None:
             state["pump"] = command.pump_on
@@ -990,7 +990,7 @@ def _command_activity_item(command) -> dict:
 
 def _command_label(command) -> str:
     target_value = _enum_value(command.target)
-    target = "Growing light" if target_value == "light" else target_value.title()
+    target = "Grow light" if target_value in {"grow_light", "light"} else target_value.title()
     action = _enum_value(command.action)
     if action == "set_intensity" and command.value:
         return f"{target} {command.value}%"

@@ -108,7 +108,7 @@ python3 tools/simulator/simulator.py \
   --device-id 1 \
   --device-token REAL_API_TOKEN_FROM_DB \
   --devices 1 \
-  --camera-nodes 1 \
+  --camera-nodes 2 \
   --scenario unstable_wifi
 ```
 

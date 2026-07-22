@@ -126,10 +126,10 @@ def summarize_timeline_event(event: DeviceDiagnosticEvent) -> str:
         return "Camera node connected"
     if event_type == "ACTUATOR_STATE_CHANGED":
         actuator = _humanize(_string(data.get("actuator")) or "actuator")
-        previous = _ambient_light_label(data.get("previous"))
-        current = _ambient_light_label(data.get("current"))
-        if actuator == "ambient light":
-            return f"Ambient light changed: {previous} -> {current}"
+        previous = _grow_light_label(data.get("previous"))
+        current = _grow_light_label(data.get("current"))
+        if actuator in {"grow light", "ambient light"}:
+            return f"Grow light changed: {previous} -> {current}"
         return f"{actuator.title()} changed: {previous} -> {current}"
     if event_type == "OTA_STATE_CHANGED":
         previous = _string(data.get("previous")) or "unknown"
@@ -225,7 +225,7 @@ def _string(value: Any) -> str | None:
     return text or None
 
 
-def _ambient_light_label(value: Any) -> str:
+def _grow_light_label(value: Any) -> str:
     if not isinstance(value, dict) or not value:
         return "unknown"
     enabled = value.get("enabled")

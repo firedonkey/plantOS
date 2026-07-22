@@ -9,9 +9,15 @@ bool isSupportedMasterCommand(const PlatformCommand& command) {
   if (!command.contract_native) {
     return true;
   }
-  if (command.command_type == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS &&
-      command.target == "light" &&
+  if ((command.command_type == PLANTLAB_COMMAND_SET_GROW_LIGHT_BRIGHTNESS ||
+       command.command_type == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS) &&
+      (command.target == "grow_light" || command.target == "light") &&
       command.action == "set_intensity") {
+    return true;
+  }
+  if (command.command_type == PLANTLAB_COMMAND_SET_AMBIENT_LED_BELT &&
+      command.target == "ambient_led_belt" &&
+      command.action == "set") {
     return true;
   }
   if (command.command_type == PLANTLAB_COMMAND_CAPTURE_IMAGE &&

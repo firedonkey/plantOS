@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.contracts import CameraRole
 from app.models.device_node import DeviceNode
 
 
@@ -14,6 +15,10 @@ class DeviceGroupStatus:
     status: str
     master_status: str | None
     camera_statuses: tuple[str, ...]
+
+
+class DeviceNodeConflictError(ValueError):
+    pass
 
 
 def build_node_summary(nodes: list[DeviceNode]) -> dict:
@@ -80,6 +85,7 @@ def upsert_device_node(
     hardware_device_id: str,
     node_role: str = "single_board",
     node_index: int | None = None,
+    camera_role: str | CameraRole | None = None,
     display_name: str | None = None,
     hardware_model: str | None = None,
     hardware_version: str | None = None,
@@ -88,6 +94,7 @@ def upsert_device_node(
     status: str = "provisioning",
     last_seen_at: datetime | None = None,
 ) -> DeviceNode:
+    normalized_camera_role = _normalize_camera_role(node_role, camera_role)
     node = get_node_by_hardware_id(session, hardware_device_id)
     if node is None:
         node = DeviceNode(
@@ -95,10 +102,24 @@ def upsert_device_node(
             hardware_device_id=hardware_device_id,
         )
         session.add(node)
+    elif node.device_id != device_id:
+        raise DeviceNodeConflictError("Device node is attached to another device.")
+
+    if normalized_camera_role is not None:
+        if node.camera_role is not None and node.camera_role != normalized_camera_role:
+            raise DeviceNodeConflictError("Device node camera role does not match registration.")
+        existing_role_node = get_camera_node_for_role(
+            session,
+            device_id=device_id,
+            camera_role=normalized_camera_role,
+        )
+        if existing_role_node is not None and existing_role_node.hardware_device_id != hardware_device_id:
+            raise DeviceNodeConflictError(f"Camera role '{normalized_camera_role}' is already registered for this device.")
 
     node.device_id = device_id
     node.node_role = node_role
     node.node_index = node_index
+    node.camera_role = normalized_camera_role if normalized_camera_role is not None else node.camera_role
     node.display_name = display_name
     node.hardware_model = hardware_model
     node.hardware_version = hardware_version
@@ -133,6 +154,33 @@ def update_node_heartbeat(
     session.commit()
     session.refresh(node)
     return node
+
+
+def list_camera_nodes_for_device(session: Session, device_id: int) -> list[DeviceNode]:
+    return [
+        node
+        for node in list_nodes_for_device(session, device_id)
+        if str(node.node_role).lower() == "camera"
+    ]
+
+
+def get_camera_node_for_role(
+    session: Session,
+    *,
+    device_id: int,
+    camera_role: str | CameraRole,
+) -> DeviceNode | None:
+    normalized = _camera_role_value(camera_role)
+    if normalized is None:
+        return None
+    return session.scalar(
+        select(DeviceNode)
+        .where(DeviceNode.device_id == device_id)
+        .where(DeviceNode.node_role == "camera")
+        .where(DeviceNode.camera_role == normalized)
+        .order_by(DeviceNode.node_index, DeviceNode.hardware_device_id)
+        .limit(1)
+    )
 
 
 def derive_device_group_status(nodes: list[DeviceNode]) -> DeviceGroupStatus:
@@ -185,7 +233,7 @@ def _normalized_node_status(status: str | None) -> str:
     return "offline"
 
 
-def _node_sort_key(node: DeviceNode) -> tuple[int, int, str]:
+def _node_sort_key(node: DeviceNode) -> tuple[int, int, int, str]:
     role_order = {
         "single_board": 0,
         "master": 1,
@@ -193,9 +241,37 @@ def _node_sort_key(node: DeviceNode) -> tuple[int, int, str]:
     }
     return (
         role_order.get(node.node_role, 99),
+        _camera_role_sort_index(node),
         node.node_index if node.node_index is not None else 9999,
         node.hardware_device_id,
     )
+
+
+def _normalize_camera_role(node_role: str, camera_role: str | CameraRole | None) -> str | None:
+    normalized_node_role = str(node_role or "").strip().lower()
+    normalized_camera_role = _camera_role_value(camera_role)
+    if normalized_node_role != "camera":
+        if normalized_camera_role is not None:
+            raise ValueError("camera_role is only valid for camera nodes.")
+        return None
+    return normalized_camera_role
+
+
+def _camera_role_value(camera_role: str | CameraRole | None) -> str | None:
+    if camera_role is None:
+        return None
+    value = str(getattr(camera_role, "value", camera_role)).strip().lower()
+    if not value:
+        return None
+    allowed = {role.value for role in CameraRole}
+    if value not in allowed:
+        raise ValueError("Unsupported camera role.")
+    return value
+
+
+def _camera_role_sort_index(node: DeviceNode) -> int:
+    role_order = {"top": 0, "side": 1}
+    return role_order.get(str(node.camera_role or "").lower(), 9)
 
 
 def _node_summary_item(node: DeviceNode) -> dict:
@@ -203,6 +279,7 @@ def _node_summary_item(node: DeviceNode) -> dict:
         "hardware_device_id": node.hardware_device_id,
         "node_role": node.node_role,
         "node_index": node.node_index,
+        "camera_role": node.camera_role,
         "display_name": node.display_name,
         "hardware_model": node.hardware_model,
         "hardware_version": node.hardware_version,

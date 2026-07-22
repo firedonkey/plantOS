@@ -80,8 +80,18 @@ def _apply_lightweight_migrations(selected_engine) -> None:
         if "images" in table_names:
             image_columns = {column["name"] for column in inspector.get_columns("images")}
             _add_column_if_missing(connection, selected_engine, "images", image_columns, Column("source_hardware_device_id", String(120)))
+            _add_column_if_missing(connection, selected_engine, "images", image_columns, Column("camera_role", String(20)))
         if "device_timelapse_snapshots" not in table_names:
             Base.metadata.tables["device_timelapse_snapshots"].create(selected_engine, checkfirst=True)
+        else:
+            snapshot_columns = {column["name"] for column in inspector.get_columns("device_timelapse_snapshots")}
+            _add_column_if_missing(
+                connection,
+                selected_engine,
+                "device_timelapse_snapshots",
+                snapshot_columns,
+                Column("camera_role", String(20), nullable=False, server_default="top"),
+            )
         if "commands" in table_names:
             command_columns = {column["name"] for column in inspector.get_columns("commands")}
             _add_column_if_missing(connection, selected_engine, "commands", command_columns, Column("light_on", Boolean))
@@ -104,6 +114,7 @@ def _apply_lightweight_migrations(selected_engine) -> None:
                 Column("node_role", String(40), nullable=False, server_default="single_board"),
             )
             _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("node_index", Integer))
+            _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("camera_role", String(20)))
             _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("display_name", String(120)))
             _add_column_if_missing(connection, selected_engine, "device_hardware_ids", node_columns, Column("hardware_model", String(120)))
             _add_column_if_missing(
@@ -134,6 +145,16 @@ def _apply_lightweight_migrations(selected_engine) -> None:
                 node_columns,
                 Column("ota_last_success_at", DateTime(timezone=True)),
             )
+            _backfill_camera_roles(connection)
+            connection.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_device_hardware_ids_device_camera_role
+                      ON device_hardware_ids(device_id, camera_role)
+                      WHERE node_role = 'camera' AND camera_role IS NOT NULL
+                    """
+                )
+            )
 
 
 def _add_column_if_missing(connection, selected_engine, table_name: str, existing_columns: set[str], column: Column) -> None:
@@ -142,6 +163,65 @@ def _add_column_if_missing(connection, selected_engine, table_name: str, existin
     column_sql = str(CreateColumn(column).compile(dialect=selected_engine.dialect))
     connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
     existing_columns.add(column.name)
+
+
+def _backfill_camera_roles(connection) -> None:
+    connection.execute(
+        text(
+            """
+            UPDATE device_hardware_ids
+            SET camera_role = 'top'
+            WHERE node_role = 'camera'
+              AND camera_role IS NULL
+              AND hardware_device_id = (
+                SELECT candidate.hardware_device_id
+                FROM device_hardware_ids AS candidate
+                WHERE candidate.device_id = device_hardware_ids.device_id
+                  AND candidate.node_role = 'camera'
+                ORDER BY COALESCE(candidate.node_index, 9999), candidate.hardware_device_id
+                LIMIT 1
+              )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE device_hardware_ids
+            SET camera_role = 'side'
+            WHERE node_role = 'camera'
+              AND camera_role IS NULL
+              AND hardware_device_id = (
+                SELECT candidate.hardware_device_id
+                FROM device_hardware_ids AS candidate
+                WHERE candidate.device_id = device_hardware_ids.device_id
+                  AND candidate.node_role = 'camera'
+                ORDER BY COALESCE(candidate.node_index, 9999), candidate.hardware_device_id
+                LIMIT 1 OFFSET 1
+              )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE images
+            SET camera_role = (
+              SELECT device_hardware_ids.camera_role
+              FROM device_hardware_ids
+              WHERE device_hardware_ids.hardware_device_id = images.source_hardware_device_id
+            )
+            WHERE camera_role IS NULL
+              AND source_hardware_device_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM device_hardware_ids
+                WHERE device_hardware_ids.hardware_device_id = images.source_hardware_device_id
+                  AND device_hardware_ids.camera_role IS NOT NULL
+              )
+            """
+        )
+    )
 
 
 def _widen_string_column(connection, selected_engine, table_name: str, column_name: str, *, minimum_length: int) -> None:

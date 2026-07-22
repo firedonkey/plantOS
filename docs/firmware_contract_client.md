@@ -24,7 +24,7 @@ Current flow:
 
 Implemented command adapters:
 
-- `SET_LIGHT_BRIGHTNESS` -> existing grow LED intensity handler
+- `SET_GROW_LIGHT_BRIGHTNESS` -> existing grow LED intensity handler
 - `CAPTURE_IMAGE` -> existing ESP-NOW camera capture handler
 - `REQUEST_DIAGNOSTICS` -> existing heartbeat/diagnostics upload path
 - `REBOOT` -> existing scheduled restart path
@@ -87,8 +87,8 @@ Time synchronization:
 
 Heartbeat state:
 
-- `actuators.ambient_light.enabled` reports the current grow LED state.
-- `actuators.ambient_light.brightness_percent` is included when PWM intensity
+- `actuators.grow_light.enabled` reports the current grow-light state.
+- `actuators.grow_light.brightness_percent` is included when PWM intensity
   control is enabled.
 - `runtime.capture_interval_seconds` reports the configured camera capture
   interval.

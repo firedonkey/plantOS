@@ -1,36 +1,63 @@
+import json
 from datetime import datetime
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.contracts import CameraRole
 from app.models import CommandAction, CommandStatus, CommandTarget
 
 
 class CommandCreate(BaseModel):
     target: CommandTarget
     action: CommandAction
-    value: str | None = Field(default=None, max_length=2000)
+    value: str | dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_target_action(self):
+        grow_light_targets = {CommandTarget.GROW_LIGHT, CommandTarget.LIGHT}
+        if self.value is not None and not isinstance(self.value, str) and self.target != CommandTarget.AMBIENT_LED_BELT:
+            raise ValueError("Command value must be a string.")
+        if isinstance(self.value, str) and len(self.value) > 2000:
+            raise ValueError("Command value must be at most 2000 characters.")
         if self.target == CommandTarget.PUMP and self.action not in {CommandAction.RUN, CommandAction.OFF}:
             raise ValueError("Pump commands support run or off.")
-        if self.target == CommandTarget.LIGHT and self.action not in {
+        if self.target in grow_light_targets and self.action not in {
             CommandAction.ON,
             CommandAction.OFF,
             CommandAction.SET_INTENSITY,
         }:
-            raise ValueError("Growing light commands support on, off, or set_intensity.")
-        if self.target == CommandTarget.LIGHT and self.action == CommandAction.SET_INTENSITY:
+            raise ValueError("Grow light commands support on, off, or set_intensity.")
+        if self.target in grow_light_targets and self.action == CommandAction.SET_INTENSITY:
             if self.value is None:
-                raise ValueError("Growing light intensity commands require a value.")
+                raise ValueError("Grow light intensity commands require a value.")
             try:
                 intensity_percent = int(self.value)
             except ValueError as exc:
-                raise ValueError("Growing light intensity value must be an integer percent.") from exc
+                raise ValueError("Grow light intensity value must be an integer percent.") from exc
             if intensity_percent < 0 or intensity_percent > 100:
-                raise ValueError("Growing light intensity value must be between 0 and 100.")
+                raise ValueError("Grow light intensity value must be between 0 and 100.")
+        if self.target == CommandTarget.LIGHT:
+            self.target = CommandTarget.GROW_LIGHT
+        if self.target == CommandTarget.AMBIENT_LED_BELT and self.action != CommandAction.SET:
+            raise ValueError("ambient LED belt commands support set.")
+        if self.target == CommandTarget.AMBIENT_LED_BELT and self.action == CommandAction.SET:
+            if self.value is None:
+                raise ValueError("ambient LED belt commands require a JSON value.")
+            if isinstance(self.value, str):
+                try:
+                    parsed = json.loads(self.value)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("ambient LED belt command value must be JSON.") from exc
+            else:
+                parsed = self.value
+            if not isinstance(parsed, dict):
+                raise ValueError("ambient LED belt command value must be a JSON object.")
+            encoded = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
+            if len(encoded) > 2000:
+                raise ValueError("ambient LED belt command value must be at most 2000 characters.")
+            self.value = encoded
         if self.target == CommandTarget.CAMERA and self.action not in {CommandAction.CAPTURE}:
             raise ValueError("Camera commands support capture.")
         if self.target == CommandTarget.OTA and self.action not in {CommandAction.START}:
@@ -92,10 +119,21 @@ class PumpCommandRequest(BaseModel):
     seconds: int | None = Field(default=None, ge=1, le=30)
 
 
+class CaptureCommandRequest(BaseModel):
+    camera_role: CameraRole | Literal["all"] = CameraRole.TOP
+    camera_node_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_capture_target(self):
+        if self.camera_node_id is not None and self.camera_role == "all":
+            raise ValueError("camera_node_id cannot be combined with camera_role=all.")
+        return self
+
+
 class DeviceCommandEnvelopeRead(BaseModel):
     status: Literal["accepted", "unsupported", "error"]
     device_id: int
-    command: Literal["light", "pump", "capture", "ota"]
+    command: Literal["grow_light", "light", "pump", "capture", "ota"]
     action: str
     queued: bool
     message: str
@@ -103,3 +141,5 @@ class DeviceCommandEnvelopeRead(BaseModel):
     command_status: CommandStatus | None = None
     created_at: datetime | None = None
     value: str | None = None
+    camera_role: str | None = None
+    camera_node_id: str | None = None

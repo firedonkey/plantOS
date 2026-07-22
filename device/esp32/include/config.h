@@ -14,7 +14,12 @@
 #endif
 
 // Sensors
-#define PIN_SOIL_MOISTURE_ADC 1
+// GPIO1 is reserved on the EVT main board for the WS2811 ambient LED belt DIN.
+// The previous soil-moisture ADC placeholder used GPIO1; keep it disabled
+// until hardware assigns a separate confirmed ADC-capable pin.
+#ifndef PIN_SOIL_MOISTURE_ADC
+#define PIN_SOIL_MOISTURE_ADC -1
+#endif
 #define PIN_DHT22_DATA 4
 
 // Water sensors
@@ -57,6 +62,23 @@
 #ifndef PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED
 #define PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED 1
 #endif
+
+// 24 V WS2811 FCOB ambient LED belt. The purchased belt has about 630 physical
+// emitters, but WS2811 belts usually address groups of emitters through one IC.
+// Only logical WS2811 control segments are allocated and transmitted.
+#ifndef AMBIENT_LED_BELT_DATA_GPIO
+#define AMBIENT_LED_BELT_DATA_GPIO 1
+#endif
+#define PIN_AMBIENT_LED_BELT_DIN AMBIENT_LED_BELT_DATA_GPIO
+#define AMBIENT_LED_BELT_PHYSICAL_LED_COUNT 630
+#define AMBIENT_LED_BELT_LOGICAL_PIXEL_COUNT 14
+#define AMBIENT_LED_BELT_MAX_LOGICAL_PIXELS 120
+#define AMBIENT_LED_BELT_COLOR_ORDER "RGB"
+#define AMBIENT_LED_BELT_MAX_BRIGHTNESS 51
+#define AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS 26
+#define AMBIENT_LED_BELT_DIAGNOSTIC_MAX_BRIGHTNESS 26
+#define AMBIENT_LED_BELT_MAX_FPS 30
+#define AMBIENT_LED_BELT_START_ENABLED 0
 
 // Power button + status LED
 // Power button input (active low with internal pull-up).

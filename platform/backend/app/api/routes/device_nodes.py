@@ -10,6 +10,8 @@ from app.schemas.device_nodes import (
     DeviceNodeRegisterRead,
 )
 from app.services.device_nodes import (
+    DeviceNodeConflictError,
+    get_camera_node_for_role,
     get_node_by_hardware_id,
     update_node_heartbeat,
     upsert_device_node,
@@ -39,25 +41,33 @@ def register_device_node(
     if existing is not None and existing.device_id != device.id:
         raise HTTPException(status_code=409, detail="Device node is attached to another device.")
 
-    node = upsert_device_node(
-        session,
-        device_id=device.id,
-        hardware_device_id=payload.hardware_device_id,
-        node_role=payload.node_role,
-        node_index=payload.node_index,
-        display_name=payload.display_name,
-        hardware_model=payload.hardware_model,
-        hardware_version=payload.hardware_version,
-        software_version=payload.software_version,
-        capabilities=payload.capabilities,
-        status=payload.status,
-    )
+    camera_role = _camera_role_for_registration(session, device.id, payload)
+    try:
+        node = upsert_device_node(
+            session,
+            device_id=device.id,
+            hardware_device_id=payload.hardware_device_id,
+            node_role=payload.node_role,
+            node_index=payload.node_index,
+            camera_role=camera_role,
+            display_name=payload.display_name,
+            hardware_model=payload.hardware_model,
+            hardware_version=payload.hardware_version,
+            software_version=payload.software_version,
+            capabilities=payload.capabilities,
+            status=payload.status,
+        )
+    except DeviceNodeConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return DeviceNodeRegisterRead(
         device_id=node.device_id,
         hardware_device_id=node.hardware_device_id,
         node_role=node.node_role,
         node_index=node.node_index,
+        camera_role=node.camera_role,
         display_name=node.display_name,
         hardware_model=node.hardware_model,
         hardware_version=node.hardware_version,
@@ -85,6 +95,8 @@ def heartbeat(
         raise HTTPException(status_code=404, detail="Device node not found.")
     if node.node_role != payload.node_role:
         raise HTTPException(status_code=409, detail="Device node role does not match registration.")
+    if payload.camera_role is not None and node.camera_role is not None and node.camera_role != payload.camera_role.value:
+        raise HTTPException(status_code=409, detail="Device node camera role does not match registration.")
 
     updated = update_node_heartbeat(
         session,
@@ -99,7 +111,24 @@ def heartbeat(
         device_id=updated.device_id,
         hardware_device_id=updated.hardware_device_id,
         node_role=updated.node_role,
+        camera_role=updated.camera_role,
         status=updated.status,
         software_version=updated.software_version,
         last_seen_at=updated.last_seen_at,
     )
+
+
+def _camera_role_for_registration(session: Session, device_id: int, payload: DeviceNodeRegisterCreate) -> str | None:
+    if payload.node_role != "camera":
+        if payload.camera_role is not None:
+            raise HTTPException(status_code=422, detail="camera_role is only valid for camera nodes.")
+        return None
+    if payload.camera_role is not None:
+        return payload.camera_role.value
+
+    existing = get_node_by_hardware_id(session, payload.hardware_device_id)
+    if existing is not None and existing.camera_role is not None:
+        return existing.camera_role
+    if get_camera_node_for_role(session, device_id=device_id, camera_role="top") is None:
+        return "top"
+    raise HTTPException(status_code=422, detail="camera_role is required after the top camera is registered.")

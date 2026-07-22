@@ -43,17 +43,30 @@ bool mapCommandPayload(JsonObjectConst payload, PlatformCommand* command, String
   command->contract_native = true;
   command->target_node_role = payload["target"]["node_role"] | "";
   command->target_hardware_device_id = payload["target"]["hardware_device_id"] | "";
+  command->target_camera_role = payload["target"]["camera_role"] | "";
 
   JsonObjectConst params = payload["params"].as<JsonObjectConst>();
-  if (String(command_type) == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS) {
+  if (String(command_type) == PLANTLAB_COMMAND_SET_GROW_LIGHT_BRIGHTNESS ||
+      String(command_type) == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS) {
     const int brightness = boundedPercent(params["brightness_percent"], 100);
-    command->target = "light";
+    command->target = "grow_light";
     command->action = "set_intensity";
     command->value = String(brightness);
+  } else if (String(command_type) == PLANTLAB_COMMAND_SET_AMBIENT_LED_BELT) {
+    command->target = "ambient_led_belt";
+    command->action = "set";
+    String payload_json;
+    serializeJson(params, payload_json);
+    command->value = payload_json;
+    command->ambient_led_belt_payload_json = payload_json;
   } else if (String(command_type) == PLANTLAB_COMMAND_CAPTURE_IMAGE) {
     command->target = "camera";
     command->action = "capture";
-    command->value = params["reason"] | "";
+    const char* camera_role = params["camera_role"] | "";
+    command->value = String(camera_role).length() > 0 ? String(camera_role) : String(params["reason"] | "");
+    if (command->target_camera_role.length() == 0 && String(camera_role).length() > 0) {
+      command->target_camera_role = camera_role;
+    }
   } else if (String(command_type) == PLANTLAB_COMMAND_REBOOT) {
     command->target = "system";
     command->action = "reboot";

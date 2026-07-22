@@ -32,11 +32,12 @@ test("recent image gallery keeps latest capture prominent with stable empty stat
   for (const requiredText of [
     "const latestImage = images[0];",
     "const olderImages = images.slice(1, 4);",
-    "Latest capture ${formatImageAge(latestImage.capturedAt)}",
+    "${formatCameraRole(latestImage.cameraRole)} capture ${formatImageAge(latestImage.capturedAt)}",
     '<EmptyState title="No image yet"',
     "aspectRatio: 4 / 3",
     "aspectRatio: 1",
-    "Captured {formatTimestamp(image.capturedAt)}",
+    "{formatCameraRole(image.cameraRole)} camera - {formatTimestamp(image.capturedAt)}",
+    'function formatCameraRole(role: LatestImage["cameraRole"])',
   ]) {
     assert.match(source, new RegExp(requiredText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

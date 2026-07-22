@@ -2,6 +2,8 @@ export const PLANTLAB_SCHEMA_VERSION = "1.0" as const;
 
 export type NodeRole = "master" | "camera" | "sensor" | "actuator";
 
+export type CameraRole = "top" | "side";
+
 export type MessageType = "HEARTBEAT" | "DIAGNOSTICS" | "COMMAND" | "COMMAND_RESULT" | "OTA_STATUS" | "IMAGE_UPLOAD";
 
 export type DeviceStatus = "online" | "degraded" | "offline" | "provisioning" | "updating" | "error";
@@ -53,7 +55,9 @@ export type EventType =
   | "IMAGE_UPLOAD_FAILED";
 
 export type CommandType =
+  | "SET_GROW_LIGHT_BRIGHTNESS"
   | "SET_LIGHT_BRIGHTNESS"
+  | "SET_AMBIENT_LED_BELT"
   | "CAPTURE_IMAGE"
   | "REBOOT"
   | "START_OTA"
@@ -137,12 +141,17 @@ export type HeartbeatPayload = {
   firmware_version: string;
   hardware_model?: string;
   hardware_version?: string;
+  camera_role?: CameraRole;
   capabilities?: string[];
   actuators?: HeartbeatActuatorState;
   runtime?: HeartbeatRuntimeState;
 } & Record<string, unknown>;
 
 export type HeartbeatActuatorState = {
+  grow_light?: {
+    enabled?: boolean;
+    brightness_percent?: number;
+  } & Record<string, unknown>;
   ambient_light?: {
     enabled?: boolean;
     brightness_percent?: number;
@@ -161,8 +170,28 @@ export type HeartbeatRuntimeState = {
   last_command_poll_error?: string;
   last_command_poll_latency_ms?: number;
   command_poll_stale_seconds?: number;
+  ambient_led_belt?: HeartbeatAmbientLedBeltState;
   time_sync_status?: string;
   last_ntp_sync_at?: string;
+} & Record<string, unknown>;
+
+export type HeartbeatAmbientLedBeltState = {
+  available?: boolean;
+  enabled?: boolean;
+  mode?: "off" | "solid" | "breathe" | "pulse" | "chase" | "rainbow" | "diagnostic";
+  brightness?: number;
+  max_brightness?: number;
+  color?: {
+    r?: number;
+    g?: number;
+    b?: number;
+  } & Record<string, unknown>;
+  logical_pixel_count?: number;
+  physical_led_count?: number;
+  color_order?: "RGB" | "RBG" | "GRB" | "GBR" | "BRG" | "BGR";
+  data_gpio?: number;
+  diagnostic_active?: boolean;
+  last_error?: string | null;
 } & Record<string, unknown>;
 
 export type DiagnosticsPayload = {
@@ -178,6 +207,7 @@ export type DiagnosticsPayload = {
 export type CommandTarget = {
   node_role: CommandTargetRole;
   hardware_device_id?: string;
+  camera_role?: CameraRole;
 } & Record<string, unknown>;
 
 export type RetryPolicy = {
@@ -233,6 +263,8 @@ export type OTAStatusPayload = {
 export type ImageUploadPayload = {
   status: ImageUploadStatus;
   image_id?: number;
+  camera_node_id?: string;
+  camera_role?: CameraRole;
   source_hardware_device_id?: string;
   source_node_role?: NodeRole;
   captured_at?: string;

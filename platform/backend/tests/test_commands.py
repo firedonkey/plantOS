@@ -122,15 +122,32 @@ def test_light_intensity_command_accepts_percent_value():
     try:
         response = client.post(
             f"/api/devices/{device_id}/commands",
+            json={"target": "grow_light", "action": "set_intensity", "value": "65"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["target"] == "grow_light"
+        assert payload["action"] == "set_intensity"
+        assert payload["value"] == "65"
+        assert payload["status"] == "pending"
+    finally:
+        teardown_overrides()
+
+
+def test_legacy_light_target_remains_supported():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
             json={"target": "light", "action": "set_intensity", "value": "65"},
         )
 
         assert response.status_code == 201
         payload = response.json()
-        assert payload["target"] == "light"
+        assert payload["target"] == "grow_light"
         assert payload["action"] == "set_intensity"
         assert payload["value"] == "65"
-        assert payload["status"] == "pending"
     finally:
         teardown_overrides()
 

@@ -33,6 +33,83 @@ Current status:
 - DHT22 connected to `GPIO4`
 - Output over serial every 2 seconds
 
+## WS2811 ambient LED belt EVT support
+
+The ESP32 master firmware includes a reusable controller for the 24V WS2811 RGB
+FCOB ambient LED belt on `GPIO1`. The belt is off at startup and the firmware sends a
+black frame during initialization so it should not flash white on boot.
+
+Default ambient LED belt settings are defined in `include/config.h`:
+
+- Data GPIO: `AMBIENT_LED_BELT_DATA_GPIO=1`
+- Physical emitters: `AMBIENT_LED_BELT_PHYSICAL_LED_COUNT=630`
+- Logical WS2811 pixels: `AMBIENT_LED_BELT_LOGICAL_PIXEL_COUNT=14`
+- EVT logical upper bound: `AMBIENT_LED_BELT_MAX_LOGICAL_PIXELS=120`
+- Color order: `AMBIENT_LED_BELT_COLOR_ORDER="RGB"`
+- Default on brightness: `AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS=26` (about 10%)
+- Maximum brightness: `AMBIENT_LED_BELT_MAX_BRIGHTNESS=51` (20%)
+
+Supported modes are `off`, `solid`, `breathe`, `pulse`, `chase`, `rainbow`, and
+`diagnostic`. Commands arrive through the contract command poll path as
+`SET_AMBIENT_LED_BELT`; the backend generic command endpoint stores the `value` object
+as JSON params.
+
+Example low-brightness commands:
+
+```json
+{"target":"ambient_led_belt","action":"set","value":{"mode":"solid","enabled":true,"color":{"r":255,"g":0,"b":0},"brightness":3}}
+```
+
+```json
+{"target":"ambient_led_belt","action":"set","value":{"mode":"off"}}
+```
+
+```json
+{"target":"ambient_led_belt","action":"set","value":{"mode":"diagnostic","brightness":26}}
+```
+
+Optional config fields inside `value` are `logical_pixel_count`, `color_order`,
+`maximum_brightness`, `default_brightness`, and `save_config`. Factory reset
+clears saved ambient LED belt config and returns to the defaults above.
+
+The diagnostic sequence is deliberately low power and nonblocking:
+
+1. clear
+2. dim red
+3. dim green
+4. dim blue
+5. dim white
+6. walking logical pixel
+7. alternating logical pixels
+8. clear
+
+Cancel it with:
+
+```json
+{"target":"ambient_led_belt","action":"set","value":{"cancel_diagnostic":true}}
+```
+
+Bench validation should start at 1-10% brightness. Confirm the belt stays off
+during reset, then test red, green, blue, and dim white before running brighter
+patterns. If colors are swapped, change `color_order`; if the walking pixel
+segment count is wrong, change `logical_pixel_count`. Do not use full white
+until 24V supply sizing, common ground, wire temperature, and connector current
+capacity are verified.
+
+For a local USB-only hardware check without backend, Wi-Fi, sensors, cameras, or
+grow-light control, flash the dedicated test firmware:
+
+```bash
+.venv/bin/python device/esp32/scripts/ambient_led_belt_test.py --port /dev/cu.usbmodem11301 --flash --interactive
+```
+
+Then type commands such as `red 3`, `green 3`, `blue 3`, `white 3`, `walk 3`,
+and `off`. One-shot terminal commands are also supported:
+
+```bash
+.venv/bin/python device/esp32/scripts/ambient_led_belt_test.py --port /dev/cu.usbmodem11301 --red --brightness 3
+```
+
 ## Local platform smoke test
 
 The ESP32 master firmware now uses the dedicated hardware contract with device-token auth:
@@ -47,6 +124,11 @@ The camera-node flow keeps its existing registration and image upload paths:
 - `POST /api/image`
 - `POST /api/device-nodes/register`
 - `POST /api/hardware/heartbeat`
+
+Each XIAO camera runs the same `camera-platform-test` firmware and persists a
+provisioned `camera_role` of `top` or `side`. Image bytes still upload directly
+from the XIAO camera to the backend; the master only provisions metadata and
+forwards capture commands over ESP-NOW.
 
 Start the local stack first:
 
@@ -211,6 +293,7 @@ Camera uploader firmware (`camera-platform-test`) now:
 - runs on the XIAO ESP32-S3 Sense
 - captures JPEG frames
 - uploads images to the same platform device using the same device token
+- sends `camera_node_id` and `camera_role` in registration, heartbeat, and image upload metadata
 - returns camera-side capture acknowledgements to the master after upload success or failure
 
 ## Local OTA release helper

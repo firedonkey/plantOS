@@ -17,6 +17,7 @@ class DeviceNode(Base):
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
     node_role: Mapped[str] = mapped_column(String(40), default="single_board", index=True)
     node_index: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    camera_role: Mapped[Optional[str]] = mapped_column(String(20), default=None, index=True)
     display_name: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     hardware_model: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     hardware_version: Mapped[Optional[str]] = mapped_column(String(120), default=None)

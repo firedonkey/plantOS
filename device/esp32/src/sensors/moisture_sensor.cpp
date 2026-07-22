@@ -22,11 +22,17 @@ MoistureSensor::MoistureSensor(int adc_pin, int sample_count, int sample_delay_m
       sample_delay_ms_(sample_delay_ms > 0 ? sample_delay_ms : 0) {}
 
 void MoistureSensor::begin() {
+  if (!enabled()) {
+    return;
+  }
   pinMode(adc_pin_, INPUT);
   analogReadResolution(12);  // 0..4095
 }
 
 MoistureReading MoistureSensor::read() {
+  if (!enabled()) {
+    return MoistureReading{0, 0.0f, false};
+  }
   long total = 0;
   for (int i = 0; i < sample_count_; ++i) {
     total += analogRead(adc_pin_);
@@ -42,6 +48,10 @@ MoistureReading MoistureSensor::read() {
   result.moisture_percent = adc_to_percent(average_raw);
   result.valid = true;
   return result;
+}
+
+bool MoistureSensor::enabled() const {
+  return adc_pin_ >= 0;
 }
 
 float MoistureSensor::adc_to_percent(int raw_adc) {

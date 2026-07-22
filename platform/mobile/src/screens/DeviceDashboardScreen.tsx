@@ -12,7 +12,7 @@ import { SkeletonCard } from "@/components/Skeleton";
 import { useDeviceDashboard } from "@/hooks/useDeviceDashboard";
 import { useSession } from "@/hooks/useSession";
 import { theme } from "@/styles/theme";
-import type { Device, DeviceDashboard, SensorReading } from "@/types";
+import type { CameraRole, Device, DeviceDashboard, SensorReading } from "@/types";
 import {
   formatDeviceStatus,
   formatHumidity,
@@ -118,7 +118,10 @@ function DashboardContent({
   isActionBlocked: (action: "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image") => boolean;
   isCommandRunning: boolean;
   isLoading: boolean;
-  runCommand: (action: "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image", options?: { intensityPercent?: number }) => void;
+  runCommand: (
+    action: "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image",
+    options?: { intensityPercent?: number; cameraRole?: CameraRole | "all"; cameraNodeId?: string },
+  ) => void;
   selectedRange: "24h" | "7d" | "30d" | "all";
   setSelectedRange: (range: "24h" | "7d" | "30d" | "all") => void;
 }) {

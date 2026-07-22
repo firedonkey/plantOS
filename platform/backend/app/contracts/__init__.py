@@ -1,5 +1,6 @@
 from app.contracts.device_protocol import (
     CanonicalEvent,
+    CameraRole,
     CommandErrorCode,
     CommandPayload,
     CommandPollResponse,
@@ -40,6 +41,7 @@ from app.contracts.device_protocol import (
 
 __all__ = [
     "CanonicalEvent",
+    "CameraRole",
     "CommandErrorCode",
     "CommandPayload",
     "CommandPollResponse",

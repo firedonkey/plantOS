@@ -59,7 +59,7 @@ class FakeLegacyApiClient(FakeApiClient):
 def test_simulator_smoke_sends_heartbeat_polls_commands_reports_results_and_ota_statuses():
     fake = FakeApiClient(
         [
-            _command("cmd_101", "SET_LIGHT_BRIGHTNESS", {"brightness_percent": 65}),
+            _command("cmd_101", "SET_GROW_LIGHT_BRIGHTNESS", {"brightness_percent": 65}),
             _command(
                 "cmd_102",
                 "START_OTA",
@@ -82,7 +82,7 @@ def test_simulator_smoke_sends_heartbeat_polls_commands_reports_results_and_ota_
                     hardware_device_id="sim-master-test",
                     node_role="master",
                     hardware_model="esp32_master",
-                    capabilities=["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"],
+                    capabilities=["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"],
                     ota_step_delay_seconds=0,
                 )
             ],
@@ -127,7 +127,7 @@ def test_simulator_smoke_sends_heartbeat_polls_commands_reports_results_and_ota_
 
     heartbeat = next(payload for path, payload, _ in fake.posts if path == "/api/hardware/heartbeat")
     assert heartbeat["message_type"] == "HEARTBEAT"
-    assert heartbeat["payload"]["actuators"]["ambient_light"]["brightness_percent"] == 0
+    assert heartbeat["payload"]["actuators"]["grow_light"]["brightness_percent"] == 0
 
     reading = next(payload for path, payload, _ in fake.posts if path == "/api/hardware/readings")
     assert reading["hardware_device_id"] == "sim-master-test"
@@ -148,6 +148,7 @@ def test_simulator_camera_uploads_fake_image():
                     hardware_device_id="sim-camera-test",
                     node_role="camera",
                     hardware_model="xiao_esp32s3_camera",
+                    camera_role="top",
                     capabilities=["camera", "image_capture", "diagnostics", "contract_polling"],
                 )
             ],
@@ -163,9 +164,13 @@ def test_simulator_camera_uploads_fake_image():
     assert token == "token-owner"
     assert fields["device_id"] == 33
     assert fields["source_hardware_device_id"] == "sim-camera-test"
+    assert fields["camera_node_id"] == "sim-camera-test"
+    assert fields["camera_role"] == "top"
     metadata = json.loads(fields["metadata"])
     assert metadata["message_type"] == "IMAGE_UPLOAD"
     assert metadata["payload"]["status"] == "uploaded"
+    assert metadata["payload"]["camera_node_id"] == "sim-camera-test"
+    assert metadata["payload"]["camera_role"] == "top"
     assert metadata["payload"]["source_hardware_device_id"] == "sim-camera-test"
     assert metadata["payload"]["source_node_role"] == "camera"
     assert metadata["payload"]["content_type"] == "image/png"
@@ -187,7 +192,7 @@ def test_capture_command_uploads_fake_image_and_reports_image_id():
                     hardware_device_id="sim-master-test",
                     node_role="master",
                     hardware_model="esp32_master",
-                    capabilities=["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"],
+                    capabilities=["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"],
                 )
             ],
         ),
@@ -219,6 +224,7 @@ def test_image_upload_failure_scenario_reports_contract_failure_event():
                     hardware_device_id="sim-camera-test",
                     node_role="camera",
                     hardware_model="xiao_esp32s3_camera",
+                    camera_role="top",
                     capabilities=["camera", "image_capture", "diagnostics", "contract_polling"],
                     scenarios=["image_upload_failure"],
                 )
@@ -237,6 +243,7 @@ def test_image_upload_failure_scenario_reports_contract_failure_event():
     assert len(reports) == 1
     assert reports[0]["message_type"] == "IMAGE_UPLOAD"
     assert reports[0]["payload"]["status"] == "failed"
+    assert reports[0]["payload"]["camera_role"] == "top"
     assert reports[0]["payload"]["failure_reason"] == "simulated_failure"
 
 
@@ -293,6 +300,7 @@ def test_camera_flapping_scenario_suppresses_camera_heartbeat_when_offline():
                     device_token="token-owner",
                     hardware_device_id="sim-camera-test",
                     node_role="camera",
+                    camera_role="top",
                     scenarios=["camera_flapping"],
                 )
             ]
@@ -303,6 +311,26 @@ def test_camera_flapping_scenario_suppresses_camera_heartbeat_when_offline():
 
     assert node.node_status() == "offline"
     assert node.should_transmit_now("heartbeat") is False
+
+
+def test_cli_config_assigns_top_and_side_camera_roles():
+    config = load_config_from_args(
+        parse_args(
+            [
+                "--device-id",
+                "33",
+                "--device-token",
+                "token-owner",
+                "--camera-nodes",
+                "2",
+            ]
+        )
+    )
+
+    camera_nodes = [node for node in config.nodes if node.node_role == "camera"]
+
+    assert [node.camera_role for node in camera_nodes] == ["top", "side"]
+    assert [node.capture_phase_seconds for node in camera_nodes] == [0, 30]
 
 
 def test_friendly_backend_errors_are_actionable():
@@ -327,7 +355,7 @@ def test_simulator_continues_when_optional_contract_endpoints_are_missing():
                     hardware_device_id="sim-master-test",
                     node_role="master",
                     hardware_model="esp32_master",
-                    capabilities=["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"],
+                    capabilities=["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"],
                 )
             ],
         ),
@@ -372,7 +400,7 @@ def test_simulator_uses_legacy_pending_commands_when_contract_poll_is_missing():
                     hardware_device_id="sim-master-test",
                     node_role="master",
                     hardware_model="esp32_master",
-                    capabilities=["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"],
+                    capabilities=["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"],
                 )
             ],
         ),

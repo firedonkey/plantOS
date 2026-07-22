@@ -88,7 +88,7 @@ export function HardwareHealthPanel({ health }: HardwareHealthPanelProps) {
               value={
                 health.cameras.length
                   ? health.cameras
-                      .map((camera) => formatNodeStatus(camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim(), camera.status))
+                      .map((camera) => formatNodeStatus(formatCameraNodeName(camera), camera.status))
                       .join(", ")
                   : "No camera nodes yet"
               }
@@ -152,7 +152,7 @@ function getAttentionItems(health: HardwareHealth): string[] {
   health.cameras
     .filter((camera) => isProblemStatus(camera.status))
     .forEach((camera) => {
-      items.add(`${camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim()}: ${formatStatusLabel(camera.status)}`);
+      items.add(`${formatCameraNodeName(camera)}: ${formatStatusLabel(camera.status)}`);
     });
 
   if (health.lastCommand?.status === "failed") {
@@ -172,6 +172,16 @@ function getAttentionItems(health: HardwareHealth): string[] {
   }
 
   return Array.from(items);
+}
+
+function formatCameraNodeName(camera: HardwareHealth["cameras"][number]): string {
+  if (camera.cameraRole === "top") {
+    return camera.displayName ?? "Top camera";
+  }
+  if (camera.cameraRole === "side") {
+    return camera.displayName ?? "Side camera";
+  }
+  return camera.displayName ?? `Camera ${camera.nodeIndex ?? ""}`.trim();
 }
 
 function isProblemStatus(status: string | undefined): status is string {

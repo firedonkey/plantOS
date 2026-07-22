@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.contracts import CameraRole
 from app.schemas.diagnostics import DeviceDiagnosticEventRead, DeviceDiagnosticSnapshotRead
 
 
@@ -24,6 +25,7 @@ class DeviceSummaryImageRead(BaseModel):
     content_url: str
     timestamp: datetime
     source_hardware_device_id: str | None = None
+    camera_role: CameraRole | None = None
 
 
 class DeviceTimelapseFrameRead(BaseModel):
@@ -31,10 +33,12 @@ class DeviceTimelapseFrameRead(BaseModel):
     content_url: str
     timestamp: datetime
     source_hardware_device_id: str | None = None
+    camera_role: CameraRole | None = None
 
 
 class DeviceTimelapseRead(BaseModel):
     device_id: int
+    camera_role: str = "top"
     window_start: datetime
     window_end: datetime
     interval_minutes: int
@@ -49,6 +53,7 @@ class DeviceHealthNodeRead(BaseModel):
     hardware_device_id: str
     node_role: str | None
     node_index: int | None
+    camera_role: CameraRole | None = None
     display_name: str | None
     status: str
     hardware_model: str | None = None

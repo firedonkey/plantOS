@@ -69,7 +69,7 @@
               <strong data-field="water_level">{% if latest_reading_summary %}{{ latest_reading_summary.water_level }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-state">
-              <span>Growing light</span>
+              <span>Grow light</span>
               <strong data-field="light">{% if latest_reading_summary %}{{ latest_reading_summary.light }}{% else %}n/a{% endif %}</strong>
             </article>
             <article class="metric-card metric-card-state">
@@ -212,15 +212,15 @@
             <section class="control-group">
               {% set light_is_on = latest_reading and latest_reading.light_on %}
               <div class="control-group-heading">
-                <h3>Growing light</h3>
+                <h3>Grow light</h3>
               </div>
-              <p>Control the growing light from the dashboard or automation schedule.</p>
+              <p>Control the grow light from the dashboard or automation schedule.</p>
               <div class="command-actions">
                 <form class="command-form" action="/devices/{{ device.id }}/commands" method="post" data-command-form data-light-switch-form data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}">
                   <input type="hidden" name="target" value="light">
                   <input type="hidden" name="action" value="{% if light_is_on %}off{% else %}on{% endif %}" data-light-action>
                   <label class="light-toggle-switch {% if light_is_on %}is-on{% endif %}" data-light-toggle>
-                    <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn growing light off{% else %}Turn growing light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
+                    <input type="checkbox" data-command-button data-light-switch data-command-key="{% if light_is_on %}light:off:{% else %}light:on:{% endif %}" aria-label="{% if light_is_on %}Turn grow light off{% else %}Turn grow light on{% endif %}" {% if light_is_on %}checked{% endif %} {% if ("light:off:" if light_is_on else "light:on:") in active_command_keys %}disabled{% endif %}>
                     <span class="light-toggle-slider" aria-hidden="true"><span class="light-toggle-text" data-switch-state>{% if light_is_on %}ON{% else %}OFF{% endif %}</span></span>
                   </label>
                 </form>
@@ -233,7 +233,7 @@
                 <label class="light-intensity-field">
                   <span>Intensity</span>
                   <strong data-field="light_intensity">{% if latest_reading_summary %}{{ latest_reading_summary.light_intensity }}{% else %}{{ light_intensity }}%{% endif %}</strong>
-                  <input type="range" name="value" min="0" max="100" step="5" value="{{ light_intensity }}" aria-label="Growing light intensity">
+                  <input type="range" name="value" min="0" max="100" step="5" value="{{ light_intensity }}" aria-label="Grow light intensity">
                 </label>
                 <button type="submit" data-command-button>Set intensity</button>
               </form>
@@ -646,7 +646,7 @@
           if (input) {
             input.dataset.commandKey = key;
             input.checked = isOn;
-            input.setAttribute("aria-label", isOn ? "Turn growing light off" : "Turn growing light on");
+            input.setAttribute("aria-label", isOn ? "Turn grow light off" : "Turn grow light on");
           }
           if (toggle) {
             toggle.classList.toggle("is-on", isOn);

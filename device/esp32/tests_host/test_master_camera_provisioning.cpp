@@ -11,6 +11,8 @@ void test_payload_assembly() {
       3,
       2,
       17,
+      CameraRoleCode::kSide,
+      30,
       "PlantLabWiFi",
       "super-secret-pass",
       "https://marspotatolab.com",
@@ -19,6 +21,9 @@ void test_payload_assembly() {
   assert(payload.config_version == 3);
   assert(payload.camera_node_index == 2);
   assert(payload.platform_device_id == 17);
+  assert(payload.camera_role == static_cast<uint8_t>(CameraRoleCode::kSide));
+  assert(payload.capture_phase_seconds == 30);
+  assert(strcmp(espnow_camera_role_label(payload.camera_role), "side") == 0);
   assert(strcmp(payload.wifi_ssid, "PlantLabWiFi") == 0);
   assert(strcmp(payload.wifi_password, "super-secret-pass") == 0);
   assert(strcmp(payload.platform_url, "https://marspotatolab.com") == 0);
@@ -34,6 +39,8 @@ void test_ack_completion() {
       1,
       1,
       11,
+      CameraRoleCode::kTop,
+      0,
       "ssid",
       "password",
       "http://192.168.0.55:8000",
@@ -70,6 +77,8 @@ void test_retry_and_timeout() {
       1,
       1,
       11,
+      CameraRoleCode::kTop,
+      0,
       "ssid",
       "password",
       "http://192.168.0.55:8000",

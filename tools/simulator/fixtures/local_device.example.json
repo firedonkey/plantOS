@@ -10,7 +10,7 @@
       "firmware_version": "1.0.0",
       "sensor_interval_seconds": 10,
       "image_interval_seconds": 300,
-      "camera_nodes": 1,
+      "camera_nodes": 2,
       "scenarios": []
     }
   ]

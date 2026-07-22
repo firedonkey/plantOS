@@ -222,6 +222,7 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
             status.software_version.c_str(),
             status.hardware_model.c_str(),
             status.hardware_version.c_str(),
+            status.camera_role.c_str(),
             status.diagnostics.uptime_seconds,
             status.diagnostics.has_wifi_rssi_dbm,
             status.diagnostics.wifi_rssi_dbm,
@@ -245,6 +246,21 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
             status.last_command_poll_latency_ms,
             status.has_command_poll_stale_seconds,
             status.command_poll_stale_seconds,
+            status.has_ambient_led_belt_state,
+            status.ambient_led_belt.available,
+            status.ambient_led_belt.enabled,
+            status.ambient_led_belt.mode.c_str(),
+            status.ambient_led_belt.brightness,
+            status.ambient_led_belt.max_brightness,
+            status.ambient_led_belt.color_r,
+            status.ambient_led_belt.color_g,
+            status.ambient_led_belt.color_b,
+            status.ambient_led_belt.logical_pixel_count,
+            status.ambient_led_belt.physical_led_count,
+            status.ambient_led_belt.color_order.c_str(),
+            status.ambient_led_belt.data_gpio,
+            status.ambient_led_belt.diagnostic_active,
+            status.ambient_led_belt.last_error.c_str(),
             &contract_body)) {
       int contract_status_code = 0;
       String contract_response_body;
@@ -275,6 +291,9 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
   doc["message"] = status.message;
   if (status.software_version.length() > 0) {
     doc["software_version"] = status.software_version;
+  }
+  if (status.camera_role.length() > 0) {
+    doc["camera_role"] = status.camera_role;
   }
   if (status.diagnostics.valid) {
     JsonObject diagnostics = doc.createNestedObject("diagnostics");
@@ -610,6 +629,7 @@ bool PlatformClient::upload_jpeg(
     size_t length,
     const char* filename,
     const char* source_hardware_device_id,
+    const char* camera_role,
     const char* idempotency_key,
     int* http_status_code,
     String* error) {
@@ -640,6 +660,16 @@ bool PlatformClient::upload_jpeg(
         "--" + boundary + "\r\n"
         "Content-Disposition: form-data; name=\"source_hardware_device_id\"\r\n\r\n" +
         String(source_hardware_device_id) + "\r\n";
+    prefix +=
+        "--" + boundary + "\r\n"
+        "Content-Disposition: form-data; name=\"camera_node_id\"\r\n\r\n" +
+        String(source_hardware_device_id) + "\r\n";
+  }
+  if (camera_role != nullptr && String(camera_role).length() > 0) {
+    prefix +=
+        "--" + boundary + "\r\n"
+        "Content-Disposition: form-data; name=\"camera_role\"\r\n\r\n" +
+        String(camera_role) + "\r\n";
   }
   if (idempotency_key != nullptr && String(idempotency_key).length() > 0) {
     prefix +=
@@ -736,6 +766,7 @@ bool PlatformClient::register_device_node(
     const char* hardware_version,
     const char* software_version,
     const char* capabilities_json,
+    const char* camera_role,
     String* error) {
   if (hardware_device_id == nullptr || String(hardware_device_id).length() == 0) {
     set_error(error, "device node registration skipped: missing hardware id");
@@ -750,6 +781,9 @@ bool PlatformClient::register_device_node(
   doc["device_id"] = device_id_;
   doc["hardware_device_id"] = hardware_device_id;
   doc["node_role"] = node_role;
+  if (camera_role != nullptr && String(camera_role).length() > 0) {
+    doc["camera_role"] = camera_role;
+  }
   if (display_name != nullptr && String(display_name).length() > 0) {
     doc["display_name"] = display_name;
   }

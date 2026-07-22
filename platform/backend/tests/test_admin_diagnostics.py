@@ -67,7 +67,7 @@ def build_admin_client(current_email: str) -> TestClient:
                 Image(device_id=device.id, path="device/image.jpg", timestamp=now - timedelta(minutes=2)),
                 Command(
                     device_id=device.id,
-                    target="light",
+                    target="grow_light",
                     action="set_intensity",
                     value="80",
                     status="completed",

@@ -51,7 +51,7 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
         _use_device_token_auth()
         envelope = _heartbeat_envelope(device_id=device_id)
         envelope["payload"]["actuators"] = {
-            "ambient_light": {
+            "grow_light": {
                 "enabled": True,
                 "brightness_percent": 65,
             }
@@ -67,6 +67,19 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
             "last_command_poll_status": "ok",
             "last_command_poll_latency_ms": 112,
             "command_poll_stale_seconds": 4,
+            "ambient_led_belt": {
+                "available": True,
+                "enabled": False,
+                "mode": "off",
+                "brightness": 0,
+                "max_brightness": 51,
+                "color": {"r": 0, "g": 0, "b": 0},
+                "logical_pixel_count": 14,
+                "physical_led_count": 630,
+                "color_order": "RGB",
+                "data_gpio": 1,
+                "diagnostic_active": False,
+            },
         }
 
         response = client.post(
@@ -100,12 +113,43 @@ def test_heartbeat_envelope_accepts_actuator_and_runtime_state():
                 .filter(DeviceDiagnosticEvent.event_type == "HEARTBEAT_RECEIVED")
                 .one()
             )
-            assert event.metadata_json["data"]["actuators"]["ambient_light"]["brightness_percent"] == 65
+            assert event.metadata_json["data"]["actuators"]["grow_light"]["brightness_percent"] == 65
             assert event.metadata_json["data"]["runtime"]["capture_interval_seconds"] == 3600
             assert event.metadata_json["data"]["runtime"]["last_command_poll_status"] == "ok"
             assert event.metadata_json["data"]["runtime"]["command_poll_stale_seconds"] == 4
+            assert event.metadata_json["data"]["runtime"]["ambient_led_belt"]["logical_pixel_count"] == 14
+            assert event.metadata_json["data"]["runtime"]["ambient_led_belt"]["physical_led_count"] == 630
+            assert event.metadata_json["data"]["runtime"]["ambient_led_belt"]["color_order"] == "RGB"
+            assert event.metadata_json["data"]["runtime"]["ambient_led_belt"]["data_gpio"] == 1
             event_types = [item.event_type for item in session.query(DeviceDiagnosticEvent).all()]
             assert "DIAGNOSTICS_RECEIVED" not in event_types
+    finally:
+        teardown_overrides()
+
+
+def test_heartbeat_envelope_accepts_legacy_ambient_light_alias():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id)
+        _use_device_token_auth()
+        envelope = _heartbeat_envelope(device_id=device_id)
+        envelope["payload"]["actuators"] = {
+            "ambient_light": {
+                "enabled": True,
+                "brightness_percent": 42,
+            }
+        }
+
+        response = client.post(
+            "/api/hardware/heartbeat",
+            json=envelope,
+            headers={"X-Device-Token": "token-owner"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["light_on"] is True
+        assert body["light_intensity_percent"] == 42
     finally:
         teardown_overrides()
 
@@ -348,6 +392,8 @@ def test_valid_image_upload_contract_is_accepted():
 
     assert message.message_type == "IMAGE_UPLOAD"
     assert message.payload.status == "uploaded"
+    assert message.payload.camera_node_id == "camera-01"
+    assert message.payload.camera_role == "top"
     assert message.payload.source_hardware_device_id == "camera-01"
     assert message.payload.width == 360
     assert message.payload.height == 240
@@ -376,26 +422,29 @@ def test_image_upload_unknown_additive_fields_are_accepted():
 
 
 def test_valid_capture_image_command_contract():
-    message = parse_command_message(_command_envelope(command_type="CAPTURE_IMAGE", target_role="camera"))
+    message = parse_command_message(
+        _command_envelope(command_type="CAPTURE_IMAGE", target_role="camera", camera_role="top")
+    )
 
     assert message.message_type == "COMMAND"
     assert message.payload.command_id == "cmd_123"
     assert message.payload.command_type == "CAPTURE_IMAGE"
     assert message.payload.target.node_role == "camera"
+    assert message.payload.target.camera_role == "top"
     assert message.payload.params["reason"] == "manual"
 
 
-def test_valid_set_light_brightness_command_contract():
+def test_valid_set_grow_light_brightness_command_contract():
     message = parse_command_message(
         _command_envelope(
-            command_type="SET_LIGHT_BRIGHTNESS",
+            command_type="SET_GROW_LIGHT_BRIGHTNESS",
             target_role="master",
             params={"brightness_percent": 65},
             timeout_ms=20_000,
         )
     )
 
-    assert message.payload.command_type == "SET_LIGHT_BRIGHTNESS"
+    assert message.payload.command_type == "SET_GROW_LIGHT_BRIGHTNESS"
     assert message.payload.params["brightness_percent"] == 65
 
 
@@ -506,7 +555,7 @@ def test_legacy_command_api_creates_command_queued_event():
             events = session.query(DeviceDiagnosticEvent).order_by(DeviceDiagnosticEvent.id).all()
             assert events[-1].event_type == "COMMAND_QUEUED"
             assert events[-1].metadata_json["command_id"] == f"cmd_{command_id}"
-            assert events[-1].metadata_json["command_type"] == "SET_LIGHT_BRIGHTNESS"
+            assert events[-1].metadata_json["command_type"] == "SET_GROW_LIGHT_BRIGHTNESS"
     finally:
         teardown_overrides()
 
@@ -552,7 +601,7 @@ def test_command_result_envelope_updates_command_and_creates_failed_event():
 
         envelope = _command_result_envelope(
             command_id=f"cmd_{command_id}",
-            command_type="SET_LIGHT_BRIGHTNESS",
+            command_type="SET_GROW_LIGHT_BRIGHTNESS",
             status="failed",
             message="invalid PWM state",
             error_code="INTERNAL_ERROR",
@@ -572,7 +621,7 @@ def test_command_result_envelope_updates_command_and_creates_failed_event():
             events = session.query(DeviceDiagnosticEvent).order_by(DeviceDiagnosticEvent.id).all()
             assert events[-1].event_type == "COMMAND_FAILED"
             assert events[-1].metadata_json["status"] == "failed"
-            assert events[-1].metadata_json["command_type"] == "SET_LIGHT_BRIGHTNESS"
+            assert events[-1].metadata_json["command_type"] == "SET_GROW_LIGHT_BRIGHTNESS"
     finally:
         teardown_overrides()
 
@@ -612,7 +661,7 @@ def _heartbeat_envelope(*, device_id: int) -> dict:
             "free_heap_bytes": 180000,
             "node_status": "online",
             "firmware_version": "1.0.0",
-            "capabilities": ["ota", "ambient_led"],
+            "capabilities": ["ota", "grow_light"],
         },
     }
 
@@ -652,7 +701,14 @@ def _command_envelope(
     target_role: str,
     params: dict | None = None,
     timeout_ms: int = 120_000,
+    camera_role: str | None = None,
 ) -> dict:
+    target = {
+        "node_role": target_role,
+        "hardware_device_id": "camera-01" if target_role == "camera" else "master-01",
+    }
+    if camera_role is not None:
+        target["camera_role"] = camera_role
     return {
         "schema_version": "1.0",
         "message_id": "cmdmsg_test",
@@ -664,10 +720,7 @@ def _command_envelope(
         "payload": {
             "command_id": "cmd_123",
             "command_type": command_type,
-            "target": {
-                "node_role": target_role,
-                "hardware_device_id": "camera-01" if target_role == "camera" else "master-01",
-            },
+            "target": target,
             "params": params or {"reason": "manual"},
             "timeout_ms": timeout_ms,
             "retry_policy": {
@@ -711,6 +764,8 @@ def _command_result_envelope(
 def _image_upload_envelope(*, status: str, failure_reason: str | None = None) -> dict:
     payload = {
         "status": status,
+        "camera_node_id": "camera-01",
+        "camera_role": "top",
         "source_hardware_device_id": "camera-01",
         "source_node_role": "camera",
         "captured_at": "2026-05-27T12:09:00Z",

@@ -23,6 +23,7 @@ def get_timelapse_snapshot(
     interval_minutes: int,
     max_frames: int,
     target_duration_seconds: int,
+    camera_role: str = "top",
 ) -> DeviceTimelapseSnapshot | None:
     return session.scalar(
         select(DeviceTimelapseSnapshot)
@@ -31,6 +32,7 @@ def get_timelapse_snapshot(
         .where(DeviceTimelapseSnapshot.interval_minutes == interval_minutes)
         .where(DeviceTimelapseSnapshot.max_frames == max_frames)
         .where(DeviceTimelapseSnapshot.target_duration_seconds == target_duration_seconds)
+        .where(DeviceTimelapseSnapshot.camera_role == camera_role)
         .limit(1)
     )
 
@@ -41,12 +43,14 @@ def empty_timelapse_payload(
     days: int,
     interval_minutes: int,
     target_duration_seconds: int,
+    camera_role: str = "top",
     playback_frame_ms: int | None = None,
 ) -> dict[str, Any]:
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=days)
     return {
         "device_id": device_id,
+        "camera_role": camera_role,
         "window_start": window_start,
         "window_end": window_end,
         "interval_minutes": interval_minutes,
@@ -67,6 +71,7 @@ def timelapse_snapshot_payload(
 ) -> dict[str, Any]:
     return {
         "device_id": snapshot.device_id,
+        "camera_role": snapshot.camera_role,
         "window_start": snapshot.window_start,
         "window_end": snapshot.window_end,
         "interval_minutes": snapshot.interval_minutes,
@@ -88,6 +93,7 @@ def refresh_device_timelapse_snapshot(
     interval_minutes: int = 5,
     max_frames: int = 168,
     target_duration_seconds: int = 30,
+    camera_role: str = "top",
 ) -> DeviceTimelapseSnapshot:
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=days)
@@ -98,6 +104,7 @@ def refresh_device_timelapse_snapshot(
         end=window_end,
         interval_minutes=interval_minutes,
         max_frames=max_frames,
+        camera_role=camera_role,
     )
     frames = [
         {
@@ -105,6 +112,7 @@ def refresh_device_timelapse_snapshot(
             "content_url": image_client_url(image, request, settings),
             "timestamp": image.timestamp.isoformat(),
             "source_hardware_device_id": image.source_hardware_device_id,
+            "camera_role": image.camera_role,
         }
         for image in images
     ]
@@ -115,6 +123,7 @@ def refresh_device_timelapse_snapshot(
         interval_minutes=interval_minutes,
         max_frames=max_frames,
         target_duration_seconds=target_duration_seconds,
+        camera_role=camera_role,
     )
     if snapshot is None:
         snapshot = DeviceTimelapseSnapshot(
@@ -123,6 +132,7 @@ def refresh_device_timelapse_snapshot(
             interval_minutes=interval_minutes,
             max_frames=max_frames,
             target_duration_seconds=target_duration_seconds,
+            camera_role=camera_role,
             window_start=window_start,
             window_end=window_end,
             playback_frame_ms=timelapse_playback_frame_ms(len(frames), target_duration_seconds),
@@ -138,7 +148,8 @@ def refresh_device_timelapse_snapshot(
     snapshot.total_image_count = total_image_count
     snapshot.frame_count = len(frames)
     snapshot.frames = frames
-    snapshot.latest_image_id = list_recent_images_for_device(session, device.id, limit=1)[0].id if total_image_count else None
+    snapshot.camera_role = camera_role
+    snapshot.latest_image_id = list_recent_images_for_device(session, device.id, limit=1, camera_role=camera_role)[0].id if total_image_count else None
     snapshot.refreshed_at = window_end
     snapshot.expires_at = window_end + timedelta(seconds=settings.image_signed_url_ttl_seconds)
     session.commit()

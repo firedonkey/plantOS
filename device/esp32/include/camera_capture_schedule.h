@@ -5,6 +5,8 @@
 struct MasterCaptureScheduleState {
   bool enabled = false;
   uint32_t interval_ms = 0;
+  uint32_t phase_offset_ms = 0;
+  uint32_t initialized_at_ms = 0;
   uint32_t last_capture_requested_ms = 0;
   bool has_sent_initial_request = false;
 };
@@ -12,12 +14,16 @@ struct MasterCaptureScheduleState {
 inline void capture_schedule_init(
     MasterCaptureScheduleState* state,
     bool enabled,
-    uint32_t interval_ms) {
+    uint32_t interval_ms,
+    uint32_t phase_offset_ms = 0,
+    uint32_t now_ms = 0) {
   if (state == nullptr) {
     return;
   }
   state->enabled = enabled;
   state->interval_ms = interval_ms;
+  state->phase_offset_ms = phase_offset_ms;
+  state->initialized_at_ms = now_ms;
   state->last_capture_requested_ms = 0;
   state->has_sent_initial_request = false;
 }
@@ -30,7 +36,7 @@ inline bool capture_schedule_should_request(
     return false;
   }
   if (!state.has_sent_initial_request) {
-    return true;
+    return now_ms - state.initialized_at_ms >= state.phase_offset_ms;
   }
   return now_ms - state.last_capture_requested_ms >= state.interval_ms;
 }

@@ -25,6 +25,9 @@
         "hardware_device_id": {
           "type": "string",
           "maxLength": 120
+        },
+        "camera_role": {
+          "$ref": "../common/enums.schema.json#/$defs/CameraRole"
         }
       }
     },

@@ -1,4 +1,5 @@
 import logging
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -9,13 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import api_error
 from app.api.deps import get_current_user, get_device_from_token
-from app.contracts import DiagnosticSeverity, EventType
+from app.contracts import CameraRole, DiagnosticSeverity, EventType
 from app.core.settings import get_settings
 from app.db.session import get_session
 from app.models import CommandStatus, User
 from app.schemas.commands import (
     CommandCreate,
     CommandRead,
+    CaptureCommandRequest,
     DeviceCommandEnvelopeRead,
     LightCommandRequest,
     PumpCommandRequest,
@@ -40,7 +42,7 @@ from app.schemas.setup import DeviceClaimTokenRequest, DeviceSetupCodeRead, Devi
 from app.schemas.readings import SensorReadingRead
 from app.services.commands import create_command, list_commands_for_device
 from app.services.device_diagnostics import event_read, list_diagnostic_events, list_diagnostic_snapshots, snapshot_read
-from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_nodes_for_device
+from app.services.device_nodes import build_node_summary, latest_node_heartbeat_at, list_camera_nodes_for_device, list_nodes_for_device
 from app.services.device_timeline import list_timeline_events, timeline_event_read
 from app.services.demo import (
     demo_capture_command,
@@ -380,7 +382,7 @@ def get_device_summary(
         raise HTTPException(status_code=404, detail="Device not found.")
 
     latest_reading = get_latest_reading_for_device(session, device.id)
-    latest_images = list_recent_images_for_device(session, device.id, limit=1)
+    latest_images = list_recent_images_for_device(session, device.id, limit=1, camera_role=CameraRole.TOP)
     latest_image = latest_images[0] if latest_images else None
     nodes = list_nodes_for_device(session, device.id)
     command_health = _command_health(session, device.id)
@@ -401,12 +403,7 @@ def get_device_summary(
             else None
         ),
         latest_image=(
-            DeviceSummaryImageRead(
-                id=latest_image.id,
-                content_url=image_client_url(latest_image, request, get_settings()),
-                timestamp=latest_image.timestamp,
-                source_hardware_device_id=latest_image.source_hardware_device_id,
-            )
+            _build_summary_image_read(request, latest_image)
             if latest_image is not None
             else None
         ),
@@ -488,6 +485,33 @@ def get_device_timeline(
     )
 
 
+@router.get("/{device_id}/camera-nodes", response_model=list[DeviceHealthNodeRead])
+def get_device_camera_nodes(
+    device_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            return []
+        raise HTTPException(status_code=404, detail="Device not found.")
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    snapshots = {
+        snapshot.hardware_device_id: snapshot
+        for snapshot in list_diagnostic_snapshots(session, device.id)
+    }
+    return [
+        health_node
+        for health_node in (
+            _build_health_node(_node_summary_from_model(node), snapshots)
+            for node in list_camera_nodes_for_device(session, device.id)
+        )
+        if health_node is not None
+    ]
+
+
 @router.get("/{device_id}/readings", response_model=list[SensorReadingRead])
 def get_device_readings(
     device_id: int,
@@ -525,6 +549,7 @@ def get_device_readings(
 def get_device_latest_image(
     device_id: int,
     request: Request,
+    camera_role: str = Query(default="top", pattern="^(top|side|all)$"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -536,17 +561,12 @@ def get_device_latest_image(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
-    latest_images = list_recent_images_for_device(session, device.id, limit=1)
+    latest_images = list_recent_images_for_device(session, device.id, limit=1, camera_role=camera_role)
     latest_image = latest_images[0] if latest_images else None
     if latest_image is None:
         return None
 
-    return DeviceSummaryImageRead(
-        id=latest_image.id,
-        content_url=image_client_url(latest_image, request, get_settings()),
-        timestamp=latest_image.timestamp,
-        source_hardware_device_id=latest_image.source_hardware_device_id,
-    )
+    return _build_summary_image_read(request, latest_image)
 
 
 @router.get("/{device_id}/images", response_model=list[DeviceSummaryImageRead])
@@ -554,6 +574,7 @@ def get_device_images(
     device_id: int,
     request: Request,
     limit: int = Query(default=12, ge=1, le=50),
+    camera_role: str = Query(default="all", pattern="^(top|side|all)$"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -565,16 +586,8 @@ def get_device_images(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
 
-    images = list_recent_images_for_device(session, device.id, limit=limit)
-    return [
-        DeviceSummaryImageRead(
-            id=image.id,
-            content_url=image_client_url(image, request, get_settings()),
-            timestamp=image.timestamp,
-            source_hardware_device_id=image.source_hardware_device_id,
-        )
-        for image in images
-    ]
+    images = list_recent_images_for_device(session, device.id, limit=limit, camera_role=camera_role)
+    return [_build_summary_image_read(request, image) for image in images]
 
 
 @router.get("/{device_id}/timelapse", response_model=DeviceTimelapseRead)
@@ -586,6 +599,7 @@ def get_device_timelapse(
     max_frames: int = Query(default=168, ge=2, le=720),
     target_duration_seconds: int = Query(default=30, ge=5, le=120),
     playback_frame_ms: int | None = Query(default=None, ge=50, le=30_000),
+    camera_role: str = Query(default="top", pattern="^(top|side)$"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -612,6 +626,7 @@ def get_device_timelapse(
         interval_minutes=interval_minutes,
         max_frames=max_frames,
         target_duration_seconds=target_duration_seconds,
+        camera_role=camera_role,
     )
     if snapshot is None or _timelapse_snapshot_expired(snapshot.expires_at):
         return DeviceTimelapseRead.model_validate(
@@ -620,6 +635,7 @@ def get_device_timelapse(
                 days=days,
                 interval_minutes=interval_minutes,
                 target_duration_seconds=target_duration_seconds,
+                camera_role=camera_role,
                 playback_frame_ms=playback_frame_ms,
             )
         )
@@ -635,6 +651,7 @@ def refresh_device_timelapse(
     interval_minutes: int = Query(default=5, ge=5, le=24 * 60),
     max_frames: int = Query(default=168, ge=2, le=720),
     target_duration_seconds: int = Query(default=30, ge=5, le=120),
+    camera_role: str = Query(default="top", pattern="^(top|side)$"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -661,6 +678,7 @@ def refresh_device_timelapse(
         interval_minutes=interval_minutes,
         max_frames=max_frames,
         target_duration_seconds=target_duration_seconds,
+        camera_role=camera_role,
     )
     return DeviceTimelapseRead.model_validate(timelapse_snapshot_payload(snapshot))
 
@@ -695,14 +713,14 @@ def create_light_command(
         command = create_command(
             session,
             device.id,
-            CommandCreate(target="light", action="set_intensity", value=str(payload.intensity_percent)),
+            CommandCreate(target="grow_light", action="set_intensity", value=str(payload.intensity_percent)),
         )
         return _queued_command_response(
             device_id=device.id,
-            command_name="light",
+            command_name="grow_light",
             action="set_intensity",
             command=command,
-            message=f"Light command queued: set intensity to {payload.intensity_percent}%.",
+            message=f"Grow-light command queued: set intensity to {payload.intensity_percent}%.",
         )
 
     if payload.state is None:
@@ -710,14 +728,14 @@ def create_light_command(
     command = create_command(
         session,
         device.id,
-        CommandCreate(target="light", action=payload.state),
+        CommandCreate(target="grow_light", action=payload.state),
     )
     return _queued_command_response(
         device_id=device.id,
-        command_name="light",
+        command_name="grow_light",
         action=payload.state,
         command=command,
-        message=f"Light command queued: turn {payload.state}.",
+        message=f"Grow-light command queued: turn {payload.state}.",
     )
 
 
@@ -761,6 +779,7 @@ def create_pump_command(
 @router.post("/{device_id}/commands/capture", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_capture_command(
     device_id: int,
+    payload: CaptureCommandRequest | None = None,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -771,13 +790,14 @@ def create_capture_command(
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
+    payload = payload or CaptureCommandRequest()
     command = create_command(
         session,
         device.id,
-        CommandCreate(target="camera", action="capture"),
+        CommandCreate(target="camera", action="capture", value=_capture_command_value(payload)),
     )
-    source_node = _image_event_source_node(session, device.id)
-    if source_node is not None:
+    source_nodes = _image_event_source_nodes(session, device.id, payload)
+    for source_node in source_nodes:
         write_canonical_event_once(
             session,
             event_type=EventType.IMAGE_CAPTURE_STARTED,
@@ -791,6 +811,8 @@ def create_capture_command(
                 "upload_reason": "manual",
                 "source_hardware_device_id": source_node.hardware_device_id,
                 "source_node_role": source_node.node_role,
+                "camera_node_id": source_node.hardware_device_id,
+                "camera_role": source_node.camera_role,
             },
         )
     return _queued_command_response(
@@ -799,6 +821,8 @@ def create_capture_command(
         action="capture",
         command=command,
         message="Capture command queued.",
+        camera_role=str(getattr(payload.camera_role, "value", payload.camera_role)),
+        camera_node_id=payload.camera_node_id,
     )
 
 
@@ -878,17 +902,42 @@ def _sanitize_registration_log_payload(value):
     return value
 
 
-def _image_event_source_node(session: Session, device_id: int):
+def _image_event_source_nodes(session: Session, device_id: int, payload: CaptureCommandRequest) -> list:
     nodes = list_nodes_for_device(session, device_id)
-    camera_node = next((node for node in nodes if str(node.node_role).lower() == "camera"), None)
-    if camera_node is not None:
-        return camera_node
-    return next((node for node in nodes if str(node.node_role).lower() in {"master", "single_board"}), None)
+    if payload.camera_node_id:
+        return [
+            node
+            for node in nodes
+            if node.hardware_device_id == payload.camera_node_id and str(node.node_role).lower() == "camera"
+        ]
+    camera_role = str(getattr(payload.camera_role, "value", payload.camera_role) or "top").lower()
+    camera_nodes = [node for node in nodes if str(node.node_role).lower() == "camera"]
+    if camera_role == "all":
+        return camera_nodes
+    matched = [node for node in camera_nodes if str(node.camera_role or "").lower() == camera_role]
+    if matched:
+        return matched
+    if camera_role == CameraRole.TOP.value:
+        legacy = [node for node in camera_nodes if node.camera_role is None]
+        if legacy:
+            return legacy[:1]
+    fallback = next((node for node in nodes if str(node.node_role).lower() in {"master", "single_board"}), None)
+    return [fallback] if fallback is not None else []
+
+
+def _capture_command_value(payload: CaptureCommandRequest) -> str:
+    data = {
+        "reason": "manual",
+        "camera_role": str(getattr(payload.camera_role, "value", payload.camera_role)),
+    }
+    if payload.camera_node_id:
+        data["camera_node_id"] = payload.camera_node_id
+    return json.dumps(data, separators=(",", ":"))
 
 
 def _build_device_read(request: Request, session: Session, device) -> DeviceRead:
     latest_reading = get_latest_reading_for_device(session, device.id)
-    latest_images = list_recent_images_for_device(session, device.id, limit=1)
+    latest_images = list_recent_images_for_device(session, device.id, limit=1, camera_role=CameraRole.TOP)
     latest_image = latest_images[0] if latest_images else None
     nodes = list_nodes_for_device(session, device.id)
     node_summary = build_node_summary(nodes)
@@ -915,12 +964,7 @@ def _build_device_read(request: Request, session: Session, device) -> DeviceRead
             else None
         ),
         latest_image=(
-            DeviceSummaryImageRead(
-                id=latest_image.id,
-                content_url=image_client_url(latest_image, request, get_settings()),
-                timestamp=latest_image.timestamp,
-                source_hardware_device_id=latest_image.source_hardware_device_id,
-            )
+            _build_summary_image_read(request, latest_image)
             if latest_image is not None
             else None
         ),
@@ -962,6 +1006,8 @@ def _queued_command_response(
     action: str,
     command,
     message: str,
+    camera_role: str | None = None,
+    camera_node_id: str | None = None,
 ) -> DeviceCommandEnvelopeRead:
     return DeviceCommandEnvelopeRead(
         status="accepted",
@@ -974,7 +1020,43 @@ def _queued_command_response(
         command_status=command.status,
         created_at=command.created_at,
         value=command.value,
+        camera_role=camera_role,
+        camera_node_id=camera_node_id,
     )
+
+
+def _build_summary_image_read(request: Request, image) -> DeviceSummaryImageRead:
+    return DeviceSummaryImageRead(
+        id=image.id,
+        content_url=image_client_url(image, request, get_settings()),
+        timestamp=image.timestamp,
+        source_hardware_device_id=image.source_hardware_device_id,
+        camera_role=image.camera_role,
+    )
+
+
+def _node_summary_from_model(node) -> dict:
+    return {
+        "hardware_device_id": node.hardware_device_id,
+        "node_role": node.node_role,
+        "node_index": node.node_index,
+        "camera_role": node.camera_role,
+        "display_name": node.display_name,
+        "hardware_model": node.hardware_model,
+        "hardware_version": node.hardware_version,
+        "software_version": node.software_version,
+        "ota_status": node.ota_status,
+        "ota_available_version": node.ota_available_version,
+        "ota_target_version": node.ota_target_version,
+        "ota_release_id": node.ota_release_id,
+        "ota_progress": node.ota_progress,
+        "ota_error": node.ota_error,
+        "ota_updated_at": node.ota_updated_at,
+        "ota_last_success_at": node.ota_last_success_at,
+        "capabilities": node.capabilities or {},
+        "status": node.status,
+        "last_seen_at": node.last_seen_at,
+    }
 
 
 def _device_supports_light_intensity(nodes: list) -> bool:

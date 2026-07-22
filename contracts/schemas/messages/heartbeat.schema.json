@@ -52,6 +52,9 @@
               "minLength": 1,
               "maxLength": 120
             },
+            "camera_role": {
+              "$ref": "../common/enums.schema.json#/$defs/CameraRole"
+            },
             "capabilities": {
               "type": "array",
               "items": {
@@ -66,8 +69,23 @@
               "type": "object",
               "additionalProperties": true,
               "properties": {
+                "grow_light": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "brightness_percent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                },
                 "ambient_light": {
                   "type": "object",
+                  "description": "Legacy alias for grow_light accepted from older firmware.",
                   "additionalProperties": true,
                   "properties": {
                     "enabled": {
@@ -133,6 +151,66 @@
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 86400
+                },
+                "ambient_led_belt": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["off", "solid", "breathe", "pulse", "chase", "rainbow", "diagnostic"]
+                    },
+                    "brightness": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "max_brightness": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "color": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "r": {"type": "integer", "minimum": 0, "maximum": 255},
+                        "g": {"type": "integer", "minimum": 0, "maximum": 255},
+                        "b": {"type": "integer", "minimum": 0, "maximum": 255}
+                      }
+                    },
+                    "logical_pixel_count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 120
+                    },
+                    "physical_led_count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "color_order": {
+                      "type": "string",
+                      "enum": ["RGB", "RBG", "GRB", "GBR", "BRG", "BGR"]
+                    },
+                    "data_gpio": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 48
+                    },
+                    "diagnostic_active": {
+                      "type": "boolean"
+                    },
+                    "last_error": {
+                      "type": ["string", "null"],
+                      "maxLength": 160
+                    }
+                  }
                 },
                 "time_sync_status": {
                   "type": "string",

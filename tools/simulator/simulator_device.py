@@ -53,6 +53,7 @@ class SimulatedDeviceNode:
             "hardware_device_id": self.config.hardware_device_id,
             "node_role": self.config.node_role,
             "node_index": self.config.node_index,
+            "camera_role": self.config.camera_role if self.config.is_camera else None,
             "display_name": self.config.display_name,
             "hardware_model": self.config.hardware_model,
             "hardware_version": self.config.hardware_version,
@@ -75,6 +76,7 @@ class SimulatedDeviceNode:
             "firmware_version": self.config.firmware_version,
             "hardware_model": self.config.hardware_model,
             "hardware_version": self.config.hardware_version,
+            "camera_role": self.config.camera_role if self.config.is_camera else None,
             "capabilities": self.config.capabilities,
             "runtime": self.runtime_payload(),
         }
@@ -155,6 +157,8 @@ class SimulatedDeviceNode:
                 fields={
                     "device_id": self.config.device_id,
                     "source_hardware_device_id": self.config.hardware_device_id,
+                    "camera_node_id": self.config.hardware_device_id,
+                    "camera_role": self.config.camera_role,
                     "metadata": json.dumps(metadata),
                 },
                 files=[
@@ -280,7 +284,7 @@ class SimulatedDeviceNode:
             await self.fail_command(command, "Simulated command failure.", "INTERNAL_ERROR")
             return
 
-        if command_type == "SET_LIGHT_BRIGHTNESS":
+        if command_type in {"SET_GROW_LIGHT_BRIGHTNESS", "SET_LIGHT_BRIGHTNESS"}:
             await self.handle_light_command(command)
         elif command_type == "CAPTURE_IMAGE":
             await self.handle_capture_command(command)
@@ -520,6 +524,8 @@ class SimulatedDeviceNode:
         payload = _without_none(
             {
                 "status": status,
+                "camera_node_id": self.config.hardware_device_id if self.config.is_camera else None,
+                "camera_role": self.config.camera_role if self.config.is_camera else None,
                 "source_hardware_device_id": self.config.hardware_device_id,
                 "source_node_role": self.config.node_role,
                 "captured_at": captured_at,
@@ -534,19 +540,21 @@ class SimulatedDeviceNode:
         return self.envelope("IMAGE_UPLOAD", payload, "img")
 
     def capabilities_payload(self) -> dict[str, Any]:
-        return {
+        return _without_none({
             "features": self.config.capabilities,
             "simulator": True,
             "contract_polling": True,
             "ota": "ota" in self.config.capabilities,
-            "light_intensity_control": "ambient_led" in self.config.capabilities,
-        }
+            "light_intensity_control": "grow_light" in self.config.capabilities or "ambient_led" in self.config.capabilities,
+            "camera_role": self.config.camera_role if self.config.is_camera else None,
+            "capture_phase_seconds": self.config.capture_phase_seconds if self.config.is_camera else None,
+        })
 
     def actuators_payload(self) -> dict[str, Any] | None:
         if not self.config.is_master:
             return None
         return {
-            "ambient_light": {
+            "grow_light": {
                 "enabled": self.light_enabled,
                 "brightness_percent": self.light_brightness_percent,
             }
@@ -796,19 +804,19 @@ def _without_none(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def legacy_command_type(target: str, action: str) -> str | None:
-    if target == "light" and action in {"on", "off", "set_intensity"}:
-        return "SET_LIGHT_BRIGHTNESS"
+    if target in {"grow_light", "light"} and action in {"on", "off", "set_intensity"}:
+        return "SET_GROW_LIGHT_BRIGHTNESS"
     if target == "camera" and action == "capture":
         return "CAPTURE_IMAGE"
     return None
 
 
 def legacy_command_params(target: str, action: str, value: Any) -> dict[str, Any]:
-    if target == "light" and action == "set_intensity":
+    if target in {"grow_light", "light"} and action == "set_intensity":
         return {"brightness_percent": _int_percent(value, 0)}
-    if target == "light" and action == "on":
+    if target in {"grow_light", "light"} and action == "on":
         return {"brightness_percent": 100}
-    if target == "light" and action == "off":
+    if target in {"grow_light", "light"} and action == "off":
         return {"brightness_percent": 0}
     if target == "camera" and action == "capture":
         return {"reason": "manual"}

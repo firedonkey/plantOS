@@ -201,9 +201,11 @@ void on_data_received(const uint8_t* mac_addr, const uint8_t* data, int len) {
           break;
         }
         Serial.printf(
-            "[espnow-camera] provisioning payload config_version=%u camera_index=%u platform_device_id=%u ssid=%s platform=%s token_len=%u\n",
+            "[espnow-camera] provisioning payload config_version=%u camera_index=%u camera_role=%s phase_s=%u platform_device_id=%u ssid=%s platform=%s token_len=%u\n",
             static_cast<unsigned int>(payload.config_version),
             static_cast<unsigned int>(payload.camera_node_index),
+            espnow_camera_role_label(payload.camera_role),
+            static_cast<unsigned int>(payload.capture_phase_seconds),
             static_cast<unsigned int>(payload.platform_device_id),
             payload.wifi_ssid,
             payload.platform_url,

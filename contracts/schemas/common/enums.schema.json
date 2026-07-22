@@ -7,6 +7,10 @@
       "type": "string",
       "enum": ["master", "camera", "sensor", "actuator"]
     },
+    "CameraRole": {
+      "type": "string",
+      "enum": ["top", "side"]
+    },
     "MessageType": {
       "type": "string",
       "enum": ["HEARTBEAT", "DIAGNOSTICS", "COMMAND", "COMMAND_RESULT", "OTA_STATUS", "IMAGE_UPLOAD"]
@@ -69,7 +73,9 @@
     "CommandType": {
       "type": "string",
       "enum": [
+        "SET_GROW_LIGHT_BRIGHTNESS",
         "SET_LIGHT_BRIGHTNESS",
+        "SET_AMBIENT_LED_BELT",
         "CAPTURE_IMAGE",
         "REBOOT",
         "START_OTA",

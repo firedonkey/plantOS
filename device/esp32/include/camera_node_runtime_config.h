@@ -11,6 +11,8 @@ struct CameraNodeRuntimeConfig {
   uint16_t config_version;
   uint16_t camera_node_index;
   uint32_t platform_device_id;
+  uint8_t camera_role;
+  uint16_t capture_phase_seconds;
   char wifi_ssid[ESPNOW_TEST_WIFI_SSID_MAX_LEN + 1];
   char wifi_password[ESPNOW_TEST_WIFI_PASSWORD_MAX_LEN + 1];
   char platform_url[ESPNOW_TEST_PLATFORM_URL_MAX_LEN + 1];
@@ -26,7 +28,10 @@ inline void camera_node_clear_runtime_config(CameraNodeRuntimeConfig* config) {
 
 inline bool camera_node_runtime_config_complete(const CameraNodeRuntimeConfig& config) {
   return config.provisioned && config.config_version > 0 && config.camera_node_index > 0 &&
-         config.platform_device_id > 0 && config.wifi_ssid[0] != '\0' &&
+         config.platform_device_id > 0 &&
+         (config.camera_role == static_cast<uint8_t>(CameraRoleCode::kTop) ||
+          config.camera_role == static_cast<uint8_t>(CameraRoleCode::kSide)) &&
+         config.wifi_ssid[0] != '\0' &&
          config.platform_url[0] != '\0' && config.device_token[0] != '\0';
 }
 
@@ -36,6 +41,8 @@ inline bool camera_node_runtime_config_equal(
   return left.provisioned == right.provisioned && left.config_version == right.config_version &&
          left.camera_node_index == right.camera_node_index &&
          left.platform_device_id == right.platform_device_id &&
+         left.camera_role == right.camera_role &&
+         left.capture_phase_seconds == right.capture_phase_seconds &&
          memcmp(left.wifi_ssid, right.wifi_ssid, sizeof(left.wifi_ssid)) == 0 &&
          memcmp(left.wifi_password, right.wifi_password, sizeof(left.wifi_password)) == 0 &&
          memcmp(left.platform_url, right.platform_url, sizeof(left.platform_url)) == 0 &&
@@ -53,6 +60,8 @@ inline bool camera_node_apply_provisioning_payload(
   config->config_version = payload.config_version;
   config->camera_node_index = payload.camera_node_index;
   config->platform_device_id = payload.platform_device_id;
+  config->camera_role = payload.camera_role;
+  config->capture_phase_seconds = payload.capture_phase_seconds;
   memcpy(config->wifi_ssid, payload.wifi_ssid, sizeof(config->wifi_ssid));
   memcpy(config->wifi_password, payload.wifi_password, sizeof(config->wifi_password));
   memcpy(config->platform_url, payload.platform_url, sizeof(config->platform_url));

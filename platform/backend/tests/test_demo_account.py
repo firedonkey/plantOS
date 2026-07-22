@@ -183,7 +183,7 @@ def test_demo_simulated_commands_update_fake_state_without_real_command_rows():
         commands = commands_response.json()
         assert commands[0]["target"] == "camera"
         assert commands[0]["status"] == "completed"
-        assert any(command["target"] == "light" for command in commands)
+        assert any(command["target"] == "grow_light" for command in commands)
 
         diagnostics_response = client.post(
             f"/api/devices/{DEMO_DEVICE_ID}/commands",

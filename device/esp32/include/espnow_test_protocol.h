@@ -37,6 +37,12 @@ enum class EspNowAckStatus : uint8_t {
   kInvalid = 4,
 };
 
+enum class CameraRoleCode : uint8_t {
+  kUnknown = 0,
+  kTop = 1,
+  kSide = 2,
+};
+
 enum class MasterProvisioningState : uint8_t {
   kIdle = 0,
   kAwaitingSend = 1,
@@ -50,6 +56,8 @@ struct __attribute__((packed)) CameraProvisioningPayload {
   uint16_t config_version;
   uint16_t camera_node_index;
   uint32_t platform_device_id;
+  uint8_t camera_role;
+  uint16_t capture_phase_seconds;
   char wifi_ssid[ESPNOW_TEST_WIFI_SSID_MAX_LEN + 1];
   char wifi_password[ESPNOW_TEST_WIFI_PASSWORD_MAX_LEN + 1];
   char platform_url[ESPNOW_TEST_PLATFORM_URL_MAX_LEN + 1];
@@ -109,6 +117,8 @@ inline bool espnow_build_provisioning_payload(
     uint16_t config_version,
     uint16_t camera_node_index,
     uint32_t platform_device_id,
+    CameraRoleCode camera_role,
+    uint16_t capture_phase_seconds,
     const char* wifi_ssid,
     const char* wifi_password,
     const char* platform_url,
@@ -120,6 +130,8 @@ inline bool espnow_build_provisioning_payload(
   payload->config_version = config_version;
   payload->camera_node_index = camera_node_index;
   payload->platform_device_id = platform_device_id;
+  payload->camera_role = static_cast<uint8_t>(camera_role);
+  payload->capture_phase_seconds = capture_phase_seconds;
 
   return espnow_copy_bounded_string(payload->wifi_ssid, sizeof(payload->wifi_ssid), wifi_ssid) &&
          espnow_copy_bounded_string(
@@ -130,7 +142,20 @@ inline bool espnow_build_provisioning_payload(
 
 inline bool espnow_validate_provisioning_payload(const CameraProvisioningPayload& payload) {
   return payload.config_version > 0 && payload.camera_node_index > 0 && payload.platform_device_id > 0 &&
+         (payload.camera_role == static_cast<uint8_t>(CameraRoleCode::kTop) ||
+          payload.camera_role == static_cast<uint8_t>(CameraRoleCode::kSide)) &&
          payload.wifi_ssid[0] != '\0' && payload.platform_url[0] != '\0' && payload.device_token[0] != '\0';
+}
+
+inline const char* espnow_camera_role_label(uint8_t camera_role) {
+  switch (static_cast<CameraRoleCode>(camera_role)) {
+    case CameraRoleCode::kTop:
+      return "top";
+    case CameraRoleCode::kSide:
+      return "side";
+    default:
+      return "";
+  }
 }
 
 inline void espnow_packet_set_provisioning_payload(

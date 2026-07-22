@@ -13,12 +13,14 @@ struct PlatformCommand {
   String command_type;
   String target_node_role;
   String target_hardware_device_id;
+  String target_camera_role;
   String ota_target_version;
   String ota_download_url;
   String ota_checksum_sha256;
   String ota_hardware_model;
   String ota_firmware_channel;
   String ota_release_id;
+  String ambient_led_belt_payload_json;
   size_t ota_artifact_size_bytes = 0;
   bool contract_native = false;
   bool valid;
@@ -76,12 +78,30 @@ struct PlatformDiagnostics {
   String last_error_message;
 };
 
+struct PlatformAmbientLedBeltState {
+  bool available = false;
+  bool enabled = false;
+  String mode;
+  int brightness = 0;
+  int max_brightness = 0;
+  int color_r = 0;
+  int color_g = 0;
+  int color_b = 0;
+  int logical_pixel_count = 0;
+  int physical_led_count = 0;
+  String color_order;
+  int data_gpio = -1;
+  bool diagnostic_active = false;
+  String last_error;
+};
+
 struct PlatformStatus {
   String hardware_device_id;
   String node_role;
   String status;
   String hardware_model;
   String hardware_version;
+  String camera_role;
   String ip_address;
   bool has_free_heap_bytes = false;
   uint32_t free_heap_bytes = 0;
@@ -105,6 +125,8 @@ struct PlatformStatus {
   uint32_t last_command_poll_latency_ms = 0;
   bool has_command_poll_stale_seconds = false;
   uint32_t command_poll_stale_seconds = 0;
+  bool has_ambient_led_belt_state = false;
+  PlatformAmbientLedBeltState ambient_led_belt;
   PlatformDiagnostics diagnostics;
 };
 
@@ -162,6 +184,7 @@ class PlatformClient {
       size_t length,
       const char* filename,
       const char* source_hardware_device_id = nullptr,
+      const char* camera_role = nullptr,
       const char* idempotency_key = nullptr,
       int* http_status_code = nullptr,
       String* error = nullptr);
@@ -173,6 +196,7 @@ class PlatformClient {
       const char* hardware_version,
       const char* software_version,
       const char* capabilities_json,
+      const char* camera_role = nullptr,
       String* error = nullptr);
   bool fetch_ota_manifest(
       const char* hardware_device_id,

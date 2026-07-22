@@ -13,7 +13,9 @@ if TYPE_CHECKING:
 
 class CommandTarget(str, Enum):
     PUMP = "pump"
+    GROW_LIGHT = "grow_light"
     LIGHT = "light"
+    AMBIENT_LED_BELT = "ambient_led_belt"
     CAMERA = "camera"
     OTA = "ota"
     DIAGNOSTICS = "diagnostics"
@@ -24,6 +26,7 @@ class CommandAction(str, Enum):
     ON = "on"
     OFF = "off"
     SET_INTENSITY = "set_intensity"
+    SET = "set"
     RUN = "run"
     CAPTURE = "capture"
     START = "start"

@@ -15,9 +15,9 @@
     "firmware_version": "1.0.0",
     "hardware_model": "esp32_master",
     "hardware_version": "ESP32-S3-DevKitC-1-N32R16V",
-    "capabilities": ["ota", "ambient_led", "camera_gateway"],
+    "capabilities": ["ota", "grow_light", "camera_gateway"],
     "actuators": {
-      "ambient_light": {
+      "grow_light": {
         "enabled": true,
         "brightness_percent": 65
       }

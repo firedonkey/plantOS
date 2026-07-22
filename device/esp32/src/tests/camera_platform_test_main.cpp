@@ -28,6 +28,8 @@ constexpr char kConfigKeyProvisioned[] = "prov";
 constexpr char kConfigKeyVersion[] = "ver";
 constexpr char kConfigKeyCameraIndex[] = "cam_idx";
 constexpr char kConfigKeyPlatformId[] = "plat_id";
+constexpr char kConfigKeyCameraRole[] = "cam_role";
+constexpr char kConfigKeyCapturePhaseSeconds[] = "cap_phase";
 constexpr char kConfigKeySsid[] = "wifi_ssid";
 constexpr char kConfigKeyPassword[] = "wifi_pass";
 constexpr char kConfigKeyPlatformUrl[] = "plat_url";
@@ -195,6 +197,13 @@ String runtimeDeviceToken() {
   return String(PLANTLAB_DEVICE_TOKEN);
 }
 
+const char* runtimeCameraRole() {
+  if (camera_node_runtime_config_complete(g_runtime_config)) {
+    return espnow_camera_role_label(g_runtime_config.camera_role);
+  }
+  return "";
+}
+
 void rebuildPlatformClient() {
   g_ota_update_manager.reset();
   g_platform_client.reset();
@@ -227,6 +236,9 @@ bool loadProvisionedConfig() {
   g_runtime_config.config_version = static_cast<uint16_t>(g_preferences.getUShort(kConfigKeyVersion, 0));
   g_runtime_config.camera_node_index = static_cast<uint16_t>(g_preferences.getUShort(kConfigKeyCameraIndex, 0));
   g_runtime_config.platform_device_id = static_cast<uint32_t>(g_preferences.getUInt(kConfigKeyPlatformId, 0));
+  g_runtime_config.camera_role = static_cast<uint8_t>(g_preferences.getUChar(kConfigKeyCameraRole, 0));
+  g_runtime_config.capture_phase_seconds =
+      static_cast<uint16_t>(g_preferences.getUShort(kConfigKeyCapturePhaseSeconds, 0));
   String ssid = g_preferences.getString(kConfigKeySsid, "");
   String password = g_preferences.getString(kConfigKeyPassword, "");
   String platform_url = g_preferences.getString(kConfigKeyPlatformUrl, "");
@@ -240,9 +252,11 @@ bool loadProvisionedConfig() {
 
   rebuildPlatformClient();
   Serial.printf(
-      "[camera-node] loaded provisioning config version=%u camera_index=%u platform_device_id=%u ssid=%s\n",
+      "[camera-node] loaded provisioning config version=%u camera_index=%u camera_role=%s phase_s=%u platform_device_id=%u ssid=%s\n",
       static_cast<unsigned int>(g_runtime_config.config_version),
       static_cast<unsigned int>(g_runtime_config.camera_node_index),
+      runtimeCameraRole(),
+      static_cast<unsigned int>(g_runtime_config.capture_phase_seconds),
       static_cast<unsigned int>(g_runtime_config.platform_device_id),
       g_runtime_config.wifi_ssid);
   return camera_node_runtime_config_complete(g_runtime_config);
@@ -257,6 +271,8 @@ bool saveProvisionedConfig(const CameraNodeRuntimeConfig& config) {
   g_preferences.putUShort(kConfigKeyVersion, config.config_version);
   g_preferences.putUShort(kConfigKeyCameraIndex, config.camera_node_index);
   g_preferences.putUInt(kConfigKeyPlatformId, config.platform_device_id);
+  g_preferences.putUChar(kConfigKeyCameraRole, config.camera_role);
+  g_preferences.putUShort(kConfigKeyCapturePhaseSeconds, config.capture_phase_seconds);
   g_preferences.putString(kConfigKeySsid, String(config.wifi_ssid));
   g_preferences.putString(kConfigKeyPassword, String(config.wifi_password));
   g_preferences.putString(kConfigKeyPlatformUrl, String(config.platform_url));
@@ -268,6 +284,13 @@ bool saveProvisionedConfig(const CameraNodeRuntimeConfig& config) {
 }
 
 String defaultCameraDisplayName() {
+  const char* role = runtimeCameraRole();
+  if (String(role) == "top") {
+    return String("Top Camera");
+  }
+  if (String(role) == "side") {
+    return String("Side Camera");
+  }
   const uint16_t index =
       camera_node_runtime_config_complete(g_runtime_config) ? g_runtime_config.camera_node_index : 0;
   if (index > 0) {
@@ -408,8 +431,10 @@ void sendHealthReport(const uint8_t* target_mac, uint32_t request_id = 0) {
     flags |= ESPNOW_HEALTH_FLAG_CONFIG_READY;
   }
   packet.value_u32_1 = flags;
-  packet.value_u32_2 =
-      camera_node_runtime_config_complete(g_runtime_config) ? g_runtime_config.camera_node_index : 0;
+  packet.value_u32_2 = camera_node_runtime_config_complete(g_runtime_config)
+                           ? (static_cast<uint32_t>(g_runtime_config.camera_role) << 16) |
+                                 static_cast<uint32_t>(g_runtime_config.camera_node_index)
+                           : 0;
 
   const esp_err_t err = esp_now_send(
       target_mac,
@@ -417,10 +442,11 @@ void sendHealthReport(const uint8_t* target_mac, uint32_t request_id = 0) {
       sizeof(packet));
   if (err == ESP_OK) {
     Serial.printf(
-        "[camera-node] HEALTH request=%u flags=%u camera_index=%u -> %s\n",
+        "[camera-node] HEALTH request=%u flags=%u camera_role=%s camera_index=%u -> %s\n",
         static_cast<unsigned int>(request_id),
         static_cast<unsigned int>(packet.value_u32_1),
-        static_cast<unsigned int>(packet.value_u32_2),
+        runtimeCameraRole(),
+        static_cast<unsigned int>(packet.value_u32_2 & 0xFFFFu),
         macToString(target_mac).c_str());
   } else {
     ++g_diagnostic_error_counters.espnow_failures;
@@ -531,6 +557,7 @@ bool sendHeartbeat() {
     heartbeat.status = "online";
     heartbeat.message = "camera online";
     heartbeat.software_version = kCameraSoftwareVersion;
+    heartbeat.camera_role = runtimeCameraRole();
     const unsigned long now = millis();
     heartbeat.diagnostics.valid = true;
     heartbeat.diagnostics.has_uptime_seconds = true;
@@ -630,7 +657,9 @@ bool registerDeviceNode() {
       "\"" +
       ",\"hardware_version\":\"" + String(BOARD_NAME) +
       "\",\"software_version\":\"" + String(kCameraSoftwareVersion) +
-      "\",\"capabilities\":{\"camera\":true}" +
+      "\",\"camera_role\":\"" + String(runtimeCameraRole()) +
+      "\",\"capabilities\":{\"camera\":true,\"camera_role\":\"" + String(runtimeCameraRole()) +
+      "\",\"capture_phase_seconds\":" + String(static_cast<unsigned int>(g_runtime_config.capture_phase_seconds)) + "}" +
       ",\"status\":\"online\"}";
 
   const int code = http.POST(body);
@@ -735,6 +764,7 @@ bool captureAndUploadImage() {
         frame->len,
         "esp32-camera.jpg",
         camera_node_runtime_config_complete(g_runtime_config) ? stableHardwareDeviceId().c_str() : nullptr,
+        camera_node_runtime_config_complete(g_runtime_config) ? runtimeCameraRole() : nullptr,
         idempotency_key.c_str(),
         &upload_http_status,
         &error);
@@ -852,9 +882,11 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
     }
     g_node_registered = false;
     Serial.printf(
-        "[camera-node] provisioning config saved version=%u camera_index=%u platform_device_id=%u ssid=%s\n",
+        "[camera-node] provisioning config saved version=%u camera_index=%u camera_role=%s phase_s=%u platform_device_id=%u ssid=%s\n",
         static_cast<unsigned int>(next_config.config_version),
         static_cast<unsigned int>(next_config.camera_node_index),
+        espnow_camera_role_label(next_config.camera_role),
+        static_cast<unsigned int>(next_config.capture_phase_seconds),
         static_cast<unsigned int>(next_config.platform_device_id),
         next_config.wifi_ssid);
     sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
@@ -874,6 +906,17 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
 
   if (command != EspNowCommandType::kCaptureImage) {
     sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kUnsupported);
+    return;
+  }
+
+  const uint8_t requested_camera_role = static_cast<uint8_t>(packet.value_u32_2 & 0xFFu);
+  if (requested_camera_role != 0 && camera_node_runtime_config_complete(g_runtime_config) &&
+      requested_camera_role != g_runtime_config.camera_role) {
+    Serial.printf(
+        "[camera-node] ignoring capture for camera_role=%s local_role=%s request=%u\n",
+        espnow_camera_role_label(requested_camera_role),
+        runtimeCameraRole(),
+        static_cast<unsigned int>(packet.request_id));
     return;
   }
 

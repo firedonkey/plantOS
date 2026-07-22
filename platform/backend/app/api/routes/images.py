@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_device_from_token, get_optional_current_user
 from app.api.errors import api_error
 from app.contracts import (
+    CameraRole,
     DiagnosticSeverity,
     EventType,
     ImageUploadPayload,
@@ -37,6 +38,8 @@ def upload_image(
     request: Request,
     device_id: int = Form(...),
     source_hardware_device_id: str | None = Form(default=None),
+    camera_node_id: str | None = Form(default=None),
+    camera_role: CameraRole | None = Form(default=None),
     metadata: str | None = Form(default=None),
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
@@ -53,6 +56,7 @@ def upload_image(
         if device.id != device_id:
             raise HTTPException(status_code=403, detail="Device token does not match device_id.")
 
+    source_hardware_device_id = _selected_source_hardware_device_id(source_hardware_device_id, camera_node_id)
     image_message = _parse_optional_image_upload_metadata(metadata)
     if image_message is not None:
         _validate_contract_device_id(image_message.device_id, device.id)
@@ -64,6 +68,7 @@ def upload_image(
                 details={"status": image_message.payload.status.value},
             )
         source_hardware_device_id = _source_hardware_device_id(image_message.payload, image_message.hardware_device_id)
+        camera_role = image_message.payload.camera_role or camera_role
         if image_message.payload.content_type and file.content_type and image_message.payload.content_type != file.content_type:
             raise api_error(
                 422,
@@ -77,6 +82,7 @@ def upload_image(
         device_id=device.id,
         source_hardware_device_id=source_hardware_device_id,
     )
+    camera_role = _validated_camera_role(source_node, camera_role)
     if image_message is not None and source_node is not None and source_node.node_role != image_message.node_role.value:
         raise HTTPException(status_code=409, detail="Image source node role does not match registration.")
 
@@ -103,6 +109,7 @@ def upload_image(
             upload_file=file,
             device_id=device.id,
             source_hardware_device_id=source_hardware_device_id,
+            camera_role=camera_role,
             settings=get_settings(),
             captured_at=image_message.payload.captured_at if image_message is not None else None,
         )
@@ -259,6 +266,20 @@ def _validate_source_node(
     return source_node
 
 
+def _selected_source_hardware_device_id(
+    source_hardware_device_id: str | None,
+    camera_node_id: str | None,
+) -> str | None:
+    if source_hardware_device_id and camera_node_id and source_hardware_device_id != camera_node_id:
+        raise api_error(
+            409,
+            "image_source_mismatch",
+            "source_hardware_device_id and camera_node_id must identify the same camera node.",
+            details={"source_hardware_device_id": source_hardware_device_id, "camera_node_id": camera_node_id},
+        )
+    return source_hardware_device_id or camera_node_id
+
+
 def _source_hardware_device_id(payload: ImageUploadPayload, envelope_hardware_device_id: str) -> str:
     if payload.source_hardware_device_id and payload.source_hardware_device_id != envelope_hardware_device_id:
         raise api_error(
@@ -267,7 +288,32 @@ def _source_hardware_device_id(payload: ImageUploadPayload, envelope_hardware_de
             "Image upload source_hardware_device_id does not match the envelope hardware_device_id.",
             details={"payload": payload.source_hardware_device_id, "envelope": envelope_hardware_device_id},
         )
-    return payload.source_hardware_device_id or envelope_hardware_device_id
+    if payload.camera_node_id and payload.camera_node_id not in {payload.source_hardware_device_id, envelope_hardware_device_id}:
+        raise api_error(
+            409,
+            "image_source_mismatch",
+            "Image upload camera_node_id does not match the envelope hardware_device_id.",
+            details={"camera_node_id": payload.camera_node_id, "envelope": envelope_hardware_device_id},
+        )
+    return payload.source_hardware_device_id or payload.camera_node_id or envelope_hardware_device_id
+
+
+def _validated_camera_role(source_node: DeviceNode | None, camera_role: CameraRole | None) -> str | None:
+    if source_node is None:
+        if camera_role is not None:
+            raise api_error(
+                422,
+                "camera_role_requires_source_node",
+                "camera_role requires a source camera node.",
+            )
+        return None
+    if source_node.node_role != "camera":
+        return None
+    if camera_role is not None:
+        if source_node.camera_role is not None and source_node.camera_role != camera_role.value:
+            raise HTTPException(status_code=409, detail="Image camera role does not match source node registration.")
+        return camera_role.value
+    return source_node.camera_role
 
 
 def _write_image_flow_event(
@@ -290,6 +336,9 @@ def _write_image_flow_event(
     data["hardware_device_id"] = source_node.hardware_device_id
     data["source_hardware_device_id"] = source_node.hardware_device_id
     data["source_node_role"] = source_node.node_role
+    if source_node.camera_role:
+        data["camera_node_id"] = source_node.hardware_device_id
+        data["camera_role"] = source_node.camera_role
     if fallback_content_type and "content_type" not in data:
         data["content_type"] = fallback_content_type
     if extra_data:

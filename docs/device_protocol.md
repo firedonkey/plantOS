@@ -59,7 +59,8 @@ Current backend ingestion:
 - `POST /api/hardware/ota/status` accepts legacy OTA status JSON and new `OTA_STATUS` envelopes.
 - `POST /api/image` still accepts legacy multipart image uploads. New firmware
   and the simulator may include an `IMAGE_UPLOAD` envelope in the multipart
-  `metadata` form field.
+  `metadata` form field. Camera uploads may also include `camera_node_id` and
+  `camera_role` (`top` or `side`) form fields.
 - `POST /api/hardware/image-upload/report` accepts `IMAGE_UPLOAD` envelopes for
   upload failures or upload-complete reports that do not carry the image binary.
 - `GET /api/devices/{id}/timeline` exposes canonical device events with
@@ -73,6 +74,10 @@ Current firmware support:
   `COMMAND` envelopes.
 - Master firmware sends contract `HEARTBEAT` envelopes with optional
   `hardware_model`, `hardware_version`, `actuators`, and `runtime` fields.
+- Master firmware accepts `SET_AMBIENT_LED_BELT` commands for the WS2811 ambient LED belt on
+  the master board. Params mirror the backend command `value` JSON object.
+- Camera firmware includes `camera_role` in registration and heartbeat payloads
+  when the node has been provisioned as `top` or `side`.
 - Firmware attempts non-blocking SNTP after Wi-Fi connection and uses UTC
   ISO8601 `sent_at` timestamps after synchronization.
 - NTP servers and retry timing are firmware build-time configuration values;
@@ -95,8 +100,8 @@ Image upload v1 metadata:
 
 - `status` is `uploaded` or `failed`.
 - Uploaded metadata may include `image_id`, `source_hardware_device_id`,
-  `source_node_role`, `captured_at`, `upload_reason`, `width`, `height`,
-  `content_type`, and `upload_ms`.
+  `source_node_role`, `camera_node_id`, `camera_role`, `captured_at`,
+  `upload_reason`, `width`, `height`, `content_type`, and `upload_ms`.
 - Failed metadata must include `failure_reason`.
 - The backend keeps actual image storage unchanged and emits
   `IMAGE_CAPTURE_STARTED`, `IMAGE_CAPTURED`, `IMAGE_UPLOAD_STARTED`,
@@ -105,16 +110,21 @@ Image upload v1 metadata:
 
 Heartbeat v1 additive state:
 
-- `actuators.ambient_light.enabled` and `brightness_percent` represent the grow
-  LED state.
+- `actuators.grow_light.enabled` and `brightness_percent` represent the grow-light
+  state. Older firmware may still send `actuators.ambient_light`; the backend
+  accepts it only as a legacy alias.
 - `runtime.capture_interval_seconds`, `ota_status`, `provisioning_status`,
   `camera_node_status`, `last_command_id`, `last_command_status`,
   `last_command_poll_at`, `last_command_poll_status`,
   `last_command_poll_error`, `last_command_poll_latency_ms`,
   `command_poll_stale_seconds`, `time_sync_status`, and `last_ntp_sync_at` are
   optional runtime details. Firmware omits fields that are not known.
+- `runtime.ambient_led_belt` reports WS2811 ambient LED belt state when available:
+  `available`, `enabled`, `mode`, `brightness`, `max_brightness`, `color`,
+  `logical_pixel_count`, `physical_led_count`, `color_order`, `data_gpio`,
+  `diagnostic_active`, and optional `last_error`.
 - The backend stores the full contract heartbeat payload in the canonical
-  `HEARTBEAT_RECEIVED` event data and maps ambient light state into the current
+  `HEARTBEAT_RECEIVED` event data and maps grow-light state into the current
   device status for existing dashboards.
 - The backend compares heartbeat state against the latest canonical heartbeat
   for the same hardware node to emit actuator, camera-node, OTA runtime, device
@@ -124,3 +134,22 @@ Heartbeat v1 additive state:
 - Command poll stale detection currently uses heartbeat runtime telemetry and
   emits `COMMAND_POLL_STALE` when `command_poll_stale_seconds` crosses
   `>= 300`.
+
+Ambient LED belt command params:
+
+```json
+{
+  "mode": "solid",
+  "enabled": true,
+  "brightness": 26,
+  "color": {"r": 255, "g": 0, "b": 0},
+  "logical_pixel_count": 14,
+  "color_order": "RGB"
+}
+```
+
+Accepted modes are `off`, `solid`, `breathe`, `pulse`, `chase`, `rainbow`, and
+`diagnostic`. Optional fields are `speed_ms`, `maximum_brightness`,
+`default_brightness`, `save_config`, and `cancel_diagnostic`. Firmware clamps
+runtime brightness to the configured maximum and rejects invalid config or speed
+fields before applying an idempotent command.

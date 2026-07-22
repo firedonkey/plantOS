@@ -34,6 +34,8 @@ class SimulatorNodeConfig:
     schema_version: str = DEFAULT_SCHEMA_VERSION
     display_name: str | None = None
     node_index: int | None = None
+    camera_role: str | None = None
+    capture_phase_seconds: int = 0
     heartbeat_interval_seconds: float = 10.0
     sensor_interval_seconds: float = 10.0
     image_interval_seconds: float = 300.0
@@ -126,7 +128,7 @@ def load_config_from_args(args: argparse.Namespace) -> SimulatorConfig:
                 diagnostics_interval_seconds=args.diagnostics_interval,
                 command_poll_interval_seconds=args.command_poll_interval,
                 ota_step_delay_seconds=args.ota_step_delay,
-                capabilities=["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"],
+                capabilities=["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"],
                 scenarios=_normalize_scenarios(args.scenario),
                 ota_failure_rate=_clamp_rate(args.ota_failure_rate),
                 command_failure_rate=_clamp_rate(args.command_failure_rate),
@@ -134,6 +136,7 @@ def load_config_from_args(args: argparse.Namespace) -> SimulatorConfig:
             )
         )
         for camera_index in range(1, max(0, args.camera_nodes) + 1):
+            camera_role = _default_camera_role(camera_index)
             nodes.append(
                 SimulatorNodeConfig(
                     device_id=args.device_id,
@@ -143,8 +146,10 @@ def load_config_from_args(args: argparse.Namespace) -> SimulatorConfig:
                     firmware_version=args.firmware_version,
                     hardware_model=DEFAULT_CAMERA_MODEL,
                     schema_version=args.schema_version,
-                    display_name=f"Simulator camera {device_number}.{camera_index}",
+                    display_name=f"Simulator {camera_role or 'camera'} camera {device_number}.{camera_index}",
                     node_index=camera_index,
+                    camera_role=camera_role,
+                    capture_phase_seconds=_default_capture_phase_seconds(camera_role),
                     heartbeat_interval_seconds=args.heartbeat_interval,
                     sensor_interval_seconds=args.sensor_interval,
                     image_interval_seconds=args.image_interval,
@@ -198,6 +203,8 @@ def _load_config_file(path: Path, args: argparse.Namespace) -> SimulatorConfig:
                 schema_version=str(item.get("schema_version") or args.schema_version),
                 display_name=item.get("display_name"),
                 node_index=_optional_int(item.get("node_index")),
+                camera_role=_optional_camera_role(item.get("camera_role")),
+                capture_phase_seconds=int(item.get("capture_phase_seconds") or 0),
                 heartbeat_interval_seconds=float(item.get("heartbeat_interval_seconds") or args.heartbeat_interval),
                 sensor_interval_seconds=float(item.get("sensor_interval_seconds") or args.sensor_interval),
                 image_interval_seconds=float(item.get("image_interval_seconds") or args.image_interval),
@@ -252,13 +259,16 @@ def _expand_device_blocks(devices: list[dict[str, Any]]) -> list[dict[str, Any]]
             }
         )
         for camera_index in range(1, int(device.get("camera_nodes", 0)) + 1):
+            camera_role = _default_camera_role(camera_index)
             nodes.append(
                 {
                     **node_defaults,
                     "hardware_device_id": f"{master_id}-camera-{camera_index:02d}",
                     "node_role": "camera",
                     "node_index": camera_index,
-                    "display_name": f"Simulator camera {device_index}.{camera_index}",
+                    "camera_role": camera_role,
+                    "capture_phase_seconds": _default_capture_phase_seconds(camera_role),
+                    "display_name": f"Simulator {camera_role or 'camera'} camera {device_index}.{camera_index}",
                     "parent_hardware_device_id": master_id,
                     "capabilities": _default_capabilities("camera"),
                 }
@@ -269,7 +279,19 @@ def _expand_device_blocks(devices: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _default_capabilities(node_role: str) -> list[str]:
     if node_role == "camera":
         return ["camera", "image_capture", "diagnostics", "contract_polling"]
-    return ["ota", "ambient_led", "camera_gateway", "diagnostics", "contract_polling"]
+    return ["ota", "grow_light", "camera_gateway", "diagnostics", "contract_polling"]
+
+
+def _default_camera_role(camera_index: int) -> str | None:
+    if camera_index == 1:
+        return "top"
+    if camera_index == 2:
+        return "side"
+    return None
+
+
+def _default_capture_phase_seconds(camera_role: str | None) -> int:
+    return 30 if camera_role == "side" else 0
 
 
 def _clean_base_url(value: str) -> str:
@@ -285,6 +307,15 @@ def _optional_int(value: Any) -> int | None:
     if value in (None, ""):
         return None
     return int(value)
+
+
+def _optional_camera_role(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text not in {"top", "side"}:
+        raise ValueError("camera_role must be top or side.")
+    return text
 
 
 def _optional_float(value: Any) -> float | None:

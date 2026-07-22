@@ -15,6 +15,7 @@ import {
   HardwareHealth,
   HardwareNodeHealth,
   SensorReading,
+  CameraRole,
 } from "@/types";
 import { ApiError } from "./client";
 import type { RangeKey } from "@/components/ReadingTrendSection";
@@ -59,6 +60,8 @@ type ApiDeviceSummary = {
     id: number;
     content_url: string;
     timestamp: string;
+    source_hardware_device_id?: string | null;
+    camera_role?: CameraRole | null;
   } | null;
   node_summary?: {
     overall_status?: string | null;
@@ -110,6 +113,7 @@ type ApiHardwareDiagnostics = {
 type ApiHealthNode = {
   hardware_device_id: string;
   node_role?: string | null;
+  camera_role?: CameraRole | null;
   node_index?: number | null;
   display_name?: string | null;
   status: string;
@@ -120,7 +124,7 @@ type ApiHealthNode = {
 
 type ApiHealthCommand = {
   id: number;
-  target: "light" | "pump" | "camera";
+  target: "grow_light" | "light" | "pump" | "camera";
   action: "on" | "off" | "set_intensity" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
@@ -143,7 +147,7 @@ type ApiSensorReading = {
 type ApiCommandRead = {
   id: number;
   device_id: number;
-  target: "light" | "pump" | "camera";
+  target: "grow_light" | "light" | "pump" | "camera";
   action: "on" | "off" | "set_intensity" | "run" | "capture";
   value?: string | null;
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
@@ -156,7 +160,7 @@ type ApiCommandRead = {
 type ApiCommandEnvelope = {
   status: "accepted" | "unsupported" | "error";
   device_id: number;
-  command: "light" | "pump" | "capture";
+  command: "grow_light" | "light" | "pump" | "capture";
   action: string;
   queued: boolean;
   message: string;
@@ -170,10 +174,13 @@ type ApiDeviceImage = {
   id: number;
   content_url: string;
   timestamp: string;
+  source_hardware_device_id?: string | null;
+  camera_role?: CameraRole | null;
 };
 
 type ApiDeviceTimelapse = {
   device_id: number;
+  camera_role?: CameraRole | null;
   window_start: string;
   window_end: string;
   interval_minutes: number;
@@ -270,6 +277,12 @@ type ApiDeviceTimelineEvent = {
   message?: string | null;
   data?: Record<string, unknown> | null;
   created_at: string;
+};
+
+type CommandRequestOptions = {
+  intensityPercent?: number;
+  cameraRole?: CameraRole | "all";
+  cameraNodeId?: string;
 };
 
 type ApiDeviceTimeline = {
@@ -410,13 +423,13 @@ function mapCommand(command: ApiCommandRead): DeviceCommand {
 }
 
 function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRead["action"]): DeviceCommand["action"] {
-  if (target === "light" && action === "on") {
+  if ((target === "grow_light" || target === "light") && action === "on") {
     return "light_on";
   }
-  if (target === "light" && action === "off") {
+  if ((target === "grow_light" || target === "light") && action === "off") {
     return "light_off";
   }
-  if (target === "light" && action === "set_intensity") {
+  if ((target === "grow_light" || target === "light") && action === "set_intensity") {
     return "light_intensity";
   }
   if (target === "pump" && action === "run") {
@@ -432,6 +445,7 @@ function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | unde
   return {
     hardwareDeviceId: node.hardware_device_id,
     nodeRole: node.node_role ?? undefined,
+    cameraRole: node.camera_role ?? undefined,
     nodeIndex: node.node_index ?? undefined,
     displayName: node.display_name ?? undefined,
     status: normalizeHealthStatus(node.status),
@@ -568,6 +582,8 @@ export async function listDevices(token?: string): Promise<{ devices: Device[]; 
                 id: String(device.latest_image.id),
                 url: device.latest_image.content_url,
                 capturedAt: device.latest_image.timestamp,
+                cameraRole: device.latest_image.camera_role ?? undefined,
+                sourceHardwareDeviceId: device.latest_image.source_hardware_device_id ?? undefined,
               }
             : undefined,
         };
@@ -852,13 +868,13 @@ function buildMockDeviceTimeline(deviceId: string): DeviceTimeline {
       hardwareDeviceId: health?.primary?.hardwareDeviceId,
       nodeRole: "master",
       correlationId: "mock-command-light",
-      summary: `SET_LIGHT_BRIGHTNESS completed`,
+      summary: `SET_GROW_LIGHT_BRIGHTNESS completed`,
       data: {
         command_id: "mock-command-light",
-        command_type: "SET_LIGHT_BRIGHTNESS",
+        command_type: "SET_GROW_LIGHT_BRIGHTNESS",
         status: "completed",
         actuator_state: {
-          ambient_light: {
+          grow_light: {
             enabled: lightOn,
             brightness_percent: mockDashboard.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent ?? 0,
           },
@@ -962,6 +978,8 @@ export async function getDeviceDashboard(
           id: String(summary.latest_image.id),
           url: summary.latest_image.content_url,
           capturedAt: summary.latest_image.timestamp,
+          cameraRole: summary.latest_image.camera_role ?? undefined,
+          sourceHardwareDeviceId: summary.latest_image.source_hardware_device_id ?? undefined,
         }
       : undefined;
     const galleryImages =
@@ -970,6 +988,8 @@ export async function getDeviceDashboard(
             id: String(image.id),
             url: image.content_url,
             capturedAt: image.timestamp,
+            cameraRole: image.camera_role ?? undefined,
+            sourceHardwareDeviceId: image.source_hardware_device_id ?? undefined,
           }))
         : latestImage
           ? [latestImage]
@@ -1039,6 +1059,8 @@ function mapTimelapse(timelapse: ApiDeviceTimelapse): DeviceTimelapse {
       id: String(frame.id),
       url: frame.content_url,
       capturedAt: frame.timestamp,
+      cameraRole: frame.camera_role ?? timelapse.camera_role ?? undefined,
+      sourceHardwareDeviceId: frame.source_hardware_device_id ?? undefined,
     })),
     frameCount: timelapse.frame_count,
     totalImageCount: timelapse.total_image_count,
@@ -1089,7 +1111,7 @@ function filterMockHistory(history: DeviceDashboard["history"], range: RangeKey)
 export async function sendDeviceCommand(
   deviceId: string,
   action: DeviceCommand["action"],
-  options?: { intensityPercent?: number },
+  options?: CommandRequestOptions,
   token?: string,
 ): Promise<{ command: DeviceCommand; usedMock: boolean }> {
   try {
@@ -1124,7 +1146,7 @@ export async function sendDeviceCommand(
   }
 }
 
-function commandRequestForAction(action: DeviceCommand["action"], options?: { intensityPercent?: number }) {
+function commandRequestForAction(action: DeviceCommand["action"], options?: CommandRequestOptions) {
   switch (action) {
     case "light_on":
       return {
@@ -1159,10 +1181,18 @@ function commandRequestForAction(action: DeviceCommand["action"], options?: { in
         },
       };
     case "capture_image":
+      const capturePayload: { camera_role?: CameraRole | "all"; camera_node_id?: string } = {};
+      if (options?.cameraRole) {
+        capturePayload.camera_role = options.cameraRole;
+      }
+      if (options?.cameraNodeId) {
+        capturePayload.camera_node_id = options.cameraNodeId;
+      }
       return {
         path: (deviceId: string) => `/api/devices/${deviceId}/commands/capture`,
         init: {
           method: "POST",
+          ...(Object.keys(capturePayload).length ? { body: JSON.stringify(capturePayload) } : {}),
         },
       };
   }
@@ -1318,6 +1348,8 @@ export async function getDeviceSettingsDetails(
             id: String(device.latest_image.id),
             url: device.latest_image.content_url,
             capturedAt: device.latest_image.timestamp,
+            cameraRole: device.latest_image.camera_role ?? undefined,
+            sourceHardwareDeviceId: device.latest_image.source_hardware_device_id ?? undefined,
           }
         : undefined,
     };
