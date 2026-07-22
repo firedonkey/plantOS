@@ -41,6 +41,11 @@ export function DeviceDashboardScreen() {
   const nextLightAction = growLedOn ? "light_off" : "light_on";
   const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
   const lightIntensityDisabled = isCommandRunning || pendingLightIntensity;
+  const [ambientBeltBrightness, setAmbientBeltBrightness] = useState(10);
+  const pendingAmbientBeltColor = activeCommandAction === "ambient_belt_color" || isActionBlocked("ambient_belt_color");
+  const pendingAmbientBeltOff = activeCommandAction === "ambient_belt_off" || isActionBlocked("ambient_belt_off");
+  const ambientBeltColorDisabled = isCommandRunning || pendingAmbientBeltColor;
+  const ambientBeltOffDisabled = isCommandRunning || pendingAmbientBeltOff;
   const lightToggleLabel = pendingLightOn
     ? "Turning on..."
     : pendingLightOff
@@ -256,6 +261,57 @@ export function DeviceDashboardScreen() {
             ) : null}
           </div>
 
+          <div className="card stack-form ambient-led-belt-card">
+            <div className="ambient-led-belt-heading">
+              <div>
+                <h3>Ambient LED belt</h3>
+                <p className="subtitle">Bottom status belt | Brightness {ambientBeltBrightness}/51</p>
+              </div>
+              <button
+                className="ambient-belt-off-button"
+                disabled={ambientBeltOffDisabled}
+                onClick={() => runCommand("ambient_belt_off")}
+                type="button"
+              >
+                Off
+              </button>
+            </div>
+            <div className="ambient-color-grid" aria-label="Ambient LED belt colors">
+              {AMBIENT_LED_BELT_COLORS.map((option) => (
+                <button
+                  className="ambient-color-button"
+                  disabled={ambientBeltColorDisabled}
+                  key={option.key}
+                  onClick={() => runCommand("ambient_belt_color", { ambientColor: option.color, ambientBrightness: ambientBeltBrightness })}
+                  type="button"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`ambient-color-swatch ${option.key === "white" ? "ambient-color-swatch-light" : ""}`}
+                    style={{ backgroundColor: option.swatch }}
+                  />
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="ambient-brightness-control">
+              <label htmlFor="ambient-led-belt-brightness">
+                <span>Brightness</span>
+                <strong>{ambientBeltBrightness}/51</strong>
+              </label>
+              <input
+                id="ambient-led-belt-brightness"
+                aria-label="Ambient LED belt brightness"
+                max={51}
+                min={1}
+                onChange={(event) => setAmbientBeltBrightness(clampAmbientLedBeltBrightness(Number(event.currentTarget.value)))}
+                step={1}
+                type="range"
+                value={ambientBeltBrightness}
+              />
+            </div>
+          </div>
+
           <RecentImageGallery
             images={dashboard.recentImages.map((image) => ({
               ...image,
@@ -361,6 +417,13 @@ function clampLightIntensity(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function clampAmbientLedBeltBrightness(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 10;
+  }
+  return Math.max(1, Math.min(51, Math.round(value)));
+}
+
 function hasLightIntensitySupport(capabilities?: Record<string, unknown>): boolean {
   if (!capabilities) {
     return false;
@@ -378,3 +441,10 @@ function hasLightIntensitySupport(capabilities?: Record<string, unknown>): boole
   }
   return modes.some((mode) => ["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase()));
 }
+
+const AMBIENT_LED_BELT_COLORS = [
+  { key: "red", label: "Red", swatch: "#d93a32", color: { r: 255, g: 0, b: 0 } },
+  { key: "green", label: "Green", swatch: "#238855", color: { r: 0, g: 255, b: 0 } },
+  { key: "blue", label: "Blue", swatch: "#2d6cdf", color: { r: 0, g: 0, b: 255 } },
+  { key: "white", label: "White", swatch: "#ffffff", color: { r: 255, g: 255, b: 255 } },
+] as const;

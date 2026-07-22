@@ -55,3 +55,36 @@ test("web device API sends grow LED intensity as backend light command payload",
     assert.match(source, escaped(requiredText));
   }
 });
+
+test("web dashboard queues ambient LED belt color commands separately from grow LED controls", async () => {
+  const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
+  const hookSource = await readText("../src/hooks/useDeviceDashboard.ts");
+  const apiSource = await readText("../src/api/devices.ts");
+  const typeSource = await readText("../src/types/api.ts");
+
+  for (const requiredText of [
+    "Ambient LED belt",
+    "AMBIENT_LED_BELT_COLORS",
+    'runCommand("ambient_belt_color", { ambientColor: option.color, ambientBrightness: ambientBeltBrightness })',
+    'runCommand("ambient_belt_off")',
+    'aria-label="Ambient LED belt brightness"',
+  ]) {
+    assert.match(dashboardSource, escaped(requiredText));
+  }
+
+  for (const requiredText of [
+    'case "ambient_belt_color":',
+    'case "ambient_belt_off":',
+    'target: "ambient_led_belt"',
+    'action: "set"',
+    "path: (deviceId: string) => `/api/devices/${deviceId}/commands`,",
+    "clampAmbientLedBeltBrightness(options?.ambientBrightness ?? AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS)",
+  ]) {
+    assert.match(apiSource, escaped(requiredText));
+  }
+
+  assert.match(typeSource, escaped('"ambient_belt_color"'));
+  assert.match(typeSource, escaped('"ambient_belt_off"'));
+  assert.match(hookSource, escaped('return "Ambient LED belt color";'));
+  assert.match(hookSource, escaped('return "Ambient LED belt off";'));
+});

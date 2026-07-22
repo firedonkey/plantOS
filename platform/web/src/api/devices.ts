@@ -124,8 +124,8 @@ type ApiHealthNode = {
 
 type ApiHealthCommand = {
   id: number;
-  target: "grow_light" | "light" | "pump" | "camera";
-  action: "on" | "off" | "set_intensity" | "run" | "capture";
+  target: "grow_light" | "light" | "ambient_led_belt" | "pump" | "camera";
+  action: "on" | "off" | "set_intensity" | "set" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   timestamp: string;
@@ -147,8 +147,8 @@ type ApiSensorReading = {
 type ApiCommandRead = {
   id: number;
   device_id: number;
-  target: "grow_light" | "light" | "pump" | "camera";
-  action: "on" | "off" | "set_intensity" | "run" | "capture";
+  target: "grow_light" | "light" | "ambient_led_belt" | "pump" | "camera";
+  action: "on" | "off" | "set_intensity" | "set" | "run" | "capture";
   value?: string | null;
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
@@ -169,6 +169,8 @@ type ApiCommandEnvelope = {
   created_at?: string | null;
   value?: string | null;
 };
+
+type ApiCommandCreateResponse = ApiCommandEnvelope | ApiCommandRead;
 
 type ApiDeviceImage = {
   id: number;
@@ -283,7 +285,12 @@ type CommandRequestOptions = {
   intensityPercent?: number;
   cameraRole?: CameraRole | "all";
   cameraNodeId?: string;
+  ambientColor?: { r: number; g: number; b: number };
+  ambientBrightness?: number;
 };
+
+const AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS = 10;
+const AMBIENT_LED_BELT_MAX_BRIGHTNESS = 51;
 
 type ApiDeviceTimeline = {
   events?: ApiDeviceTimelineEvent[] | null;
@@ -414,7 +421,7 @@ function mapCommand(command: ApiCommandRead): DeviceCommand {
   return {
     id: String(command.id),
     deviceId: String(command.device_id),
-    action: mapCommandAction(command.target, command.action),
+    action: mapCommandAction(command.target, command.action, command.value),
     createdAt: command.completed_at ?? command.sent_at ?? command.created_at,
     status: mapCommandStatus(command.status),
     detail: command.message ?? undefined,
@@ -422,7 +429,7 @@ function mapCommand(command: ApiCommandRead): DeviceCommand {
   };
 }
 
-function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRead["action"]): DeviceCommand["action"] {
+function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRead["action"], value?: string | null): DeviceCommand["action"] {
   if ((target === "grow_light" || target === "light") && action === "on") {
     return "light_on";
   }
@@ -432,10 +439,42 @@ function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRe
   if ((target === "grow_light" || target === "light") && action === "set_intensity") {
     return "light_intensity";
   }
+  if (target === "ambient_led_belt" && action === "set") {
+    const params = parseCommandValue(value);
+    const mode = typeof params?.mode === "string" ? params.mode.toLowerCase() : "";
+    const brightness = numberFromUnknown(params?.brightness);
+    if (params?.enabled === false || mode === "off" || brightness === 0) {
+      return "ambient_belt_off";
+    }
+    return "ambient_belt_color";
+  }
   if (target === "pump" && action === "run") {
     return "pump_run";
   }
   return "capture_image";
+}
+
+function parseCommandValue(value?: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function mapHardwareNode(node?: ApiHealthNode | null): HardwareNodeHealth | undefined {
@@ -1116,7 +1155,13 @@ export async function sendDeviceCommand(
 ): Promise<{ command: DeviceCommand; usedMock: boolean }> {
   try {
     const request = commandRequestForAction(action, options);
-    const created = await apiRequest<ApiCommandEnvelope>(request.path(deviceId), request.init, token);
+    const created = await apiRequest<ApiCommandCreateResponse>(request.path(deviceId), request.init, token);
+    if (isApiCommandRead(created)) {
+      return {
+        usedMock: false,
+        command: mapCommand(created),
+      };
+    }
     return {
       usedMock: false,
       command: {
@@ -1146,6 +1191,10 @@ export async function sendDeviceCommand(
   }
 }
 
+function isApiCommandRead(payload: ApiCommandCreateResponse): payload is ApiCommandRead {
+  return "target" in payload && "device_id" in payload && "created_at" in payload;
+}
+
 function commandRequestForAction(action: DeviceCommand["action"], options?: CommandRequestOptions) {
   switch (action) {
     case "light_on":
@@ -1172,6 +1221,39 @@ function commandRequestForAction(action: DeviceCommand["action"], options?: Comm
           body: JSON.stringify({ intensity_percent: options?.intensityPercent ?? 0 }),
         },
       };
+    case "ambient_belt_color":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({
+            target: "ambient_led_belt",
+            action: "set",
+            value: {
+              enabled: true,
+              mode: "solid",
+              brightness: clampAmbientLedBeltBrightness(options?.ambientBrightness ?? AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS),
+              color: normalizeAmbientLedBeltColor(options?.ambientColor),
+            },
+          }),
+        },
+      };
+    case "ambient_belt_off":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({
+            target: "ambient_led_belt",
+            action: "set",
+            value: {
+              enabled: false,
+              mode: "off",
+              brightness: 0,
+            },
+          }),
+        },
+      };
     case "pump_run":
       return {
         path: (deviceId: string) => `/api/devices/${deviceId}/commands/pump`,
@@ -1196,6 +1278,28 @@ function commandRequestForAction(action: DeviceCommand["action"], options?: Comm
         },
       };
   }
+}
+
+function normalizeAmbientLedBeltColor(color?: { r: number; g: number; b: number }) {
+  return {
+    r: clampColorChannel(color?.r ?? 255),
+    g: clampColorChannel(color?.g ?? 0),
+    b: clampColorChannel(color?.b ?? 0),
+  };
+}
+
+function clampAmbientLedBeltBrightness(value: number): number {
+  if (!Number.isFinite(value)) {
+    return AMBIENT_LED_BELT_DEFAULT_BRIGHTNESS;
+  }
+  return Math.max(0, Math.min(AMBIENT_LED_BELT_MAX_BRIGHTNESS, Math.round(value)));
+}
+
+function clampColorChannel(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(255, Math.round(value)));
 }
 
 export async function requestDeviceSetupCode(

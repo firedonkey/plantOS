@@ -92,7 +92,14 @@ export type DeviceCommandStatus = "pending" | "sent" | "in_progress" | "complete
 export type DeviceCommand = {
   id: string;
   deviceId: string;
-  action: "light_on" | "light_off" | "light_intensity" | "pump_run" | "capture_image";
+  action:
+    | "light_on"
+    | "light_off"
+    | "light_intensity"
+    | "ambient_belt_color"
+    | "ambient_belt_off"
+    | "pump_run"
+    | "capture_image";
   createdAt: string;
   status: DeviceCommandStatus;
   detail?: string;

@@ -14,6 +14,8 @@ type CommandOptions = {
   intensityPercent?: number;
   cameraRole?: CameraRole | "all";
   cameraNodeId?: string;
+  ambientColor?: { r: number; g: number; b: number };
+  ambientBrightness?: number;
 };
 
 export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: boolean }) {
@@ -233,6 +235,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
             setCommandMessage(`Simulated ${friendlyCommandLabel(action)} in mock mode.`);
             setCommandTone("success");
           }
+        } else if (isAmbientLedBeltCommand(action)) {
+          setCommandMessage(`${friendlyCommandLabel(action)} queued.`);
+          setCommandTone("info");
         }
         setTrackedCommand(
           result.usedMock
@@ -369,6 +374,10 @@ function isLightCommand(action: DeviceCommand["action"]): boolean {
   return action === "light_on" || action === "light_off" || action === "light_intensity";
 }
 
+function isAmbientLedBeltCommand(action: DeviceCommand["action"]): boolean {
+  return action === "ambient_belt_color" || action === "ambient_belt_off";
+}
+
 function optimisticLightForCommand(
   action: DeviceCommand["action"],
   options: { intensityPercent?: number } | undefined,
@@ -428,6 +437,10 @@ function friendlyCommandLabel(action: DeviceCommand["action"]): string {
       return "Grow LED off";
     case "light_intensity":
       return "Grow LED brightness";
+    case "ambient_belt_color":
+      return "Ambient LED belt color";
+    case "ambient_belt_off":
+      return "Ambient LED belt off";
     case "pump_run":
       return "Legacy command";
     case "capture_image":
