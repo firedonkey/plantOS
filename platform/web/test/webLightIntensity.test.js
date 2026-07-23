@@ -47,10 +47,10 @@ test("web dashboard exposes independent grow LED red and white test controls", a
     'runCommand("light_red_intensity", { intensityPercent: redGrowLedIntensityDraft })',
     'runCommand("light_white_intensity", { intensityPercent: whiteGrowLedIntensityDraft })',
     "capabilities.grow_light_channel_control === true",
-    'String(capabilities.grow_light_driver ?? "").trim().toLowerCase() === "dual_al8860"',
   ]) {
     assert.match(dashboardSource, escaped(requiredText));
   }
+  assert.doesNotMatch(dashboardSource, /grow_light_driver|grow_light_red_ctrl_gpio|grow_light_white_ctrl_gpio/);
 
   for (const requiredText of [
     'case "light_red_intensity":',

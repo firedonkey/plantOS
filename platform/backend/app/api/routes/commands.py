@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_device_from_token
 from app.db.session import get_session
-from app.models import User
+from app.models import CommandAction, CommandTarget, User
 from app.schemas.commands import CommandAck, CommandCreate, CommandRead
 from app.services.commands import (
     acknowledge_command,
@@ -20,6 +20,7 @@ from app.services.demo import (
     is_demo_user,
 )
 from app.services.devices import get_device_for_user
+from app.services.device_nodes import list_nodes_for_device
 
 
 router = APIRouter(prefix="/api/devices/{device_id}/commands", tags=["commands"])
@@ -59,6 +60,13 @@ def create_device_command(
     device = get_device_for_user(session, current_user, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found.")
+    if (
+        payload.target in {CommandTarget.GROW_LIGHT, CommandTarget.LIGHT}
+        and payload.action == CommandAction.SET_CHANNEL_INTENSITY
+    ):
+        nodes = list_nodes_for_device(session, device.id)
+        if not _device_supports_grow_light_channel_control(nodes):
+            raise HTTPException(status_code=409, detail="Grow-light channel control is not supported by this device.")
     return create_command(session, device.id, payload)
 
 
@@ -94,3 +102,10 @@ def acknowledge_device_command(
     if command is None:
         raise HTTPException(status_code=404, detail="Command not found.")
     return acknowledge_command(session, command, payload)
+
+
+def _device_supports_grow_light_channel_control(nodes: list) -> bool:
+    return any(
+        (getattr(node, "capabilities", None) or {}).get("grow_light_channel_control") is True
+        for node in nodes
+    )

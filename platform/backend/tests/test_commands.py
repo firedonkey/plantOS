@@ -12,6 +12,7 @@ from app.main import app
 from app.models import Command, Device, User
 from app.models.base import Base
 from app.services.commands import CAPTURE_COMMAND_TIMEOUT_SECONDS, DEFAULT_COMMAND_TIMEOUT_SECONDS, OTA_COMMAND_TIMEOUT_SECONDS
+from app.services.device_nodes import upsert_device_node
 
 
 def test_default_command_timeout_is_20_seconds():
@@ -138,6 +139,15 @@ def test_light_intensity_command_accepts_percent_value():
 def test_grow_light_channel_intensity_command_accepts_json_value():
     client, device_id, _ = build_client_with_devices()
     try:
+        with client.testing_session_local() as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                capabilities={"grow_light_channel_control": True},
+            )
+
         response = client.post(
             f"/api/devices/{device_id}/commands",
             json={
@@ -153,6 +163,36 @@ def test_grow_light_channel_intensity_command_accepts_json_value():
         assert payload["action"] == "set_channel_intensity"
         assert payload["value"] == '{"brightness_percent":7,"channel":"red"}'
         assert payload["status"] == "pending"
+    finally:
+        teardown_overrides()
+
+
+def test_grow_light_channel_intensity_command_rejects_legacy_dual_driver_firmware():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        with client.testing_session_local() as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                capabilities={
+                    "grow_light_driver": "dual_al8860",
+                    "grow_light_red_ctrl_gpio": 18,
+                    "grow_light_white_ctrl_gpio": 8,
+                },
+            )
+
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={
+                "target": "grow_light",
+                "action": "set_channel_intensity",
+                "value": {"channel": "red", "brightness_percent": 7},
+            },
+        )
+
+        assert response.status_code == 409
     finally:
         teardown_overrides()
 

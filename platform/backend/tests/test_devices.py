@@ -597,6 +597,29 @@ def test_device_command_wrapper_apis():
             assert intensity_command.action == CommandAction.SET_INTENSITY
             assert intensity_command.value == "65"
 
+        unsupported_channel_response = client.post(
+            f"/api/devices/{device_id}/commands/grow-light-channel",
+            json={"channel": "red", "intensity_percent": 7},
+        )
+        assert unsupported_channel_response.status_code == 409
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            upsert_device_node(
+                session,
+                device_id=device_id,
+                hardware_device_id="pl-esp32-master",
+                node_role="master",
+                display_name="Master",
+                status="online",
+                capabilities={
+                    "light_control": True,
+                    "light_intensity_control": True,
+                    "light_control_modes": ["on_off", "intensity"],
+                    "grow_light_driver": "dual_al8860",
+                    "grow_light_channel_control": True,
+                },
+            )
+
         channel_response = client.post(
             f"/api/devices/{device_id}/commands/grow-light-channel",
             json={"channel": "red", "intensity_percent": 7},

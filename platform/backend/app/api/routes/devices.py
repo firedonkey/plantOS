@@ -1119,11 +1119,7 @@ def _node_supports_light_intensity(capabilities: dict) -> bool:
 
 
 def _node_supports_grow_light_channel_control(capabilities: dict) -> bool:
-    if capabilities.get("grow_light_channel_control") is True:
-        return True
-    if str(capabilities.get("grow_light_driver") or "").strip().lower() == "dual_al8860":
-        return True
-    return capabilities.get("grow_light_red_ctrl_gpio") is not None and capabilities.get("grow_light_white_ctrl_gpio") is not None
+    return capabilities.get("grow_light_channel_control") is True
 
 
 def _command_health(session: Session, device_id: int) -> CommandHealthSnapshot:

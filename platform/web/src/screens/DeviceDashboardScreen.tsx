@@ -514,13 +514,7 @@ function hasGrowLightChannelSupport(capabilities?: Record<string, unknown>): boo
   if (!capabilities) {
     return false;
   }
-  if (capabilities.grow_light_channel_control === true) {
-    return true;
-  }
-  if (String(capabilities.grow_light_driver ?? "").trim().toLowerCase() === "dual_al8860") {
-    return true;
-  }
-  return capabilities.grow_light_red_ctrl_gpio != null && capabilities.grow_light_white_ctrl_gpio != null;
+  return capabilities.grow_light_channel_control === true;
 }
 
 const AMBIENT_LED_BELT_COLORS = [
