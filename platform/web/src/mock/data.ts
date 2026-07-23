@@ -180,6 +180,10 @@ export const mockDashboards: Record<string, DeviceDashboard> = {
   "1": {
     device: mockDevices[0],
     hardwareHealth,
+    cameraImages: {
+      top: latestImage,
+      side: recentImages[1],
+    },
     recentImages,
     recentCommands,
     history,

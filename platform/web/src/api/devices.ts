@@ -14,6 +14,7 @@ import {
   HardwareDiagnostics,
   HardwareHealth,
   HardwareNodeHealth,
+  LatestImage,
   SensorReading,
   CameraRole,
 } from "@/types";
@@ -168,6 +169,8 @@ type ApiCommandEnvelope = {
   command_status?: string | null;
   created_at?: string | null;
   value?: string | null;
+  camera_role?: CameraRole | "all" | null;
+  camera_node_id?: string | null;
 };
 
 type ApiCommandCreateResponse = ApiCommandEnvelope | ApiCommandRead;
@@ -418,10 +421,13 @@ function mergeLatestReadingIntoHistory(history: SensorReading[], latestReading?:
 }
 
 function mapCommand(command: ApiCommandRead): DeviceCommand {
+  const captureTarget = mapCaptureCommandTarget(command);
   return {
     id: String(command.id),
     deviceId: String(command.device_id),
     action: mapCommandAction(command.target, command.action, command.value),
+    cameraRole: captureTarget.cameraRole,
+    cameraNodeId: captureTarget.cameraNodeId,
     createdAt: command.completed_at ?? command.sent_at ?? command.created_at,
     status: mapCommandStatus(command.status),
     detail: command.message ?? undefined,
@@ -468,6 +474,26 @@ function parseCommandValue(value?: string | null): Record<string, unknown> | nul
   } catch {
     return null;
   }
+}
+
+function mapCaptureCommandTarget(command: ApiCommandRead): { cameraRole?: CameraRole | "all"; cameraNodeId?: string } {
+  if (command.target !== "camera" || command.action !== "capture") {
+    return {};
+  }
+  const params = parseCommandValue(command.value);
+  const role = normalizeCameraRole(params?.camera_role);
+  const nodeId = typeof params?.camera_node_id === "string" && params.camera_node_id.trim()
+    ? params.camera_node_id.trim()
+    : undefined;
+  return { cameraRole: role, cameraNodeId: nodeId };
+}
+
+function normalizeCameraRole(value: unknown): CameraRole | "all" | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === "top" || normalized === "side" || normalized === "all" ? normalized : undefined;
 }
 
 function numberFromUnknown(value: unknown): number | undefined {
@@ -554,6 +580,30 @@ function mapHardwareHealth(health?: ApiDeviceSummary["hardware_health"] | null):
     friendlyStatus: normalizeFriendlyStatus(health.friendly_status),
     attentionReasons: health.attention_reasons ?? [],
   };
+}
+
+function mapDeviceImage(image?: ApiDeviceImage | ApiDeviceSummary["latest_image"] | null): LatestImage | undefined {
+  if (!image) {
+    return undefined;
+  }
+  return {
+    id: String(image.id),
+    url: image.content_url,
+    capturedAt: image.timestamp,
+    cameraRole: image.camera_role ?? undefined,
+    sourceHardwareDeviceId: image.source_hardware_device_id ?? undefined,
+  };
+}
+
+function uniqueImages(images: Array<LatestImage | undefined>): LatestImage[] {
+  const seen = new Set<string>();
+  return images.filter((image): image is LatestImage => {
+    if (!image || seen.has(image.id)) {
+      return false;
+    }
+    seen.add(image.id);
+    return true;
+  });
 }
 
 function normalizeHealthStatus(status?: string | null): HardwareNodeHealth["status"] {
@@ -1004,7 +1054,7 @@ export async function getDeviceDashboard(
   try {
     const readingsQuery = buildReadingsQuery(range);
     const includeTimelapse = options?.includeTimelapse ?? true;
-    const [summary, history, commands, recentImages, timelapse] = await Promise.all([
+    const [summary, history, commands, recentImages, topImages, sideImages, timelapse] = await Promise.all([
       apiRequest<ApiDeviceSummary>(`/api/devices/${deviceId}/summary`, {}, token),
       apiRequest<ApiSensorReading[]>(`/api/devices/${deviceId}/readings?${readingsQuery}`, {}, token),
       apiRequest<ApiCommandRead[]>(`/api/devices/${deviceId}/commands`, {}, token),
@@ -1014,29 +1064,36 @@ export async function getDeviceDashboard(
         }
         throw error;
       }),
+      apiRequest<ApiDeviceImage[]>(`/api/devices/${deviceId}/images?camera_role=top&limit=1`, {}, token).catch((error) => {
+        if (error instanceof ApiError && error.status === 404) {
+          return [];
+        }
+        throw error;
+      }),
+      apiRequest<ApiDeviceImage[]>(`/api/devices/${deviceId}/images?camera_role=side&limit=1`, {}, token).catch((error) => {
+        if (error instanceof ApiError && error.status === 404) {
+          return [];
+        }
+        throw error;
+      }),
       includeTimelapse ? getDeviceTimelapse(deviceId, token) : Promise.resolve(undefined),
     ]);
-    const latestImage = summary.latest_image
-      ? {
-          id: String(summary.latest_image.id),
-          url: summary.latest_image.content_url,
-          capturedAt: summary.latest_image.timestamp,
-          cameraRole: summary.latest_image.camera_role ?? undefined,
-          sourceHardwareDeviceId: summary.latest_image.source_hardware_device_id ?? undefined,
-        }
-      : undefined;
-    const galleryImages =
-      recentImages.length > 0
-        ? recentImages.map((image) => ({
-            id: String(image.id),
-            url: image.content_url,
-            capturedAt: image.timestamp,
-            cameraRole: image.camera_role ?? undefined,
-            sourceHardwareDeviceId: image.source_hardware_device_id ?? undefined,
-          }))
-        : latestImage
-          ? [latestImage]
-          : [];
+    const latestImage = mapDeviceImage(summary.latest_image);
+    const cameraImages: DeviceDashboard["cameraImages"] = {};
+    const topImage = mapDeviceImage(topImages[0]);
+    const sideImage = mapDeviceImage(sideImages[0]);
+    if (topImage) {
+      cameraImages.top = topImage;
+    }
+    if (sideImage) {
+      cameraImages.side = sideImage;
+    }
+    const galleryImages = uniqueImages([
+      ...recentImages.map((image) => mapDeviceImage(image)),
+      topImage,
+      sideImage,
+      latestImage,
+    ]);
     const latestReading = mapReading(summary.latest_reading);
     const mappedHistory = history
       .map((reading) => mapReading(reading)!)
@@ -1059,6 +1116,7 @@ export async function getDeviceDashboard(
           latestImage,
         },
         hardwareHealth: mapHardwareHealth(summary.hardware_health),
+        cameraImages,
         recentImages: galleryImages,
         timelapse,
         recentCommands: commands.map(mapCommand).filter((command) => command.action !== "pump_run").slice(0, 6),
@@ -1172,6 +1230,8 @@ export async function sendDeviceCommand(
         id: String(created.command_id ?? `${created.command}-${Date.now()}`),
         deviceId,
         action,
+        cameraRole: created.camera_role ?? options?.cameraRole,
+        cameraNodeId: created.camera_node_id ?? options?.cameraNodeId,
         createdAt: created.created_at ?? new Date().toISOString(),
         status: created.command_status ? mapCommandStatus(created.command_status) : created.queued ? "pending" : "failed",
         detail: created.message,
@@ -1187,6 +1247,8 @@ export async function sendDeviceCommand(
         id: `mock-${action}-${Date.now()}`,
         deviceId,
         action,
+        cameraRole: options?.cameraRole,
+        cameraNodeId: options?.cameraNodeId,
         createdAt: new Date().toISOString(),
         status: "completed",
         detail: "Mock mode command completed immediately.",

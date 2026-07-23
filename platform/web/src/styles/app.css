@@ -2471,6 +2471,92 @@ select {
   min-width: 160px;
 }
 
+.camera-views-panel {
+  overflow: hidden;
+}
+
+.camera-views-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pl-space-4);
+}
+
+.camera-view-card {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--pl-color-border-soft);
+  border-radius: var(--pl-radius-md);
+  background: var(--pl-color-surface-muted);
+}
+
+.camera-view-frame {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: var(--pl-color-surface-inset);
+}
+
+.camera-view-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-view-empty {
+  display: grid;
+  height: 100%;
+  min-height: 260px;
+  place-items: center;
+  gap: var(--pl-space-2);
+  padding: var(--pl-space-5);
+  color: var(--pl-color-text-secondary);
+  text-align: center;
+}
+
+.camera-view-empty strong {
+  color: var(--pl-color-text-primary);
+}
+
+.camera-view-empty span {
+  max-width: 260px;
+  font-size: var(--pl-font-size-meta);
+}
+
+.camera-view-card figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pl-space-3);
+  padding: var(--pl-space-3);
+  border-top: 1px solid var(--pl-color-border-soft);
+  background: var(--pl-color-surface);
+}
+
+.camera-view-card figcaption div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.camera-view-card figcaption span {
+  color: var(--pl-color-text-muted);
+  font-size: var(--pl-font-size-meta);
+  font-weight: 700;
+}
+
+.camera-view-card figcaption strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--pl-color-text-primary);
+  font-size: var(--pl-font-size-body);
+}
+
+.camera-view-capture-button {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
 .image-gallery-panel {
   overflow: hidden;
 }
@@ -3037,6 +3123,19 @@ select {
 
   .device-card-highlights {
     grid-template-columns: 1fr;
+  }
+
+  .camera-views-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-view-card figcaption {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .camera-view-capture-button {
+    width: 100%;
   }
 
   .image-gallery-layout {

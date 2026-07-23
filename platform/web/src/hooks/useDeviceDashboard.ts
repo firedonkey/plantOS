@@ -36,9 +36,12 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
   const [activeCommandAction, setActiveCommandAction] = useState<DeviceCommand["action"] | null>(null);
+  const [activeCommandScope, setActiveCommandScope] = useState<string | null>(null);
   const [trackedCommand, setTrackedCommand] = useState<{
     id: string;
     action: DeviceCommand["action"];
+    cameraRole?: CameraRole | "all";
+    cameraNodeId?: string;
     baselineImageId?: string | null;
   } | null>(null);
   const [optimisticLight, setOptimisticLight] = useState<OptimisticLightState | null>(null);
@@ -59,7 +62,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       setUsedMock(result.usedMock);
       setLastUpdatedAt(new Date().toISOString());
       if (trackedCommand && !result.usedMock) {
-        const latestImageId = result.dashboard.recentImages[0]?.id ?? result.dashboard.device.latestImage?.id ?? null;
+        const latestImageId = latestCaptureImageId(result.dashboard, trackedCommand.cameraRole, trackedCommand.cameraNodeId);
         const hasNewCaptureImage =
           trackedCommand.action === "capture_image" &&
           latestImageId !== null &&
@@ -103,7 +106,9 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           }
         } else if (
           !result.dashboard.recentCommands.some(
-            (command) => command.action === trackedCommand.action && ["pending", "sent", "in_progress"].includes(command.status),
+            (command) =>
+              commandScopeKey(command.action, command) === commandScopeKey(trackedCommand.action, trackedCommand) &&
+              ["pending", "sent", "in_progress"].includes(command.status),
           )
         ) {
           if (trackedCommand.action === "capture_image") {
@@ -196,27 +201,30 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
   }, [autoRefreshEnabled, deviceId, refresh, refreshIntervalMs]);
 
   const isActionBlocked = useCallback(
-    (action: DeviceCommand["action"]) => {
-      if (isCommandRunning && activeCommandAction === action) {
+    (action: DeviceCommand["action"], options?: CommandOptions) => {
+      const scope = commandScopeKey(action, options);
+      if (isCommandRunning && activeCommandAction === action && activeCommandScope === scope) {
         return true;
       }
       return Boolean(
         dashboard?.recentCommands.some(
-          (command) => command.action === action && ["pending", "sent", "in_progress"].includes(command.status),
+          (command) => commandScopeKey(command.action, command) === scope && ["pending", "sent", "in_progress"].includes(command.status),
         ),
       );
     },
-    [activeCommandAction, dashboard?.recentCommands, isCommandRunning],
+    [activeCommandAction, activeCommandScope, dashboard?.recentCommands, isCommandRunning],
   );
 
   const runCommand = useCallback(
     async (action: DeviceCommand["action"], options?: CommandOptions) => {
-      if (isActionBlocked(action)) {
+      const commandScope = commandScopeKey(action, options);
+      if (isActionBlocked(action, options)) {
         setCommandTone("info");
         setCommandMessage(`${friendlyCommandLabel(action)} is already in progress for the device.`);
         return;
       }
       setActiveCommandAction(action);
+      setActiveCommandScope(commandScope);
       setIsCommandRunning(true);
       const nextOptimisticLight = optimisticLightForCommand(action, options, dashboard);
       if (nextOptimisticLight) {
@@ -245,19 +253,29 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
             : {
                 id: result.command.id,
                 action,
+                cameraRole: result.command.cameraRole ?? options?.cameraRole,
+                cameraNodeId: result.command.cameraNodeId ?? options?.cameraNodeId,
                 baselineImageId:
                   action === "capture_image"
-                    ? dashboard?.recentImages[0]?.id ?? dashboard?.device.latestImage?.id ?? null
+                    ? latestCaptureImageId(
+                        dashboard,
+                        result.command.cameraRole ?? options?.cameraRole,
+                        result.command.cameraNodeId ?? options?.cameraNodeId,
+                      )
                     : undefined,
               },
         );
         if (!result.usedMock && action === "capture_image") {
-          const baselineImageId = dashboard?.recentImages[0]?.id ?? dashboard?.device.latestImage?.id ?? null;
+          const cameraRole = result.command.cameraRole ?? options?.cameraRole;
+          const cameraNodeId = result.command.cameraNodeId ?? options?.cameraNodeId;
+          const baselineImageId = latestCaptureImageId(dashboard, cameraRole, cameraNodeId);
           const refreshed = await waitForCaptureDashboardRefresh({
             deviceId,
             selectedRange,
             token: accessToken ?? undefined,
             commandId: result.command.id,
+            cameraRole,
+            cameraNodeId,
             baselineImageId,
             attempts: captureRefreshAttempts,
             delayMs: captureRefreshDelayMs,
@@ -265,7 +283,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
           setDashboard(refreshed.dashboard);
           setUsedMock(refreshed.usedMock);
           setLastUpdatedAt(new Date().toISOString());
-          const latestImageId = refreshed.dashboard.recentImages[0]?.id ?? refreshed.dashboard.device.latestImage?.id ?? null;
+          const latestImageId = latestCaptureImageId(refreshed.dashboard, cameraRole, cameraNodeId);
           const matchingCommand = refreshed.dashboard.recentCommands.find((command) => command.id === result.command.id);
           if (latestImageId !== null && latestImageId !== baselineImageId) {
             setTrackedCommand(null);
@@ -299,6 +317,7 @@ export function useDeviceDashboard(deviceId: string, options?: { autoRefresh?: b
       } finally {
         setIsCommandRunning(false);
         setActiveCommandAction(null);
+        setActiveCommandScope(null);
       }
     },
     [dashboard, deviceId, getAccessToken, isActionBlocked, selectedRange, token],
@@ -335,6 +354,8 @@ async function waitForCaptureDashboardRefresh({
   selectedRange,
   token,
   commandId,
+  cameraRole,
+  cameraNodeId,
   baselineImageId,
   attempts,
   delayMs,
@@ -343,6 +364,8 @@ async function waitForCaptureDashboardRefresh({
   selectedRange: RangeKey;
   token?: string;
   commandId: string;
+  cameraRole?: CameraRole | "all";
+  cameraNodeId?: string;
   baselineImageId: string | null;
   attempts: number;
   delayMs: number;
@@ -354,7 +377,7 @@ async function waitForCaptureDashboardRefresh({
     }
     const result = await getDeviceDashboard(deviceId, selectedRange, token, { includeTimelapse: false });
     lastResult = result;
-    const latestImageId = result.dashboard.recentImages[0]?.id ?? result.dashboard.device.latestImage?.id ?? null;
+    const latestImageId = latestCaptureImageId(result.dashboard, cameraRole, cameraNodeId);
     if (latestImageId !== null && latestImageId !== baselineImageId) {
       return result;
     }
@@ -364,6 +387,43 @@ async function waitForCaptureDashboardRefresh({
     }
   }
   return lastResult ?? getDeviceDashboard(deviceId, selectedRange, token, { includeTimelapse: false });
+}
+
+function commandScopeKey(
+  action: DeviceCommand["action"],
+  options?: { cameraRole?: CameraRole | "all"; cameraNodeId?: string },
+): string {
+  if (action !== "capture_image") {
+    return action;
+  }
+  if (options?.cameraNodeId) {
+    return `${action}:node:${options.cameraNodeId}`;
+  }
+  return `${action}:role:${options?.cameraRole ?? "top"}`;
+}
+
+function latestCaptureImageId(
+  dashboard: DeviceDashboard | null,
+  cameraRole?: CameraRole | "all",
+  cameraNodeId?: string,
+): string | null {
+  if (!dashboard) {
+    return null;
+  }
+  if (cameraNodeId) {
+    return dashboard.recentImages.find((image) => image.sourceHardwareDeviceId === cameraNodeId)?.id ?? null;
+  }
+  if (cameraRole === "side") {
+    return dashboard.cameraImages?.side?.id ?? dashboard.recentImages.find((image) => image.cameraRole === "side")?.id ?? null;
+  }
+  if (cameraRole === "all") {
+    return dashboard.recentImages[0]?.id ?? dashboard.device.latestImage?.id ?? null;
+  }
+  return (
+    dashboard.cameraImages?.top?.id ??
+    dashboard.recentImages.find((image) => (image.cameraRole ?? "top") === "top")?.id ??
+    (dashboard.device.latestImage?.cameraRole === "side" ? null : dashboard.device.latestImage?.id ?? null)
+  );
 }
 
 function delay(ms: number): Promise<void> {

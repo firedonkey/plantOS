@@ -106,7 +106,7 @@ bool mapCommandPayload(JsonObjectConst payload, PlatformCommand* command, String
   } else if (String(command_type) == PLANTLAB_COMMAND_REQUEST_DIAGNOSTICS) {
     command->target = "diagnostics";
     command->action = "request";
-    command->value = "";
+    command->value = String(params["reason"] | "");
   } else if (String(command_type) == PLANTLAB_COMMAND_UPDATE_CAPTURE_INTERVAL) {
     command->target = "camera";
     command->action = "update_capture_interval";

@@ -102,6 +102,8 @@ export type DeviceCommand = {
     | "ambient_belt_off"
     | "pump_run"
     | "capture_image";
+  cameraRole?: CameraRole | "all";
+  cameraNodeId?: string;
   createdAt: string;
   status: DeviceCommandStatus;
   detail?: string;
@@ -137,6 +139,7 @@ export type HardwareHealth = {
 export type DeviceDashboard = {
   device: Device;
   hardwareHealth?: HardwareHealth;
+  cameraImages?: Partial<Record<CameraRole, LatestImage>>;
   recentImages: LatestImage[];
   timelapse?: DeviceTimelapse;
   recentCommands: DeviceCommand[];

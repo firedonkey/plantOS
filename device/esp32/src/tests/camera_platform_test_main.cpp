@@ -12,6 +12,7 @@
 #include "camera_node_runtime_config.h"
 #include "camera/xiao_camera.h"
 #include "config.h"
+#include "contracts/plantlab_contracts.h"
 #include "espnow_test_protocol.h"
 #include "firmware_version.h"
 #include "ota/ota_update_manager.h"
@@ -38,16 +39,22 @@ constexpr char kConfigKeyBootCounter[] = "boot_count";
 constexpr char kNodeRoleCamera[] = "camera";
 constexpr char kCameraHardwareModel[] = "xiao_esp32s3_camera";
 constexpr const char* kCameraSoftwareVersion = plantlab::kCameraSoftwareVersion;
+constexpr uint16_t kTopCameraNodeIndex = 1;
+constexpr uint16_t kSideCameraNodeIndex = 2;
+constexpr uint16_t kTopCameraCapturePhaseSeconds = 0;
+constexpr uint16_t kSideCameraCapturePhaseSeconds = 30;
 XiaoCamera g_camera;
 Preferences g_preferences;
 std::unique_ptr<PlatformClient> g_platform_client;
 std::unique_ptr<plantlab::OtaUpdateManager> g_ota_update_manager;
 CameraNodeRuntimeConfig g_runtime_config{};
 String g_hardware_device_id;
+String g_serial_command_buffer;
 
 constexpr uint32_t kWifiReconnectRetryMs = 5000UL;
 constexpr uint32_t kHeartbeatHttpTimeoutMs = 8000UL;
 constexpr uint32_t kNodeRegisterRetryMs = 5000UL;
+constexpr uint32_t kCommandPollIntervalMs = 1000UL;
 constexpr uint8_t kImageUploadMaxAttempts = 3;
 constexpr uint32_t kImageUploadRetryBaseDelayMs = 1000UL;
 constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -55,6 +62,7 @@ constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 unsigned long g_last_wifi_attempt_ms = 0;
 unsigned long g_last_heartbeat_ms = 0;
 unsigned long g_last_node_register_attempt_ms = 0;
+unsigned long g_last_command_poll_ms = 0;
 unsigned long g_wifi_connect_started_at_ms = 0;
 bool g_wifi_connecting = false;
 bool g_wifi_ready = false;
@@ -204,6 +212,8 @@ const char* runtimeCameraRole() {
   return "";
 }
 
+void scheduleRestart(uint32_t delay_ms);
+
 void rebuildPlatformClient() {
   g_ota_update_manager.reset();
   g_platform_client.reset();
@@ -281,6 +291,114 @@ bool saveProvisionedConfig(const CameraNodeRuntimeConfig& config) {
   g_runtime_config = config;
   rebuildPlatformClient();
   return true;
+}
+
+void printRuntimeConfig() {
+  Serial.printf("[camera-node] hardware_device_id=%s\n", stableHardwareDeviceId().c_str());
+  Serial.printf("[camera-node] firmware_version=%s version_code=%d\n", kCameraSoftwareVersion, plantlab::kCameraSoftwareVersionCode);
+  Serial.printf("[camera-node] provisioned=%s complete=%s\n", g_runtime_config.provisioned ? "yes" : "no", camera_node_runtime_config_complete(g_runtime_config) ? "yes" : "no");
+  Serial.printf(
+      "[camera-node] camera_index=%u camera_role=%s phase_s=%u platform_device_id=%u\n",
+      static_cast<unsigned int>(g_runtime_config.camera_node_index),
+      runtimeCameraRole(),
+      static_cast<unsigned int>(g_runtime_config.capture_phase_seconds),
+      static_cast<unsigned int>(g_runtime_config.platform_device_id));
+  Serial.printf("[camera-node] wifi_ready=%s node_registered=%s base_url=%s\n", g_wifi_ready ? "yes" : "no", g_node_registered ? "yes" : "no", runtimePlatformUrl().c_str());
+}
+
+bool setStoredCameraRole(CameraRoleCode role) {
+  if (!camera_node_runtime_config_complete(g_runtime_config)) {
+    Serial.println("[camera-node] role update failed: no complete stored provisioning config");
+    return false;
+  }
+
+  CameraNodeRuntimeConfig next_config = g_runtime_config;
+  next_config.camera_role = static_cast<uint8_t>(role);
+  if (role == CameraRoleCode::kSide) {
+    next_config.camera_node_index = kSideCameraNodeIndex;
+    next_config.capture_phase_seconds = kSideCameraCapturePhaseSeconds;
+  } else {
+    next_config.camera_node_index = kTopCameraNodeIndex;
+    next_config.capture_phase_seconds = kTopCameraCapturePhaseSeconds;
+  }
+
+  if (camera_node_runtime_config_equal(g_runtime_config, next_config)) {
+    Serial.printf("[camera-node] role already %s\n", espnow_camera_role_label(next_config.camera_role));
+    printRuntimeConfig();
+    return true;
+  }
+
+  if (!saveProvisionedConfig(next_config)) {
+    Serial.println("[camera-node] role update failed: save failed");
+    return false;
+  }
+  g_node_registered = false;
+  Serial.printf(
+      "[camera-node] role updated to %s camera_index=%u phase_s=%u; Wi-Fi/token/platform settings preserved\n",
+      espnow_camera_role_label(next_config.camera_role),
+      static_cast<unsigned int>(next_config.camera_node_index),
+      static_cast<unsigned int>(next_config.capture_phase_seconds));
+  scheduleRestart(1500UL);
+  return true;
+}
+
+void queueLocalCapture() {
+  if (!camera_node_runtime_config_complete(g_runtime_config)) {
+    Serial.println("[camera-node] local capture rejected: no complete stored provisioning config");
+    return;
+  }
+  if (g_capture_requested || g_capture_in_progress) {
+    Serial.println("[camera-node] local capture rejected: capture already active");
+    return;
+  }
+  memset(g_capture_request_mac, 0, sizeof(g_capture_request_mac));
+  g_capture_request_id = 0;
+  g_capture_command_id = 0;
+  g_capture_request_received_at_ms = millis();
+  g_capture_request_has_sender = false;
+  g_capture_requested = true;
+  Serial.printf("[camera-node] local capture queued camera_role=%s\n", runtimeCameraRole());
+}
+
+void printSerialHelp() {
+  Serial.println("[camera-node] USB commands:");
+  Serial.println("  camera status");
+  Serial.println("  camera role side");
+  Serial.println("  camera role top");
+  Serial.println("  camera capture");
+  Serial.println("  camera help");
+}
+
+void handleSerialCommandLine(String line) {
+  line.trim();
+  if (line.length() == 0) {
+    return;
+  }
+  line.toLowerCase();
+
+  if (line == "help" || line == "camera help") {
+    printSerialHelp();
+    return;
+  }
+  if (line == "status" || line == "camera status") {
+    printRuntimeConfig();
+    return;
+  }
+  if (line == "camera capture" || line == "capture") {
+    queueLocalCapture();
+    return;
+  }
+  if (line == "camera role side" || line == "role side") {
+    setStoredCameraRole(CameraRoleCode::kSide);
+    return;
+  }
+  if (line == "camera role top" || line == "role top") {
+    setStoredCameraRole(CameraRoleCode::kTop);
+    return;
+  }
+
+  Serial.printf("[camera-node] unknown USB command: %s\n", line.c_str());
+  printSerialHelp();
 }
 
 String defaultCameraDisplayName() {
@@ -818,6 +936,152 @@ bool captureAndUploadImage() {
   return uploaded;
 }
 
+bool reportCameraCommandResult(
+    const PlatformCommand& command,
+    const char* status,
+    const char* message,
+    const char* error_code = nullptr) {
+  if (g_platform_client == nullptr) {
+    return false;
+  }
+  String error;
+  const bool reported = g_platform_client->report_contract_command_result(
+      command,
+      stableHardwareDeviceId().c_str(),
+      kNodeRoleCamera,
+      status,
+      message,
+      false,
+      false,
+      &error,
+      -1,
+      error_code);
+  if (!reported) {
+    Serial.printf("[camera-node] command result report failed command_id=%d status=%s error=%s\n", command.id, status, error.c_str());
+    recordDiagnosticError("command_result_failed", "command result report failed");
+    return false;
+  }
+  clearRecoveredDiagnosticError("command_result_failed");
+  Serial.printf("[camera-node] command %d marked %s: %s\n", command.id, status, message == nullptr ? "" : message);
+  return true;
+}
+
+bool cameraCommandTargetsThisNode(const PlatformCommand& command) {
+  if (command.target_hardware_device_id.length() > 0 && command.target_hardware_device_id != stableHardwareDeviceId()) {
+    return false;
+  }
+  String role = command.target_camera_role.length() > 0 ? command.target_camera_role : command.value;
+  role.trim();
+  role.toLowerCase();
+  if (role.length() == 0 || role == "all") {
+    return true;
+  }
+  return role == runtimeCameraRole();
+}
+
+void executeDirectCaptureCommand(const PlatformCommand& command) {
+  if (!cameraCommandTargetsThisNode(command)) {
+    reportCameraCommandResult(
+        command,
+        PLANTLAB_COMMAND_STATUS_REJECTED,
+        "camera role does not match this node",
+        PLANTLAB_COMMAND_ERROR_UNSUPPORTED_TARGET);
+    return;
+  }
+
+  if (g_capture_requested || g_capture_in_progress) {
+    reportCameraCommandResult(
+        command,
+        PLANTLAB_COMMAND_STATUS_FAILED,
+        "camera is busy capturing another image",
+        PLANTLAB_COMMAND_ERROR_DEVICE_BUSY);
+    return;
+  }
+
+  reportCameraCommandResult(command, PLANTLAB_COMMAND_STATUS_IN_PROGRESS, "camera capture started");
+  g_capture_requested = false;
+  g_capture_request_has_sender = false;
+  g_capture_request_id = 0;
+  g_capture_command_id = static_cast<uint32_t>(command.id);
+  g_capture_request_received_at_ms = millis();
+  g_capture_in_progress = true;
+
+  Serial.printf("[camera-node] direct capture command_id=%d camera_role=%s\n", command.id, runtimeCameraRole());
+  enterActiveCaptureMode();
+  const bool success = captureAndUploadImage();
+  enterIdlePowerMode();
+  g_capture_in_progress = false;
+
+  if (success) {
+    reportCameraCommandResult(command, PLANTLAB_COMMAND_STATUS_COMPLETED, "camera uploaded a new image");
+  } else {
+    reportCameraCommandResult(
+        command,
+        PLANTLAB_COMMAND_STATUS_FAILED,
+        "camera capture failed",
+        PLANTLAB_COMMAND_ERROR_INTERNAL_ERROR);
+  }
+  g_capture_command_id = 0;
+}
+
+void handlePolledPlatformCommand(const PlatformCommand& command) {
+  if (!command.valid) {
+    return;
+  }
+  Serial.printf(
+      "[camera-node] command polled id=%d target=%s action=%s type=%s camera_role=%s hardware_target=%s\n",
+      command.id,
+      command.target.c_str(),
+      command.action.c_str(),
+      command.command_type.c_str(),
+      command.target_camera_role.c_str(),
+      command.target_hardware_device_id.c_str());
+  if (command.target == "camera" && command.action == "capture") {
+    executeDirectCaptureCommand(command);
+    return;
+  }
+  reportCameraCommandResult(
+      command,
+      PLANTLAB_COMMAND_STATUS_REJECTED,
+      "camera node supports capture commands only",
+      PLANTLAB_COMMAND_ERROR_UNSUPPORTED_TARGET);
+}
+
+void serviceCommandPoll(unsigned long now) {
+  if (
+      g_platform_client == nullptr ||
+      !g_node_registered ||
+      !platform_enabled() ||
+      !g_wifi_ready ||
+      g_capture_requested ||
+      g_capture_in_progress ||
+      g_restart_scheduled ||
+      now - g_last_command_poll_ms < kCommandPollIntervalMs) {
+    return;
+  }
+  g_last_command_poll_ms = now;
+
+  PlatformCommand commands[1]{};
+  String error;
+  const int count = g_platform_client->poll_contract_commands(
+      stableHardwareDeviceId().c_str(),
+      kNodeRoleCamera,
+      kCameraSoftwareVersion,
+      kCameraHardwareModel,
+      commands,
+      1,
+      &error);
+  if (count < 0) {
+    Serial.printf("[camera-node] command poll failed: %s\n", error.c_str());
+    recordDiagnosticError("command_poll_failed", "command poll failed");
+    return;
+  }
+  clearRecoveredDiagnosticError("command_poll_failed");
+  for (int index = 0; index < count; ++index) {
+    handlePolledPlatformCommand(commands[index]);
+  }
+}
+
 void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
   if (len != static_cast<int>(sizeof(EspNowPacket))) {
     Serial.printf("[camera-node] ESP-NOW ignored packet length=%d\n", len);
@@ -1009,9 +1273,24 @@ void handleCaptureRequest() {
   g_capture_in_progress = false;
 }
 
+void serviceSerialCommands() {
+  while (Serial.available() > 0) {
+    const char c = static_cast<char>(Serial.read());
+    if (c == '\r' || c == '\n') {
+      handleSerialCommandLine(g_serial_command_buffer);
+      g_serial_command_buffer = "";
+      continue;
+    }
+    if (g_serial_command_buffer.length() < 96) {
+      g_serial_command_buffer += c;
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
+  g_serial_command_buffer.reserve(96);
 
   Serial.println();
   Serial.println("=== PlantLab ESP32 Camera Platform Test ===");
@@ -1035,6 +1314,7 @@ void setup() {
     Serial.printf("[camera-node] base_url: %s\n", g_platform_client->base_url().c_str());
     Serial.printf("[camera-node] device_id: %d\n", g_platform_client->device_id());
   }
+  printSerialHelp();
   plantlab::time_sync::begin();
   setupWiFi();
   setupEspNow();
@@ -1048,6 +1328,7 @@ void loop() {
     ESP.restart();
   }
 
+  serviceSerialCommands();
   maintainWiFiConnection();
 
   const unsigned long now = millis();
@@ -1059,6 +1340,7 @@ void loop() {
     g_last_heartbeat_ms = now;
     sendHeartbeat();
   }
+  serviceCommandPoll(now);
   if (
       g_ota_update_manager &&
       g_node_registered &&

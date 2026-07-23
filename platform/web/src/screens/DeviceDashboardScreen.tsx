@@ -62,14 +62,19 @@ export function DeviceDashboardScreen() {
         : growLedOn
           ? "Turn off"
           : "Turn on";
-  const captureDisabled = isCommandRunning || isActionBlocked("capture_image");
-  const captureLabel =
-    activeCommandAction === "capture_image" || isActionBlocked("capture_image")
-      ? "Capture pending"
-      : isCommandRunning
-        ? "Working..."
-        : "Capture image";
-  const latestHeroImage = dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
+  const topCapturePending = isActionBlocked("capture_image", { cameraRole: "top" });
+  const sideCapturePending = isActionBlocked("capture_image", { cameraRole: "side" });
+  const topCaptureLabel = topCapturePending ? "Capture pending" : "Capture top";
+  const sideCaptureLabel = sideCapturePending ? "Capture pending" : "Capture side";
+  const topCameraImage = dashboard
+    ? dashboard.cameraImages?.top ??
+      findLatestCameraImage(dashboard.recentImages, "top") ??
+      (dashboard.device.latestImage?.cameraRole === "side" ? undefined : dashboard.device.latestImage)
+    : undefined;
+  const sideCameraImage = dashboard
+    ? dashboard.cameraImages?.side ?? findLatestCameraImage(dashboard.recentImages, "side")
+    : undefined;
+  const latestHeroImage = topCameraImage ?? dashboard?.recentImages[0] ?? dashboard?.device.latestImage;
   const resolveImageUrl = (image: LatestImage): string | undefined => {
     if (imageAuthHeaders && shouldUseImageAuthHeaders(image.url)) {
       return protectedImageUrls[image.id];
@@ -96,10 +101,12 @@ export function DeviceDashboardScreen() {
   };
 
   useEffect(() => {
-    const imageCandidates = [
+    const imageCandidates = uniqueDashboardImages([
+      dashboard?.cameraImages?.top,
+      dashboard?.cameraImages?.side,
       ...(dashboard?.recentImages ?? []),
       ...(dashboard?.timelapse?.frames ?? []),
-    ];
+    ]);
 
     if (!imageCandidates.length) {
       revokeProtectedImageUrls(protectedImageUrlCacheRef.current);
@@ -176,7 +183,7 @@ export function DeviceDashboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders]);
+  }, [dashboard?.cameraImages, dashboard?.recentImages, dashboard?.timelapse?.frames, imageAuthHeaders]);
 
   useEffect(() => {
     return () => {
@@ -199,6 +206,29 @@ export function DeviceDashboardScreen() {
             latestImage={latestHeroImage}
             latestImageUrl={latestHeroImageUrl}
             lastUpdatedAt={lastUpdatedAt}
+          />
+
+          <CameraViewsRow
+            views={[
+              {
+                key: "top",
+                title: "Top view",
+                image: topCameraImage,
+                imageUrl: topCameraImage ? resolveImageUrl(topCameraImage) : undefined,
+                captureDisabled: topCapturePending,
+                captureLabel: topCaptureLabel,
+                onCapture: () => runCommand("capture_image", { cameraRole: "top" }),
+              },
+              {
+                key: "side",
+                title: "Side view",
+                image: sideCameraImage,
+                imageUrl: sideCameraImage ? resolveImageUrl(sideCameraImage) : undefined,
+                captureDisabled: sideCapturePending,
+                captureLabel: sideCaptureLabel,
+                onCapture: () => runCommand("capture_image", { cameraRole: "side" }),
+              },
+            ]}
           />
 
           {error ? <p className="status-banner status-banner-error">{error}</p> : null}
@@ -385,9 +415,9 @@ export function DeviceDashboardScreen() {
               ...image,
               url: resolveImageUrl(image),
             }))}
-            captureDisabled={captureDisabled}
-            captureLabel={captureLabel}
-            onCapture={() => runCommand("capture_image")}
+            captureDisabled={topCapturePending}
+            captureLabel={topCapturePending ? "Capture pending" : "Capture image"}
+            onCapture={() => runCommand("capture_image", { cameraRole: "top" })}
           />
 
           <TimelapsePlayer
@@ -428,6 +458,79 @@ export function DeviceDashboardScreen() {
   );
 }
 
+type CameraViewItem = {
+  key: "top" | "side";
+  title: string;
+  image?: LatestImage;
+  imageUrl?: string;
+  captureDisabled: boolean;
+  captureLabel: string;
+  onCapture: () => void;
+};
+
+function CameraViewsRow({ views }: { views: CameraViewItem[] }) {
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
+
+  const markImageFailed = (imageId: string) => {
+    setFailedImageIds((current) => {
+      const next = new Set(current);
+      next.add(imageId);
+      return next;
+    });
+  };
+
+  return (
+    <div className="card stack-form camera-views-panel">
+      <div className="section-header">
+        <div>
+          <h3>Camera views</h3>
+          <p className="subtitle">Latest top and side captures.</p>
+        </div>
+      </div>
+
+      <div className="camera-views-grid">
+        {views.map((view) => {
+          const image = view.image;
+          const imageUrl = view.imageUrl;
+          const imageFailed = image ? failedImageIds.has(image.id) : false;
+          return (
+            <figure className="camera-view-card" key={view.key}>
+              <div className="camera-view-frame">
+                {image && imageUrl && !imageFailed ? (
+                  <img
+                    alt={`PlantLab ${view.title.toLowerCase()} capture`}
+                    src={imageUrl}
+                    onError={() => markImageFailed(image.id)}
+                  />
+                ) : (
+                  <div className="camera-view-empty">
+                    <strong>{image ? "Image unavailable" : `${view.title} waiting`}</strong>
+                    <span>{image ? "The capture metadata is available." : "Capture this camera to fill the view."}</span>
+                  </div>
+                )}
+              </div>
+              <figcaption>
+                <div>
+                  <span>{view.title}</span>
+                  <strong>{image ? formatAge(image.capturedAt) : "No capture yet"}</strong>
+                </div>
+                <button
+                  className="secondary-button camera-view-capture-button"
+                  disabled={view.captureDisabled}
+                  onClick={view.onCapture}
+                  type="button"
+                >
+                  {view.captureLabel}
+                </button>
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function shouldUseImageAuthHeaders(url: string): boolean {
   const path = url.replace(/^https?:\/\/[^/]+/i, "");
   return path.startsWith("/api/images/") && path.split("?")[0].endsWith("/content");
@@ -451,6 +554,21 @@ function sameStringRecord(left: Record<string, string>, right: Record<string, st
 
 function revokeProtectedImageUrls(cache: Record<string, { objectUrl: string }>) {
   Object.values(cache).forEach((entry) => URL.revokeObjectURL(entry.objectUrl));
+}
+
+function findLatestCameraImage(images: LatestImage[], role: NonNullable<LatestImage["cameraRole"]>): LatestImage | undefined {
+  return images.find((image) => (image.cameraRole ?? "top") === role);
+}
+
+function uniqueDashboardImages(images: Array<LatestImage | undefined>): LatestImage[] {
+  const seen = new Set<string>();
+  return images.filter((image): image is LatestImage => {
+    if (!image || seen.has(image.id)) {
+      return false;
+    }
+    seen.add(image.id);
+    return true;
+  });
 }
 
 function formatWaterLevel(state?: string, raw?: number) {

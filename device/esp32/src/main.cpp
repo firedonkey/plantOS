@@ -9,6 +9,7 @@
 #include <esp_system.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -81,10 +82,14 @@ constexpr uint32_t kBleWifiScanRetryDelayMs = 750UL;
 constexpr uint8_t kBleWifiScanMaxRetries = 3;
 constexpr uint32_t kFactoryResetHoldMs = 20000UL;
 constexpr uint16_t kCameraProvisioningConfigVersion = 1;
-constexpr uint16_t kDefaultCameraNodeIndex = 1;
-constexpr CameraRoleCode kDefaultCameraRole = CameraRoleCode::kTop;
-constexpr uint16_t kDefaultCameraCapturePhaseSeconds = 0;
+constexpr uint16_t kTopCameraNodeIndex = 1;
+constexpr uint16_t kSideCameraNodeIndex = 2;
+constexpr uint16_t kTopCameraCapturePhaseSeconds = 0;
+constexpr uint16_t kSideCameraCapturePhaseSeconds = 30;
+constexpr CameraRoleCode kTopCameraRole = CameraRoleCode::kTop;
+constexpr CameraRoleCode kSideCameraRole = CameraRoleCode::kSide;
 constexpr uint32_t kCameraProvisioningRetryMs = 5000UL;
+constexpr uint32_t kManualCameraProvisioningWindowMs = 120000UL;
 constexpr uint32_t kCameraBootstrapCaptureRetryMs = 3000UL;
 constexpr uint8_t kCameraBootstrapCaptureMaxAttempts = 6;
 constexpr uint32_t kCameraCaptureFlightTimeoutMs = 30000UL;
@@ -99,6 +104,24 @@ constexpr uint32_t kMasterNodeRegisterRetryMs = 5000UL;
 constexpr uint32_t kScheduledCaptureRetryDelayMs = 3000UL;
 constexpr bool kCameraScheduledCaptureEnabled = true;
 constexpr bool kVerboseSensorPollingLogs = false;
+
+enum class CameraProvisioningSlotId : uint8_t {
+  kTop = 0,
+  kSide = 1,
+};
+
+struct CameraProvisioningSlotConfig {
+  CameraProvisioningSlotId id;
+  const char* name;
+  uint16_t camera_node_index;
+  CameraRoleCode camera_role;
+  uint16_t capture_phase_seconds;
+};
+
+constexpr CameraProvisioningSlotConfig kCameraProvisioningSlots[] = {
+    {CameraProvisioningSlotId::kTop, "top", kTopCameraNodeIndex, kTopCameraRole, kTopCameraCapturePhaseSeconds},
+    {CameraProvisioningSlotId::kSide, "side", kSideCameraNodeIndex, kSideCameraRole, kSideCameraCapturePhaseSeconds},
+};
 
 struct DeviceConfig {
   String wifi_ssid;
@@ -133,6 +156,7 @@ struct CameraCaptureFlight {
   bool delivery_failed = false;
   bool retry_available = false;
   int command_id = 0;
+  uint8_t camera_role = 0;
   uint32_t request_id = 0;
   unsigned long started_at_ms = 0;
   unsigned long last_delivery_failure_ms = 0;
@@ -223,6 +247,7 @@ plantlab::BleProvisioningService g_ble_provisioning;
 std::unique_ptr<PlatformClient> g_platform_client;
 std::unique_ptr<plantlab::OtaUpdateManager> g_ota_update_manager;
 MasterCaptureScheduleState g_camera_capture_schedule{};
+MasterCaptureScheduleState g_side_camera_capture_schedule{};
 
 DeviceConfig g_config;
 DeviceConfig g_previous_active_config;
@@ -260,12 +285,17 @@ bool g_espnow_ready = false;
 uint32_t g_next_espnow_request_id = 1;
 MasterProvisioningSession g_camera_provisioning_session{};
 bool g_camera_provisioning_acknowledged = false;
+CameraProvisioningSlotId g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
+bool g_camera_provisioning_manual_active = false;
+unsigned long g_camera_provisioning_manual_deadline_ms = 0;
 bool g_camera_runtime_ready = false;
 unsigned long g_last_local_sensor_read_ms = 0;
 unsigned long g_last_water_level_diagnostic_ms = 0;
 String g_serial_command_buffer;
 unsigned long g_last_camera_provisioning_attempt_ms = 0;
 constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t g_camera_provisioning_target_mac[6] = {0};
+bool g_camera_provisioning_target_mac_known = false;
 uint8_t g_camera_target_mac[6] = {0};
 bool g_camera_target_mac_known = false;
 bool g_camera_bootstrap_capture_active = false;
@@ -297,11 +327,17 @@ bool g_master_node_registered = false;
 unsigned long g_last_master_node_register_attempt_ms = 0;
 bool g_scheduled_capture_retry_pending = false;
 unsigned long g_scheduled_capture_retry_at_ms = 0;
+uint8_t g_scheduled_capture_retry_camera_role = static_cast<uint8_t>(CameraRoleCode::kTop);
 
 const char* manualCaptureAckMessage(EspNowAckStatus ack_status);
 void clearPendingCaptureCommand();
 void clearCameraCaptureFlight();
-void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now, bool retry_available = false);
+void markCameraCaptureInFlight(
+    uint32_t request_id,
+    int command_id,
+    unsigned long now,
+    bool retry_available = false,
+    uint8_t camera_role = 0);
 bool sendEspNowPauseCaptureCommand(bool paused);
 void setCameraSchedulePausedForManual(bool paused);
 void queuePendingCaptureCommandResult(const char* status, const String& message);
@@ -320,6 +356,8 @@ void noteEspNowSend(
     int command_id,
     const uint8_t* target_mac,
     unsigned long now);
+bool ensureEspNowPeer(const uint8_t* peer_mac);
+MasterCaptureScheduleState* captureScheduleForRole(uint8_t camera_role);
 void startProvisioningMode();
 bool provisioningPriorityActive();
 void pauseNormalTasksForProvisioning();
@@ -879,7 +917,154 @@ void scheduleRestart(unsigned long delay_ms, const char* reason) {
   g_restart_reason = reason == nullptr || strlen(reason) == 0 ? "unspecified" : reason;
 }
 
-bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
+const CameraProvisioningSlotConfig& cameraProvisioningSlot(CameraProvisioningSlotId slot_id) {
+  switch (slot_id) {
+    case CameraProvisioningSlotId::kSide:
+      return kCameraProvisioningSlots[1];
+    case CameraProvisioningSlotId::kTop:
+    default:
+      return kCameraProvisioningSlots[0];
+  }
+}
+
+const CameraProvisioningSlotConfig& activeCameraProvisioningSlot() {
+  return cameraProvisioningSlot(g_camera_provisioning_slot_id);
+}
+
+bool cameraProvisioningSlotFromName(const String& value, CameraProvisioningSlotId* slot_id) {
+  String normalized = value;
+  normalized.trim();
+  normalized.toLowerCase();
+  if (normalized == "top" || normalized == "1") {
+    if (slot_id != nullptr) {
+      *slot_id = CameraProvisioningSlotId::kTop;
+    }
+    return true;
+  }
+  if (normalized == "side" || normalized == "2") {
+    if (slot_id != nullptr) {
+      *slot_id = CameraProvisioningSlotId::kSide;
+    }
+    return true;
+  }
+  return false;
+}
+
+bool parseMacAddress(const String& value, uint8_t* mac) {
+  if (mac == nullptr) {
+    return false;
+  }
+  int parts[6] = {0, 0, 0, 0, 0, 0};
+  char trailing = '\0';
+  const int parsed = std::sscanf(
+      value.c_str(),
+      "%x:%x:%x:%x:%x:%x%c",
+      &parts[0],
+      &parts[1],
+      &parts[2],
+      &parts[3],
+      &parts[4],
+      &parts[5],
+      &trailing);
+  if (parsed != 6) {
+    return false;
+  }
+  for (int index = 0; index < 6; ++index) {
+    if (parts[index] < 0 || parts[index] > 0xFF) {
+      return false;
+    }
+    mac[index] = static_cast<uint8_t>(parts[index]);
+  }
+  return true;
+}
+
+const uint8_t* activeCameraProvisioningTargetMac() {
+  return g_camera_provisioning_target_mac_known ? g_camera_provisioning_target_mac : kEspNowBroadcastMac;
+}
+
+void requestCameraProvisioningSlot(
+    CameraProvisioningSlotId slot_id,
+    const uint8_t* target_mac,
+    unsigned long now) {
+  g_camera_provisioning_slot_id = slot_id;
+  g_camera_provisioning_manual_active = true;
+  g_camera_provisioning_manual_deadline_ms = now + kManualCameraProvisioningWindowMs;
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_acknowledged = false;
+  g_last_camera_provisioning_attempt_ms = 0;
+  if (target_mac != nullptr) {
+    memcpy(g_camera_provisioning_target_mac, target_mac, sizeof(g_camera_provisioning_target_mac));
+    g_camera_provisioning_target_mac_known = true;
+  } else {
+    memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
+    g_camera_provisioning_target_mac_known = false;
+  }
+
+  const CameraProvisioningSlotConfig& slot = activeCameraProvisioningSlot();
+  Serial.printf(
+      "[camera-provisioning] manual slot=%s camera_index=%u role=%s target=%s window_ms=%lu\n",
+      slot.name,
+      static_cast<unsigned int>(slot.camera_node_index),
+      espnow_camera_role_label(static_cast<uint8_t>(slot.camera_role)),
+      macToString(activeCameraProvisioningTargetMac()).c_str(),
+      static_cast<unsigned long>(kManualCameraProvisioningWindowMs));
+  if (slot.id == CameraProvisioningSlotId::kSide && !g_camera_provisioning_target_mac_known) {
+    Serial.println("[camera-provisioning] warning: side provisioning is broadcast; power only the intended side camera");
+  }
+}
+
+void enableAutomaticTopCameraProvisioning(unsigned long now) {
+  (void)now;
+  g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
+  g_camera_provisioning_manual_active = false;
+  g_camera_provisioning_manual_deadline_ms = 0;
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_acknowledged = false;
+  g_last_camera_provisioning_attempt_ms = 0;
+  memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
+  g_camera_provisioning_target_mac_known = false;
+  Serial.println("[camera-provisioning] automatic top-camera provisioning enabled");
+}
+
+void stopCameraProvisioning(const char* reason) {
+  g_camera_provisioning_session = MasterProvisioningSession{};
+  g_camera_provisioning_acknowledged = true;
+  g_camera_provisioning_manual_active = false;
+  g_camera_provisioning_manual_deadline_ms = 0;
+  g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
+  memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
+  g_camera_provisioning_target_mac_known = false;
+  Serial.printf(
+      "[camera-provisioning] stopped reason=%s\n",
+      reason != nullptr && strlen(reason) > 0 ? reason : "manual");
+}
+
+void printCameraProvisioningStatus() {
+  const CameraProvisioningSlotConfig& slot = activeCameraProvisioningSlot();
+  unsigned long remaining_ms = 0;
+  if (g_camera_provisioning_manual_active) {
+    const unsigned long now = millis();
+    remaining_ms =
+        static_cast<long>(g_camera_provisioning_manual_deadline_ms - now) > 0
+            ? static_cast<unsigned long>(g_camera_provisioning_manual_deadline_ms - now)
+            : 0;
+  }
+  Serial.printf(
+      "[camera-provisioning] status slot=%s camera_index=%u role=%s target=%s manual=%u remaining_ms=%lu ack=%u session_state=%u runtime_ready=%u\n",
+      slot.name,
+      static_cast<unsigned int>(slot.camera_node_index),
+      espnow_camera_role_label(static_cast<uint8_t>(slot.camera_role)),
+      macToString(activeCameraProvisioningTargetMac()).c_str(),
+      g_camera_provisioning_manual_active ? 1U : 0U,
+      static_cast<unsigned long>(remaining_ms),
+      g_camera_provisioning_acknowledged ? 1U : 0U,
+      static_cast<unsigned int>(g_camera_provisioning_session.state),
+      g_camera_runtime_ready ? 1U : 0U);
+}
+
+bool buildCameraProvisioningPayload(
+    CameraProvisioningPayload* payload,
+    const CameraProvisioningSlotConfig& slot) {
   if (payload == nullptr || !hasWifiCredentials() || !hasRuntimeRegistration()) {
     return false;
   }
@@ -891,10 +1076,10 @@ bool buildCameraProvisioningPayload(CameraProvisioningPayload* payload) {
   return espnow_build_provisioning_payload(
       payload,
       kCameraProvisioningConfigVersion,
-      kDefaultCameraNodeIndex,
+      slot.camera_node_index,
       static_cast<uint32_t>(g_config.platform_device_id),
-      kDefaultCameraRole,
-      kDefaultCameraCapturePhaseSeconds,
+      slot.camera_role,
+      slot.capture_phase_seconds,
       g_config.wifi_ssid.c_str(),
       g_config.wifi_password.c_str(),
       platform_url.c_str(),
@@ -1002,6 +1187,8 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       g_camera_bootstrap_capture_active = false;
       g_camera_capture_schedule.has_sent_initial_request = false;
       g_camera_capture_schedule.last_capture_requested_ms = 0;
+      g_side_camera_capture_schedule.has_sent_initial_request = false;
+      g_side_camera_capture_schedule.last_capture_requested_ms = 0;
     }
     if (is_camera_capture_health) {
       clearCameraCaptureFlight();
@@ -1027,7 +1214,20 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       espnow_handle_provisioning_ack(&g_camera_provisioning_session, mac_addr, packet)) {
     g_camera_provisioning_acknowledged =
         g_camera_provisioning_session.state == MasterProvisioningState::kSucceeded;
-    if (g_camera_provisioning_acknowledged && !g_camera_runtime_ready &&
+    const CameraProvisioningPayload provisioned_payload = g_camera_provisioning_session.payload;
+    const bool provisioned_top_camera =
+        provisioned_payload.camera_role == static_cast<uint8_t>(CameraRoleCode::kTop);
+    if (g_camera_provisioning_acknowledged && mac_addr != nullptr) {
+      memcpy(g_camera_target_mac, mac_addr, sizeof(g_camera_target_mac));
+      g_camera_target_mac_known = true;
+    }
+    if (g_camera_provisioning_acknowledged && g_camera_provisioning_manual_active) {
+      g_camera_provisioning_manual_active = false;
+      g_camera_provisioning_manual_deadline_ms = 0;
+      memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
+      g_camera_provisioning_target_mac_known = false;
+    }
+    if (g_camera_provisioning_acknowledged && provisioned_top_camera && !g_camera_runtime_ready &&
         PLANTLAB_CAMERA_CAPTURE_ENABLED != 0) {
       g_camera_bootstrap_capture_active = true;
       g_camera_bootstrap_capture_attempts = 0;
@@ -1035,10 +1235,12 @@ void onEspNowDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len)
       Serial.println("[camera-schedule] bootstrap capture window armed after provisioning ACK");
     }
     Serial.printf(
-        "[camera-provisioning] ACK request=%u command=%s status=%s from %s\n",
+        "[camera-provisioning] ACK request=%u command=%s status=%s camera_index=%u role=%s from %s\n",
         static_cast<unsigned int>(packet.request_id),
         espnowCommandToString(command),
         espnowAckToString(static_cast<EspNowAckStatus>(packet.ack_status)),
+        static_cast<unsigned int>(provisioned_payload.camera_node_index),
+        espnow_camera_role_label(provisioned_payload.camera_role),
         mac_addr != nullptr ? macToString(mac_addr).c_str() : "<unknown>");
     return;
   }
@@ -1168,6 +1370,11 @@ bool sendCameraProvisioningPacket(unsigned long now) {
   if (!g_espnow_ready || !espnow_should_send_provisioning_packet(g_camera_provisioning_session)) {
     return false;
   }
+  if (!ensureEspNowPeer(g_camera_provisioning_session.target_mac)) {
+    ++g_diagnostic_error_counters.espnow_failures;
+    recordDiagnosticError("espnow_peer_failed", "camera provisioning peer add failed");
+    return false;
+  }
 
   EspNowPacket packet{};
   espnow_build_provisioning_packet(g_camera_provisioning_session, now, &packet);
@@ -1190,9 +1397,10 @@ bool sendCameraProvisioningPacket(unsigned long now) {
       now);
   espnow_mark_provisioning_packet_sent(&g_camera_provisioning_session, now);
   Serial.printf(
-      "[camera-provisioning] request=%u sent camera_index=%u target=%s\n",
+      "[camera-provisioning] request=%u sent camera_index=%u role=%s target=%s\n",
       static_cast<unsigned int>(packet.request_id),
       static_cast<unsigned int>(g_camera_provisioning_session.payload.camera_node_index),
+      espnow_camera_role_label(g_camera_provisioning_session.payload.camera_role),
       macToString(g_camera_provisioning_session.target_mac).c_str());
   return true;
 }
@@ -1201,6 +1409,12 @@ void serviceCameraProvisioning(unsigned long now) {
   const bool runtime_ready =
       g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode;
   if (!runtime_ready || g_camera_provisioning_acknowledged) {
+    return;
+  }
+  if (g_camera_provisioning_manual_active &&
+      static_cast<long>(now - g_camera_provisioning_manual_deadline_ms) >= 0) {
+    Serial.println("[camera-provisioning] manual provisioning window expired; returning to automatic top slot");
+    enableAutomaticTopCameraProvisioning(now);
     return;
   }
 
@@ -1215,12 +1429,13 @@ void serviceCameraProvisioning(unsigned long now) {
       return;
     }
     CameraProvisioningPayload payload{};
-    if (!buildCameraProvisioningPayload(&payload)) {
+    const CameraProvisioningSlotConfig& slot = activeCameraProvisioningSlot();
+    if (!buildCameraProvisioningPayload(&payload, slot)) {
       return;
     }
     espnow_start_provisioning_session(
         &g_camera_provisioning_session,
-        kEspNowBroadcastMac,
+        activeCameraProvisioningTargetMac(),
         g_next_espnow_request_id++,
         payload,
         now,
@@ -1270,14 +1485,15 @@ bool sendEspNowCaptureCommand(
   }
 
   noteEspNowSend(EspNowCommandType::kCaptureImage, packet.request_id, 0, target_mac, now);
+  MasterCaptureScheduleState* schedule = captureScheduleForRole(camera_role);
   if (mark_schedule) {
-    capture_schedule_mark_requested(&g_camera_capture_schedule, now);
+    capture_schedule_mark_requested(schedule, now);
   }
-  markCameraCaptureInFlight(packet.request_id, 0, now, retry_available && !g_scheduled_capture_retry_pending);
+  markCameraCaptureInFlight(packet.request_id, 0, now, retry_available && !g_scheduled_capture_retry_pending, camera_role);
   Serial.printf(
       "[camera-schedule] capture request=%u sent interval_ms=%lu camera_role=%s target=%s\n",
       static_cast<unsigned int>(packet.request_id),
-      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      static_cast<unsigned long>(schedule->interval_ms),
       camera_role == 0 ? "any" : espnow_camera_role_label(camera_role),
       macToString(target_mac).c_str());
   return true;
@@ -1324,13 +1540,13 @@ bool sendEspNowCaptureCommand(
   if (request_id_out != nullptr) {
     *request_id_out = packet.request_id;
   }
-  markCameraCaptureInFlight(packet.request_id, command_id, now, false);
+  markCameraCaptureInFlight(packet.request_id, command_id, now, false, camera_role);
 
   Serial.printf(
       "[camera-schedule] capture request=%u command_id=%lu interval_ms=%lu camera_role=%s target=%s\n",
       static_cast<unsigned int>(packet.request_id),
       static_cast<unsigned long>(packet.value_u32_1),
-      static_cast<unsigned long>(g_camera_capture_schedule.interval_ms),
+      static_cast<unsigned long>(captureScheduleForRole(camera_role)->interval_ms),
       camera_role == 0 ? "any" : espnow_camera_role_label(camera_role),
       macToString(target_mac).c_str());
   return true;
@@ -1412,6 +1628,13 @@ const char* manualCaptureAckMessage(EspNowAckStatus ack_status) {
   }
 }
 
+MasterCaptureScheduleState* captureScheduleForRole(uint8_t camera_role) {
+  if (camera_role == static_cast<uint8_t>(CameraRoleCode::kSide)) {
+    return &g_side_camera_capture_schedule;
+  }
+  return &g_camera_capture_schedule;
+}
+
 void clearPendingCaptureCommand() {
   g_pending_capture_command = PendingCaptureCommand{};
 }
@@ -1421,25 +1644,33 @@ void clearCameraCaptureFlight() {
   g_ambient_led_belt.resumeAfterCameraCapture(millis());
 }
 
-void markCameraCaptureInFlight(uint32_t request_id, int command_id, unsigned long now, bool retry_available) {
+void markCameraCaptureInFlight(
+    uint32_t request_id,
+    int command_id,
+    unsigned long now,
+    bool retry_available,
+    uint8_t camera_role) {
   g_ambient_led_belt.suspendForCameraCapture(now);
   g_camera_capture_in_flight.active = true;
   g_camera_capture_in_flight.delivery_failed = false;
   g_camera_capture_in_flight.retry_available = retry_available;
   g_camera_capture_in_flight.request_id = request_id;
   g_camera_capture_in_flight.command_id = command_id;
+  g_camera_capture_in_flight.camera_role = camera_role;
   g_camera_capture_in_flight.started_at_ms = now;
   g_camera_capture_in_flight.last_delivery_failure_ms = 0;
 }
 
-void scheduleScheduledCaptureRetry(unsigned long now, const char* reason) {
+void scheduleScheduledCaptureRetry(unsigned long now, uint8_t camera_role, const char* reason) {
   if (g_scheduled_capture_retry_pending) {
     return;
   }
   g_scheduled_capture_retry_pending = true;
   g_scheduled_capture_retry_at_ms = now + kScheduledCaptureRetryDelayMs;
+  g_scheduled_capture_retry_camera_role = camera_role == 0 ? static_cast<uint8_t>(CameraRoleCode::kTop) : camera_role;
   Serial.printf(
-      "[camera-schedule] scheduled capture retry queued reason=%s delay_ms=%lu\n",
+      "[camera-schedule] scheduled capture retry queued role=%s reason=%s delay_ms=%lu\n",
+      espnow_camera_role_label(g_scheduled_capture_retry_camera_role),
       reason == nullptr ? "unknown" : reason,
       static_cast<unsigned long>(kScheduledCaptureRetryDelayMs));
 }
@@ -1635,6 +1866,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
     const int failed_command_id = g_camera_capture_in_flight.command_id;
     const uint32_t failed_request_id = g_camera_capture_in_flight.request_id;
     const bool retry_available = g_camera_capture_in_flight.retry_available;
+    const uint8_t failed_camera_role = g_camera_capture_in_flight.camera_role;
     clearCameraCaptureFlight();
     if (is_pending_backend_capture && g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
       Serial.printf(
@@ -1655,7 +1887,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
         static_cast<unsigned int>(failed_request_id),
         failed_command_id);
     if (failed_command_id == 0 && retry_available) {
-      scheduleScheduledCaptureRetry(now, "delivery_failed");
+      scheduleScheduledCaptureRetry(now, failed_camera_role, "delivery_failed");
     }
     return;
   }
@@ -1677,6 +1909,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
   const int timed_out_command_id = g_camera_capture_in_flight.command_id;
   const uint32_t timed_out_request_id = g_camera_capture_in_flight.request_id;
   const bool retry_available = g_camera_capture_in_flight.retry_available;
+  const uint8_t timed_out_camera_role = g_camera_capture_in_flight.camera_role;
   clearCameraCaptureFlight();
   if (is_pending_backend_capture) {
     if (g_pending_capture_command.dispatch_attempts < kManualCaptureMaxDispatchAttempts) {
@@ -1698,7 +1931,7 @@ void serviceCameraCaptureFlight(unsigned long now) {
         static_cast<unsigned int>(timed_out_request_id));
   }
   if (timed_out_command_id == 0 && retry_available) {
-    scheduleScheduledCaptureRetry(now, "timeout");
+    scheduleScheduledCaptureRetry(now, timed_out_camera_role, "timeout");
   }
 }
 
@@ -1772,6 +2005,14 @@ void maybeSendBootstrapCapture(unsigned long now) {
   }
 }
 
+bool sendScheduledCaptureForRole(unsigned long now, uint8_t camera_role, const char* retry_reason) {
+  if (sendEspNowCaptureCommand(now, true, true, camera_role)) {
+    return true;
+  }
+  scheduleScheduledCaptureRetry(now, camera_role, retry_reason);
+  return false;
+}
+
 void pollCameraCaptureSchedule(unsigned long now) {
   if (!kCameraScheduledCaptureEnabled) {
     return;
@@ -1781,28 +2022,39 @@ void pollCameraCaptureSchedule(unsigned long now) {
     return;
   }
   maybeSendBootstrapCapture(now);
+
+  const bool runtime_ready =
+      g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
+      g_camera_runtime_ready;
+  const uint8_t side_camera_role = static_cast<uint8_t>(CameraRoleCode::kSide);
+  if (capture_schedule_should_request(g_side_camera_capture_schedule, now, runtime_ready)) {
+    sendScheduledCaptureForRole(now, side_camera_role, "side_send_failed");
+    return;
+  }
+
   if (g_scheduled_capture_retry_pending) {
     if (now < g_scheduled_capture_retry_at_ms) {
       return;
     }
-    if (sendEspNowCaptureCommand(now)) {
+    const uint8_t retry_camera_role = g_scheduled_capture_retry_camera_role;
+    if (sendEspNowCaptureCommand(now, true, true, retry_camera_role)) {
       g_scheduled_capture_retry_pending = false;
-      Serial.println("[camera-schedule] scheduled capture retry sent");
+      Serial.printf(
+          "[camera-schedule] scheduled capture retry sent role=%s\n",
+          espnow_camera_role_label(retry_camera_role));
     } else {
       g_scheduled_capture_retry_pending = false;
-      Serial.println("[camera-schedule] scheduled capture retry send failed, waiting for next interval");
+      Serial.printf(
+          "[camera-schedule] scheduled capture retry send failed role=%s, waiting for next interval\n",
+          espnow_camera_role_label(retry_camera_role));
     }
     return;
   }
-  const bool runtime_ready =
-      g_espnow_ready && g_wifi_ready && platform_enabled() && !g_provisioning_mode &&
-      g_camera_runtime_ready;
+
   if (!capture_schedule_should_request(g_camera_capture_schedule, now, runtime_ready)) {
     return;
   }
-  if (!sendEspNowCaptureCommand(now)) {
-    scheduleScheduledCaptureRetry(now, "send_failed");
-  }
+  sendScheduledCaptureForRole(now, static_cast<uint8_t>(CameraRoleCode::kTop), "top_send_failed");
 }
 
 void updateStatusLed() {
@@ -2076,6 +2328,11 @@ bool loadConfig() {
 void resetCameraProvisioningRuntime() {
   g_camera_provisioning_session = MasterProvisioningSession{};
   g_camera_provisioning_acknowledged = false;
+  g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
+  g_camera_provisioning_manual_active = false;
+  g_camera_provisioning_manual_deadline_ms = 0;
+  memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
+  g_camera_provisioning_target_mac_known = false;
   g_camera_runtime_ready = false;
   g_last_camera_provisioning_attempt_ms = 0;
   g_camera_target_mac_known = false;
@@ -2085,11 +2342,18 @@ void resetCameraProvisioningRuntime() {
   g_next_camera_bootstrap_capture_ms = 0;
   g_scheduled_capture_retry_pending = false;
   g_scheduled_capture_retry_at_ms = 0;
+  g_scheduled_capture_retry_camera_role = static_cast<uint8_t>(CameraRoleCode::kTop);
   capture_schedule_init(
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
       PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
-      static_cast<uint32_t>(kDefaultCameraCapturePhaseSeconds) * 1000UL,
+      static_cast<uint32_t>(kTopCameraCapturePhaseSeconds) * 1000UL,
+      millis());
+  capture_schedule_init(
+      &g_side_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
+      static_cast<uint32_t>(kSideCameraCapturePhaseSeconds) * 1000UL,
       millis());
 }
 
@@ -3400,11 +3664,137 @@ void printWaterLevelStatus() {
   }
 }
 
+bool handleCameraProvisioningCommandLine(const String& input, String* message, bool* success) {
+  String line = input;
+  line.trim();
+  line.toLowerCase();
+  if (line.length() == 0 || !line.startsWith("camera")) {
+    return false;
+  }
+
+  const char* help_text =
+      "[camera-provisioning] commands: camera provision status | camera provision top [mac] | camera provision side [mac] | camera provision auto | camera provision off";
+  if (line == "camera help") {
+    Serial.println(help_text);
+    if (message != nullptr) {
+      *message = "camera provisioning help printed";
+    }
+    if (success != nullptr) {
+      *success = true;
+    }
+    return true;
+  }
+  if (line == "camera status" || line == "camera provision status") {
+    printCameraProvisioningStatus();
+    if (message != nullptr) {
+      *message = "camera provisioning status printed";
+    }
+    if (success != nullptr) {
+      *success = true;
+    }
+    return true;
+  }
+  if (!line.startsWith("camera provision")) {
+    Serial.println("[camera-provisioning] unknown command; send 'camera help'");
+    if (message != nullptr) {
+      *message = "unknown camera provisioning command";
+    }
+    if (success != nullptr) {
+      *success = false;
+    }
+    return true;
+  }
+
+  String args = line.substring(strlen("camera provision"));
+  args.trim();
+  if (args == "auto") {
+    enableAutomaticTopCameraProvisioning(millis());
+    if (message != nullptr) {
+      *message = "automatic top-camera provisioning enabled";
+    }
+    if (success != nullptr) {
+      *success = true;
+    }
+    return true;
+  }
+  if (args == "off") {
+    stopCameraProvisioning("command");
+    if (message != nullptr) {
+      *message = "camera provisioning stopped";
+    }
+    if (success != nullptr) {
+      *success = true;
+    }
+    return true;
+  }
+  if (args.length() == 0) {
+    Serial.println(help_text);
+    if (message != nullptr) {
+      *message = "camera provisioning slot is required";
+    }
+    if (success != nullptr) {
+      *success = false;
+    }
+    return true;
+  }
+
+  const int separator = args.indexOf(' ');
+  String slot_token = separator >= 0 ? args.substring(0, separator) : args;
+  String target_token = separator >= 0 ? args.substring(separator + 1) : "";
+  slot_token.trim();
+  target_token.trim();
+
+  CameraProvisioningSlotId slot_id = CameraProvisioningSlotId::kTop;
+  if (!cameraProvisioningSlotFromName(slot_token, &slot_id)) {
+    Serial.println("[camera-provisioning] unknown slot; use top or side");
+    if (message != nullptr) {
+      *message = "unknown camera provisioning slot";
+    }
+    if (success != nullptr) {
+      *success = false;
+    }
+    return true;
+  }
+
+  uint8_t target_mac[6] = {0};
+  const uint8_t* target_mac_ptr = nullptr;
+  if (target_token.length() > 0) {
+    if (!parseMacAddress(target_token, target_mac)) {
+      Serial.println("[camera-provisioning] invalid target MAC; expected aa:bb:cc:dd:ee:ff");
+      if (message != nullptr) {
+        *message = "invalid camera provisioning target MAC";
+      }
+      if (success != nullptr) {
+        *success = false;
+      }
+      return true;
+    }
+    target_mac_ptr = target_mac;
+  }
+
+  requestCameraProvisioningSlot(slot_id, target_mac_ptr, millis());
+  printCameraProvisioningStatus();
+  const CameraProvisioningSlotConfig& slot = cameraProvisioningSlot(slot_id);
+  if (message != nullptr) {
+    *message = "camera provisioning requested for " + String(slot.name) + " camera";
+  }
+  if (success != nullptr) {
+    *success = true;
+  }
+  return true;
+}
+
 void handleSerialDiagnosticLine(const String& input) {
   String line = input;
   line.trim();
   line.toLowerCase();
   if (line.length() == 0) {
+    return;
+  }
+  bool command_success = true;
+  String command_message;
+  if (handleCameraProvisioningCommandLine(line, &command_message, &command_success)) {
+    (void)command_success;
     return;
   }
   if (line == "water help") {
@@ -4137,7 +4527,11 @@ void execute_platform_command(const PlatformCommand& command) {
     message = "device reboot scheduled";
     scheduleRestart(1500, "contract_reboot_command");
   } else if (command.target == "diagnostics" && command.action == "request") {
-    message = "diagnostics heartbeat sent";
+    if (command.value.length() > 0 && handleCameraProvisioningCommandLine(command.value, &message, &success)) {
+      command_error_code = success ? nullptr : PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+    } else {
+      message = "diagnostics heartbeat sent";
+    }
   } else {
     success = false;
     message = "unsupported command target";
@@ -4245,9 +4639,11 @@ void setup() {
     Serial.printf("Fallback provisioning URL: %s\n", PLANTLAB_PROVISIONING_API_URL);
   }
   Serial.printf(
-      "Camera capture schedule: %s (%lu ms)\n",
+      "Camera capture schedule: %s (%lu ms top phase=%us side phase=%us)\n",
       PLANTLAB_CAMERA_CAPTURE_ENABLED ? "enabled" : "disabled",
-      static_cast<unsigned long>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS));
+      static_cast<unsigned long>(PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS),
+      static_cast<unsigned int>(kTopCameraCapturePhaseSeconds),
+      static_cast<unsigned int>(kSideCameraCapturePhaseSeconds));
   initReliabilityBootCounter();
   const bool ambient_led_belt_config_ok = loadAmbientLedBeltConfig();
 
@@ -4292,7 +4688,13 @@ void setup() {
       &g_camera_capture_schedule,
       PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
       PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
-      static_cast<uint32_t>(kDefaultCameraCapturePhaseSeconds) * 1000UL,
+      static_cast<uint32_t>(kTopCameraCapturePhaseSeconds) * 1000UL,
+      millis());
+  capture_schedule_init(
+      &g_side_camera_capture_schedule,
+      PLANTLAB_CAMERA_CAPTURE_ENABLED != 0,
+      PLANTLAB_CAMERA_CAPTURE_INTERVAL_MS,
+      static_cast<uint32_t>(kSideCameraCapturePhaseSeconds) * 1000UL,
       millis());
 
   loadConfig();

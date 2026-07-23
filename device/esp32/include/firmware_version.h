@@ -2,9 +2,9 @@
 
 namespace plantlab {
 
-constexpr char kMasterSoftwareVersion[] = "0.1.11";
-constexpr int kMasterSoftwareVersionCode = 1011;
-constexpr char kCameraSoftwareVersion[] = "0.1.8";
-constexpr int kCameraSoftwareVersionCode = 1008;
+constexpr char kMasterSoftwareVersion[] = "0.1.12";
+constexpr int kMasterSoftwareVersionCode = 1012;
+constexpr char kCameraSoftwareVersion[] = "0.1.10";
+constexpr int kCameraSoftwareVersionCode = 1010;
 
 }  // namespace plantlab
