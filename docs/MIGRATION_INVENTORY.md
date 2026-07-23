@@ -114,7 +114,7 @@ the setup as production-ready:
 - Confirm XIAO ESP32S3 camera serial connection and flash port.
 - Confirm water level sensor wiring and touch thresholds.
 - Confirm soil moisture calibration.
-- Confirm DS18B20 water-temperature behavior.
+- Confirm MCP9808 water-temperature behavior on the main I2C bus.
 - Confirm status LED and grow-light MOSFET behavior.
 - Confirm ESP-NOW master/camera link.
 - Confirm OV3660 image quality after the camera swap-back.

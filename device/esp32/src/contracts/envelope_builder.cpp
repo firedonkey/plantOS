@@ -93,13 +93,14 @@ bool buildHeartbeatEnvelope(
     int ambient_led_belt_data_gpio,
     bool ambient_led_belt_diagnostic_active,
     const char* ambient_led_belt_last_error,
+    const HeartbeatWaterLevelRuntime* water_level_runtime,
     String* body) {
   if (body == nullptr || hardware_device_id == nullptr || String(hardware_device_id).length() == 0 ||
       firmware_version == nullptr || String(firmware_version).length() == 0) {
     return false;
   }
 
-  StaticJsonDocument<2304> doc;
+  StaticJsonDocument<4096> doc;
   addBaseEnvelope(
       doc,
       device_id,
@@ -170,6 +171,7 @@ bool buildHeartbeatEnvelope(
       has_last_command_poll_latency_ms ||
       has_command_poll_stale_seconds ||
       include_ambient_led_belt_state ||
+      water_level_runtime != nullptr ||
       plantlab::time_sync::statusName() != nullptr) {
     JsonObject runtime = payload.createNestedObject("runtime");
     if (has_capture_interval_seconds) {
@@ -223,6 +225,40 @@ bool buildHeartbeatEnvelope(
       ambient_led_belt["diagnostic_active"] = ambient_led_belt_diagnostic_active;
       if (ambient_led_belt_last_error != nullptr && String(ambient_led_belt_last_error).length() > 0) {
         ambient_led_belt["last_error"] = ambient_led_belt_last_error;
+      }
+    }
+    if (water_level_runtime != nullptr) {
+      JsonObject water_level = runtime.createNestedObject("water_level");
+      water_level["available"] = water_level_runtime->available;
+      water_level["calibrated"] = water_level_runtime->calibrated;
+      water_level["stable"] = water_level_runtime->stable;
+      water_level["state"] = safeText(water_level_runtime->state, "unknown");
+      water_level["instantaneous_state"] = safeText(water_level_runtime->instantaneous_state, "unknown");
+      water_level["quality"] = safeText(water_level_runtime->quality, "unstable");
+      water_level["percent"] = water_level_runtime->percent;
+      water_level["representative_raw"] = water_level_runtime->representative_raw;
+      if (water_level_runtime->reason != nullptr && String(water_level_runtime->reason).length() > 0) {
+        water_level["reason"] = water_level_runtime->reason;
+      }
+      JsonArray pads = water_level.createNestedArray("pads");
+      for (size_t index = 0; index < 3; ++index) {
+        const HeartbeatWaterLevelPadRuntime& source = water_level_runtime->pads[index];
+        JsonObject pad = pads.add<JsonObject>();
+        pad["name"] = safeText(source.name, "unknown");
+        pad["gpio"] = source.gpio;
+        pad["touch_channel"] = source.touch_channel;
+        pad["available"] = source.available;
+        pad["calibrated"] = source.calibrated;
+        pad["wet"] = source.wet;
+        pad["stable"] = source.stable;
+        pad["raw"] = source.raw;
+        pad["filtered"] = source.filtered;
+        pad["threshold"] = source.threshold;
+        pad["hysteresis"] = source.hysteresis;
+        pad["dry_baseline"] = source.dry_baseline;
+        pad["wet_reference"] = source.wet_reference;
+        pad["margin"] = source.margin;
+        pad["read_failures"] = source.read_failures;
       }
     }
     runtime["time_sync_status"] = plantlab::time_sync::statusName();

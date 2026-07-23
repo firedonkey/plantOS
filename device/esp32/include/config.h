@@ -20,36 +20,50 @@
 #ifndef PIN_SOIL_MOISTURE_ADC
 #define PIN_SOIL_MOISTURE_ADC -1
 #endif
-#define PIN_DHT22_DATA 4
-
-// Water sensors
-// Defaults are placeholders until confirmed against the wired master board.
-#define PIN_WATER_TEMPERATURE_ONEWIRE 5
-#define PIN_WATER_LEVEL_TOUCH 13
+// Water-level capacitive pads use the ESP32-S3 touch peripheral.
+#define WATER_LEVEL_TOP_GPIO 4
+#define WATER_LEVEL_TOP_TOUCH_CHANNEL 4
+#define WATER_LEVEL_MIDDLE_GPIO 5
+#define WATER_LEVEL_MIDDLE_TOUCH_CHANNEL 5
+#define WATER_LEVEL_BOTTOM_GPIO 6
+#define WATER_LEVEL_BOTTOM_TOUCH_CHANNEL 6
 
 // Moisture ADC behavior
 #define MOISTURE_SAMPLE_COUNT 10
 #define MOISTURE_SAMPLE_DELAY_MS 5
 
-// Water level touch behavior. ESP32 touch readings typically drop when a
-// capacitive probe is active, so raw values at or below the threshold mean water
-// is present. Set threshold below 0 to report "unknown" while still sending raw.
-#define WATER_LEVEL_SAMPLE_COUNT 10
-#define WATER_LEVEL_SAMPLE_DELAY_MS 5
-#define WATER_LEVEL_PRESENT_RAW_THRESHOLD 36000
+// Three-pad capacitive water-level behavior.
+// The firmware persists dry/wet calibration in NVS and derives each pad's
+// polarity from the measured dry/wet pair; it does not assume wet readings are
+// always higher or always lower.
+#define WATER_LEVEL_FILTER_SAMPLE_COUNT 5
+#define WATER_LEVEL_SAMPLE_INTERVAL_MS 100
+#define WATER_LEVEL_STARTUP_SETTLE_MS 2000
+#define WATER_LEVEL_CHANNEL_DEBOUNCE_MS 1500
+#define WATER_LEVEL_STATE_DEBOUNCE_MS 2000
+#define WATER_LEVEL_INCONSISTENT_GRACE_MS 10000
+#define WATER_LEVEL_THRESHOLD_PERCENT 50
+#define WATER_LEVEL_HYSTERESIS_PERCENT 10
+#define WATER_LEVEL_MIN_SIGNAL_DELTA 25
+#define WATER_LEVEL_MAX_STABLE_SPREAD 300
+#define WATER_LEVEL_READ_FAILURE_TIMEOUT_MS 5000
+#define WATER_LEVEL_DIAGNOSTIC_INTERVAL_MS 500
 
 // Calibration defaults (adjust later with real calibration)
 // Typical capacitive sensors read higher when dry and lower when wet.
 #define MOISTURE_RAW_DRY 3000
 #define MOISTURE_RAW_WET 1200
 
-// Optional I2C (only used if SHT31 or OLED is enabled later)
-#define PIN_I2C_SDA 8
-#define PIN_I2C_SCL 9
+// I2C environmental sensors on the current main-board harness.
+#define PIN_I2C_SDA 47
+#define PIN_I2C_SCL 48
 
-// Actuators (AO3400A low-side MOSFET gate control)
-// Current PCB hardware uses GPIO15 for the grow LED gate.
-#define PIN_LIGHT_MOSFET_GATE 15
+// Top grow-light panel, driven through AL8860 CTRL inputs.
+#define PIN_GROW_LIGHT_RED_CTRL 18
+#define PIN_GROW_LIGHT_WHITE_CTRL 8
+// Legacy single-channel name retained for older tests and diagnostics. The
+// production grow light uses the red/white CTRL pins above.
+#define PIN_LIGHT_MOSFET_GATE PIN_GROW_LIGHT_WHITE_CTRL
 // Legacy pump support is retained in firmware, but it must not share the grow
 // LED pin. GPIO16 is unused on the current PCB.
 #define PIN_PUMP_MOSFET_GATE 16
@@ -144,7 +158,7 @@
 #endif
 
 // Timing
-#define DHT22_READ_INTERVAL_MS 2000
+#define PLANTLAB_LOCAL_SENSOR_READ_INTERVAL_MS 2000
 
 #ifndef PLANTLAB_WIFI_SSID
 #define PLANTLAB_WIFI_SSID ""

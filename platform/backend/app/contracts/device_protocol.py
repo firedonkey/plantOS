@@ -237,6 +237,46 @@ class HeartbeatAmbientLedBeltState(ContractModel):
     last_error: str | None = Field(default=None, max_length=160)
 
 
+class HeartbeatWaterLevelPadRuntime(ContractModel):
+    name: str | None = Field(default=None, pattern="^(top|middle|bottom)$")
+    gpio: int | None = Field(default=None, ge=0, le=48)
+    touch_channel: int | None = Field(default=None, ge=0, le=14)
+    available: bool | None = None
+    calibrated: bool | None = None
+    wet: bool | None = None
+    stable: bool | None = None
+    raw: int | None = Field(default=None, ge=0)
+    filtered: int | None = Field(default=None, ge=0)
+    threshold: int | None = Field(default=None, ge=0)
+    hysteresis: int | None = Field(default=None, ge=0)
+    dry_baseline: int | None = Field(default=None, ge=0)
+    wet_reference: int | None = Field(default=None, ge=0)
+    margin: int | None = None
+    read_failures: int | None = Field(default=None, ge=0)
+
+
+class HeartbeatWaterLevelRuntime(ContractModel):
+    available: bool | None = None
+    calibrated: bool | None = None
+    stable: bool | None = None
+    state: str | None = Field(
+        default=None,
+        pattern="^(unknown|uncalibrated|empty|low|medium|high|inconsistent|sensor_unavailable)$",
+    )
+    instantaneous_state: str | None = Field(
+        default=None,
+        pattern="^(unknown|uncalibrated|empty|low|medium|high|inconsistent|sensor_unavailable)$",
+    )
+    quality: str | None = Field(
+        default=None,
+        pattern="^(valid|uncalibrated|unstable|inconsistent|sensor_missing|read_error|saturated|low_signal_margin)$",
+    )
+    reason: str | None = Field(default=None, max_length=160)
+    percent: int | None = Field(default=None, ge=0, le=100)
+    representative_raw: int | None = Field(default=None, ge=0)
+    pads: list[HeartbeatWaterLevelPadRuntime] | None = Field(default=None, max_length=3)
+
+
 class HeartbeatRuntimeState(ContractModel):
     capture_interval_seconds: int | None = Field(default=None, ge=0)
     ota_status: OTAStatus | None = None
@@ -250,6 +290,7 @@ class HeartbeatRuntimeState(ContractModel):
     last_command_poll_latency_ms: int | None = Field(default=None, ge=0, le=300_000)
     command_poll_stale_seconds: int | None = Field(default=None, ge=0, le=86_400)
     ambient_led_belt: HeartbeatAmbientLedBeltState | None = None
+    water_level: HeartbeatWaterLevelRuntime | None = None
     time_sync_status: str | None = Field(default=None, min_length=1, max_length=80)
     last_ntp_sync_at: datetime | None = None
 

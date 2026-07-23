@@ -213,6 +213,37 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
   if (status.diagnostics.valid && status.diagnostics.has_uptime_seconds &&
       status.hardware_device_id.length() > 0 && status.node_role.length() > 0 &&
       status.software_version.length() > 0) {
+    plantlab::contracts::HeartbeatWaterLevelRuntime water_level_runtime;
+    const plantlab::contracts::HeartbeatWaterLevelRuntime* water_level_runtime_ptr = nullptr;
+    if (status.has_water_level_state) {
+      water_level_runtime.available = status.water_level.available;
+      water_level_runtime.calibrated = status.water_level.calibrated;
+      water_level_runtime.stable = status.water_level.stable;
+      water_level_runtime.state = status.water_level.state.c_str();
+      water_level_runtime.instantaneous_state = status.water_level.instantaneous_state.c_str();
+      water_level_runtime.quality = status.water_level.quality.c_str();
+      water_level_runtime.reason = status.water_level.reason.c_str();
+      water_level_runtime.percent = status.water_level.percent;
+      water_level_runtime.representative_raw = status.water_level.representative_raw;
+      for (size_t index = 0; index < 3; ++index) {
+        water_level_runtime.pads[index].name = status.water_level.pads[index].name.c_str();
+        water_level_runtime.pads[index].gpio = status.water_level.pads[index].gpio;
+        water_level_runtime.pads[index].touch_channel = status.water_level.pads[index].touch_channel;
+        water_level_runtime.pads[index].available = status.water_level.pads[index].available;
+        water_level_runtime.pads[index].calibrated = status.water_level.pads[index].calibrated;
+        water_level_runtime.pads[index].wet = status.water_level.pads[index].wet;
+        water_level_runtime.pads[index].stable = status.water_level.pads[index].stable;
+        water_level_runtime.pads[index].raw = status.water_level.pads[index].raw;
+        water_level_runtime.pads[index].filtered = status.water_level.pads[index].filtered;
+        water_level_runtime.pads[index].threshold = status.water_level.pads[index].threshold;
+        water_level_runtime.pads[index].hysteresis = status.water_level.pads[index].hysteresis;
+        water_level_runtime.pads[index].dry_baseline = status.water_level.pads[index].dry_baseline;
+        water_level_runtime.pads[index].wet_reference = status.water_level.pads[index].wet_reference;
+        water_level_runtime.pads[index].margin = status.water_level.pads[index].margin;
+        water_level_runtime.pads[index].read_failures = status.water_level.pads[index].read_failures;
+      }
+      water_level_runtime_ptr = &water_level_runtime;
+    }
     String contract_body;
     if (plantlab::contracts::buildHeartbeatEnvelope(
             device_id_,
@@ -261,6 +292,7 @@ bool PlatformClient::send_hardware_heartbeat(const PlatformStatus& status, Strin
             status.ambient_led_belt.data_gpio,
             status.ambient_led_belt.diagnostic_active,
             status.ambient_led_belt.last_error.c_str(),
+            water_level_runtime_ptr,
             &contract_body)) {
       int contract_status_code = 0;
       String contract_response_body;

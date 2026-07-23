@@ -5,7 +5,8 @@ This folder contains PlantLab v2 firmware for ESP32 boards.
 Current status:
 
 - Phase 1 started
-- DHT22 local reading implemented
+- AHT20 air temperature/humidity and MCP9808 water-temperature reading implemented on the main I2C bus
+- Three-pad ESP32-S3 capacitive water-level sensing implemented on GPIO4/GPIO5/GPIO6
 - Power button + status LED state handling implemented in main firmware
 - Local Wi-Fi + platform HTTP path now available for dev testing
 - ESP32 master provisioning is the active PlantLab device onboarding path
@@ -28,10 +29,38 @@ Current status:
   - Long press 5s: provisioning trigger requested log
   - Long press 20s: factory reset requested log
 
-## Current Test
+## Current Sensor Map
 
-- DHT22 connected to `GPIO4`
-- Output over serial every 2 seconds
+- AHT20-F air temperature/humidity: I2C on SDA `GPIO47`, SCL `GPIO48`
+- MCP9808T-E/MS water temperature: I2C on SDA `GPIO47`, SCL `GPIO48`
+- Water-level top pad: `GPIO4` / `TOUCH4`
+- Water-level middle pad: `GPIO5` / `TOUCH5`
+- Water-level bottom pad: `GPIO6` / `TOUCH6`
+
+The main firmware does not use DS18B20/OneWire or DHT22 for the current sensor architecture.
+
+Water-level serial commands:
+
+```text
+water status
+water diag on
+water diag off
+water calibrate dry
+water calibrate wet bottom
+water calibrate wet middle
+water calibrate wet top
+water calibrate save
+water calibrate reset
+```
+
+Recommended calibration order:
+
+1. Run `water diag on` and wait until raw readings are stable.
+2. With all pads dry, run `water calibrate dry`.
+3. Wet only the bottom pad and run `water calibrate wet bottom`.
+4. Wet the bottom and middle pads and run `water calibrate wet middle`.
+5. Wet all pads and run `water calibrate wet top`.
+6. Run `water calibrate save`.
 
 ## WS2811 ambient LED belt EVT support
 
@@ -463,7 +492,7 @@ Common options:
 # Flash main firmware with explicit GCP profile
 ./scripts/flash_esp32.sh --gcp --monitor
 
-# Flash dedicated DHT22 debug firmware
+# Flash legacy dedicated DHT22 debug firmware
 ./scripts/flash_esp32.sh --test-dht22 --monitor
 
 # Flash dedicated moisture ADC debug firmware

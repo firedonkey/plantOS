@@ -28,7 +28,9 @@ Auth:
 - signed-in owner browser session
 - device API token header: `X-Device-Token`
 
-Water sensor fields are optional for backwards compatibility. ESP32 master nodes should send `water_temperature_c` from the DS18B20 probe and `water_level_raw` from the touch sensor. `water_level_state` is a short derived state such as `ok`, `low`, or `unknown`.
+Water sensor fields are optional for backwards compatibility. Current ESP32-S3 master nodes should send `water_temperature_c` from the MCP9808T-E/MS water-temperature sensor on I2C and `water_level_raw` from the bottom capacitive water-level pad's filtered touch reading. `water_level_state` is a short derived state such as `uncalibrated`, `empty`, `low`, `medium`, `high`, `inconsistent`, `sensor_unavailable`, or `unknown`.
+
+Contract heartbeats may also include `payload.runtime.water_level` with the latest per-pad touch diagnostics, calibration thresholds, and debounce status.
 
 ## Image Upload
 

@@ -178,7 +178,9 @@ Trigger alerts when:
 * sensors:
 
   * moisture sensor
-  * DHT22
+  * AHT20 air temperature/humidity
+  * MCP9808 water temperature
+  * three-pad capacitive water level
   * camera node
 * actuators:
 

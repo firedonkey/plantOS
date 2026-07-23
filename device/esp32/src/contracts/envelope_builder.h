@@ -5,6 +5,37 @@
 namespace plantlab {
 namespace contracts {
 
+struct HeartbeatWaterLevelPadRuntime {
+  const char* name = "";
+  int gpio = -1;
+  int touch_channel = -1;
+  bool available = false;
+  bool calibrated = false;
+  bool wet = false;
+  bool stable = false;
+  uint32_t raw = 0;
+  uint32_t filtered = 0;
+  uint32_t threshold = 0;
+  uint32_t hysteresis = 0;
+  uint32_t dry_baseline = 0;
+  uint32_t wet_reference = 0;
+  int32_t margin = 0;
+  uint16_t read_failures = 0;
+};
+
+struct HeartbeatWaterLevelRuntime {
+  bool available = false;
+  bool calibrated = false;
+  bool stable = false;
+  const char* state = "";
+  const char* instantaneous_state = "";
+  const char* quality = "";
+  const char* reason = "";
+  int percent = 0;
+  uint32_t representative_raw = 0;
+  HeartbeatWaterLevelPadRuntime pads[3]{};
+};
+
 bool buildHeartbeatEnvelope(
     int device_id,
     const char* hardware_device_id,
@@ -52,6 +83,7 @@ bool buildHeartbeatEnvelope(
     int ambient_led_belt_data_gpio,
     bool ambient_led_belt_diagnostic_active,
     const char* ambient_led_belt_last_error,
+    const HeartbeatWaterLevelRuntime* water_level_runtime,
     String* body);
 
 bool buildCommandResultEnvelope(

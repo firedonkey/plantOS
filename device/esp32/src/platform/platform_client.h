@@ -95,6 +95,37 @@ struct PlatformAmbientLedBeltState {
   String last_error;
 };
 
+struct PlatformWaterLevelPadState {
+  String name;
+  int gpio = -1;
+  int touch_channel = -1;
+  bool available = false;
+  bool calibrated = false;
+  bool wet = false;
+  bool stable = false;
+  uint32_t raw = 0;
+  uint32_t filtered = 0;
+  uint32_t threshold = 0;
+  uint32_t hysteresis = 0;
+  uint32_t dry_baseline = 0;
+  uint32_t wet_reference = 0;
+  int32_t margin = 0;
+  uint16_t read_failures = 0;
+};
+
+struct PlatformWaterLevelState {
+  bool available = false;
+  bool calibrated = false;
+  bool stable = false;
+  String state;
+  String instantaneous_state;
+  String quality;
+  String reason;
+  int percent = 0;
+  uint32_t representative_raw = 0;
+  PlatformWaterLevelPadState pads[3]{};
+};
+
 struct PlatformStatus {
   String hardware_device_id;
   String node_role;
@@ -127,6 +158,8 @@ struct PlatformStatus {
   uint32_t command_poll_stale_seconds = 0;
   bool has_ambient_led_belt_state = false;
   PlatformAmbientLedBeltState ambient_led_belt;
+  bool has_water_level_state = false;
+  PlatformWaterLevelState water_level;
   PlatformDiagnostics diagnostics;
 };
 

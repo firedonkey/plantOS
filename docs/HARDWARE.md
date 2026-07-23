@@ -23,8 +23,8 @@ Verified from `device/esp32/platformio.ini` and firmware docs:
 
 Verified in `device/esp32/include/firmware_version.h`:
 
-- Master software version: `0.1.6`
-- Master software version code: `1006`
+- Master software version: `0.1.9`
+- Master software version code: `1009`
 - Camera software version: `0.1.8`
 - Camera software version code: `1008`
 
@@ -36,12 +36,15 @@ Verified in `device/esp32/include/config.h`:
 | --- | --- |
 | Addressable WS2811 ambient LED belt DIN | GPIO1 |
 | Soil moisture ADC | Disabled / unassigned (`PIN_SOIL_MOISTURE_ADC=-1`) |
-| DHT22 data | GPIO4 |
-| Water temperature OneWire | GPIO5 |
-| Water level touch | GPIO13 |
-| Optional I2C SDA | GPIO8 |
-| Optional I2C SCL | GPIO9 |
-| Grow LED MOSFET gate | GPIO15 |
+| Water level top pad | GPIO4 / TOUCH4 |
+| Water level middle pad | GPIO5 / TOUCH5 |
+| Water level bottom pad | GPIO6 / TOUCH6 |
+| I2C SDA | GPIO47 |
+| I2C SCL | GPIO48 |
+| AHT20-F air temperature/humidity | I2C address `0x38` |
+| MCP9808T-E/MS water temperature | I2C address `0x18` |
+| Grow LED red CTRL | GPIO18 |
+| Grow LED white CTRL | GPIO8 |
 | Legacy pump MOSFET gate | GPIO16 |
 | Power/user/touch button | GPIO14 |
 | Status LED | GPIO2 |
@@ -49,11 +52,19 @@ Verified in `device/esp32/include/config.h`:
 
 Needs verification:
 
-- `config.h` marks water sensor defaults as placeholders until confirmed against the wired master board.
+- Water-level touch pad thresholds require product-specific dry/wet calibration before stable `empty`, `low`, `medium`, or `high` states are reported.
 - GPIO1 was previously a placeholder soil-moisture ADC pin. It is now reserved
   for the EVT WS2811 ambient LED belt DIN, so soil moisture needs a separate confirmed
   ADC-capable GPIO before it is re-enabled.
 - Touch thresholds and moisture calibration defaults need real enclosure/wiring calibration.
+
+The current main-board sensor architecture is:
+
+- Air temperature and humidity: AHT20-F on I2C.
+- Water temperature: MCP9808T-E/MS on I2C.
+- Water level: three ESP32-S3 capacitive touch pads on GPIO4/5/6.
+
+The main firmware does not use DHT22, DS18B20, OneWire, ADC, RC timing, or digital reads for water-level sensing.
 
 ## Addressable LED Belt
 

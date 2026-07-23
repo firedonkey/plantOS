@@ -26,10 +26,9 @@
 #include "platform/platform_client.h"
 #include "provisioning/ble_provisioning.h"
 #include "provisioning/wifi_networks_payload.h"
-#include "sensors/dht22_sensor.h"
+#include "sensors/i2c_environment_sensors.h"
 #include "sensors/moisture_sensor.h"
 #include "sensors/water_level_sensor.h"
-#include "sensors/water_temperature_sensor.h"
 #include "system/power_button.h"
 #include "system/status_led.h"
 #include "time/time_sync_manager.h"
@@ -64,6 +63,13 @@ constexpr char kConfigKeyAmbientLedBeltLogicalCount[] = "amb_led_log";
 constexpr char kConfigKeyAmbientLedBeltColorOrder[] = "amb_led_ord";
 constexpr char kConfigKeyAmbientLedBeltMaxBrightness[] = "amb_led_max";
 constexpr char kConfigKeyAmbientLedBeltDefaultBrightness[] = "amb_led_def";
+constexpr char kConfigKeyWaterLevelCalibrationVersion[] = "wl_cal_ver";
+constexpr char kConfigKeyWaterLevelTopDry[] = "wl_t_dry";
+constexpr char kConfigKeyWaterLevelTopWet[] = "wl_t_wet";
+constexpr char kConfigKeyWaterLevelMiddleDry[] = "wl_m_dry";
+constexpr char kConfigKeyWaterLevelMiddleWet[] = "wl_m_wet";
+constexpr char kConfigKeyWaterLevelBottomDry[] = "wl_b_dry";
+constexpr char kConfigKeyWaterLevelBottomWet[] = "wl_b_wet";
 constexpr char kProvisioningApName[] = "PlantLab-Setup";
 constexpr const char* kSoftwareVersion = plantlab::kMasterSoftwareVersion;
 constexpr uint16_t kProvisioningPort = 8080;
@@ -162,17 +168,42 @@ enum class DeviceMode {
   kWifiFailed,
 };
 
-Dht22Sensor g_dht22(PIN_DHT22_DATA);
+WaterLevelSensorConfig waterLevelSensorConfig() {
+  WaterLevelSensorConfig config{};
+  config.channels[0] = WaterLevelChannelConfig{
+      WaterLevelPad::kTop,
+      WATER_LEVEL_TOP_GPIO,
+      WATER_LEVEL_TOP_TOUCH_CHANNEL};
+  config.channels[1] = WaterLevelChannelConfig{
+      WaterLevelPad::kMiddle,
+      WATER_LEVEL_MIDDLE_GPIO,
+      WATER_LEVEL_MIDDLE_TOUCH_CHANNEL};
+  config.channels[2] = WaterLevelChannelConfig{
+      WaterLevelPad::kBottom,
+      WATER_LEVEL_BOTTOM_GPIO,
+      WATER_LEVEL_BOTTOM_TOUCH_CHANNEL};
+  config.filter_sample_count = WATER_LEVEL_FILTER_SAMPLE_COUNT;
+  config.sample_interval_ms = WATER_LEVEL_SAMPLE_INTERVAL_MS;
+  config.startup_settle_ms = WATER_LEVEL_STARTUP_SETTLE_MS;
+  config.channel_debounce_ms = WATER_LEVEL_CHANNEL_DEBOUNCE_MS;
+  config.state_debounce_ms = WATER_LEVEL_STATE_DEBOUNCE_MS;
+  config.inconsistent_grace_ms = WATER_LEVEL_INCONSISTENT_GRACE_MS;
+  config.threshold_percent = WATER_LEVEL_THRESHOLD_PERCENT;
+  config.hysteresis_percent = WATER_LEVEL_HYSTERESIS_PERCENT;
+  config.min_signal_delta = WATER_LEVEL_MIN_SIGNAL_DELTA;
+  config.max_stable_spread = WATER_LEVEL_MAX_STABLE_SPREAD;
+  config.read_failure_timeout_ms = WATER_LEVEL_READ_FAILURE_TIMEOUT_MS;
+  return config;
+}
+
 MoistureSensor g_moisture(
     PIN_SOIL_MOISTURE_ADC, MOISTURE_SAMPLE_COUNT, MOISTURE_SAMPLE_DELAY_MS);
-WaterTemperatureSensor g_water_temperature(PIN_WATER_TEMPERATURE_ONEWIRE);
-WaterLevelSensor g_water_level(
-    PIN_WATER_LEVEL_TOUCH,
-    WATER_LEVEL_SAMPLE_COUNT,
-    WATER_LEVEL_SAMPLE_DELAY_MS,
-    WATER_LEVEL_PRESENT_RAW_THRESHOLD);
+Esp32WaterLevelTouchTransport g_water_level_touch_transport;
+WaterLevelSensor g_water_level(&g_water_level_touch_transport, waterLevelSensorConfig());
+I2cEnvironmentSensors g_i2c_environment(PIN_I2C_SDA, PIN_I2C_SCL);
 LightController g_growing_light(
-    PIN_LIGHT_MOSFET_GATE,
+    PIN_GROW_LIGHT_RED_CTRL,
+    PIN_GROW_LIGHT_WHITE_CTRL,
     ACTUATOR_ON_LEVEL,
     ACTUATOR_OFF_LEVEL,
     PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED != 0);
@@ -195,7 +226,6 @@ MasterCaptureScheduleState g_camera_capture_schedule{};
 DeviceConfig g_config;
 DeviceConfig g_previous_active_config;
 DeviceMode g_device_mode = DeviceMode::kBooting;
-unsigned long g_last_dht22_read_ms = 0;
 unsigned long g_last_platform_send_ms = 0;
 unsigned long g_last_platform_status_ms = 0;
 unsigned long g_last_command_poll_ms = 0;
@@ -230,6 +260,9 @@ uint32_t g_next_espnow_request_id = 1;
 MasterProvisioningSession g_camera_provisioning_session{};
 bool g_camera_provisioning_acknowledged = false;
 bool g_camera_runtime_ready = false;
+unsigned long g_last_local_sensor_read_ms = 0;
+unsigned long g_last_water_level_diagnostic_ms = 0;
+String g_serial_command_buffer;
 unsigned long g_last_camera_provisioning_attempt_ms = 0;
 constexpr uint8_t kEspNowBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t g_camera_target_mac[6] = {0};
@@ -300,6 +333,14 @@ bool platform_enabled();
 bool loadAmbientLedBeltConfig();
 bool saveAmbientLedBeltConfig();
 void clearAmbientLedBeltConfig();
+bool loadWaterLevelCalibration();
+bool saveWaterLevelCalibration();
+void clearWaterLevelCalibration();
+void serviceWaterLevelDiagnostics(unsigned long now);
+void serviceSerialDiagnostics(unsigned long now);
+void handleSerialDiagnosticLine(const String& line);
+void printWaterLevelStatus();
+void applyWaterLevelStatus(PlatformStatus* status);
 String masterCapabilitiesJson();
 DeviceConfig normalizedConfig(DeviceConfig config);
 bool saveConfigCandidate(const DeviceConfig& candidate);
@@ -520,10 +561,14 @@ String nextReadingIdempotencyKey() {
 }
 
 String masterCapabilitiesJson() {
-  StaticJsonDocument<1024> capabilities;
+  StaticJsonDocument<2304> capabilities;
   capabilities["sensors"] = true;
   capabilities["actuators"] = true;
   capabilities["esp_now"] = true;
+  capabilities["grow_light"] = true;
+  capabilities["grow_light_driver"] = "dual_al8860";
+  capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
+  capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
   capabilities["light_control"] = true;
   capabilities["light_intensity_control"] = g_growing_light.supports_intensity_control();
   capabilities["light_intensity_min_percent"] = 0;
@@ -534,10 +579,25 @@ String masterCapabilitiesJson() {
     light_control_modes.add("intensity");
   }
   capabilities["moisture_sensor"] = g_moisture.enabled();
-  capabilities["water_temperature_sensor"] = true;
+  capabilities["water_temperature_sensor"] = g_i2c_environment.mcp9808_present();
+  capabilities["water_temperature_sensor_source"] = "mcp9808";
   capabilities["water_level_sensor"] = true;
+  capabilities["water_level_sensor_type"] = "esp32s3_touch_three_pad";
+  capabilities["water_level_calibrated"] = g_water_level.calibrationReady();
+  capabilities["water_level_top_gpio"] = WATER_LEVEL_TOP_GPIO;
+  capabilities["water_level_middle_gpio"] = WATER_LEVEL_MIDDLE_GPIO;
+  capabilities["water_level_bottom_gpio"] = WATER_LEVEL_BOTTOM_GPIO;
+  capabilities["water_level_top_touch_channel"] = WATER_LEVEL_TOP_TOUCH_CHANNEL;
+  capabilities["water_level_middle_touch_channel"] = WATER_LEVEL_MIDDLE_TOUCH_CHANNEL;
+  capabilities["water_level_bottom_touch_channel"] = WATER_LEVEL_BOTTOM_TOUCH_CHANNEL;
   capabilities["temperature_sensor"] = true;
   capabilities["humidity_sensor"] = true;
+  capabilities["i2c_sda_gpio"] = PIN_I2C_SDA;
+  capabilities["i2c_scl_gpio"] = PIN_I2C_SCL;
+  capabilities["aht20_sensor"] = g_i2c_environment.aht20_present();
+  capabilities["mcp9808_sensor"] = g_i2c_environment.mcp9808_present();
+  capabilities["temperature_sensor_source"] = "aht20";
+  capabilities["humidity_sensor_source"] = "aht20";
 
   const plantlab::ambient_led_belt::AmbientLedBeltState& belt = g_ambient_led_belt.state();
   capabilities["ambient_led_belt"] = true;
@@ -658,6 +718,98 @@ void clearAmbientLedBeltConfig() {
   g_preferences.end();
   g_ambient_led_belt.clear();
   Serial.println("[ambient-led-belt] config reset to defaults");
+}
+
+bool loadWaterLevelCalibration() {
+  if (!g_preferences.begin(kPreferencesNamespace, true)) {
+    Serial.println("[water-level] Preferences unavailable, calibration not loaded");
+    return false;
+  }
+
+  const uint32_t missing = 0xFFFFFFFFUL;
+  WaterLevelStoredCalibration stored{};
+  stored.version = g_preferences.getUInt(kConfigKeyWaterLevelCalibrationVersion, 0);
+  const uint32_t dry_values[kWaterLevelChannelCount] = {
+      g_preferences.getUInt(kConfigKeyWaterLevelTopDry, missing),
+      g_preferences.getUInt(kConfigKeyWaterLevelMiddleDry, missing),
+      g_preferences.getUInt(kConfigKeyWaterLevelBottomDry, missing),
+  };
+  const uint32_t wet_values[kWaterLevelChannelCount] = {
+      g_preferences.getUInt(kConfigKeyWaterLevelTopWet, missing),
+      g_preferences.getUInt(kConfigKeyWaterLevelMiddleWet, missing),
+      g_preferences.getUInt(kConfigKeyWaterLevelBottomWet, missing),
+  };
+  g_preferences.end();
+
+  if (stored.version != kWaterLevelCalibrationVersion) {
+    Serial.println("[water-level] no compatible calibration in Preferences");
+    return false;
+  }
+
+  bool complete = true;
+  for (size_t index = 0; index < kWaterLevelChannelCount; ++index) {
+    WaterLevelChannelCalibration& calibration = stored.channels[index];
+    calibration.dry_baseline = dry_values[index];
+    calibration.wet_reference = wet_values[index];
+    calibration.dry_valid = dry_values[index] != missing;
+    calibration.wet_valid = wet_values[index] != missing;
+    complete = complete && calibration.dry_valid && calibration.wet_valid;
+  }
+
+  const bool loaded = complete && g_water_level.loadCalibration(stored);
+  Serial.printf("[water-level] calibration load %s\n", loaded ? "succeeded" : "incomplete");
+  return loaded;
+}
+
+bool saveWaterLevelCalibration() {
+  WaterLevelStoredCalibration stored{};
+  if (!g_water_level.saveCalibration(&stored)) {
+    Serial.println("[water-level] calibration save skipped: calibration incomplete");
+    return false;
+  }
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[water-level] failed to open Preferences for calibration save");
+    return false;
+  }
+  const size_t version_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelCalibrationVersion, stored.version);
+  const size_t top_dry_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelTopDry, stored.channels[0].dry_baseline);
+  const size_t top_wet_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelTopWet, stored.channels[0].wet_reference);
+  const size_t middle_dry_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelMiddleDry, stored.channels[1].dry_baseline);
+  const size_t middle_wet_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelMiddleWet, stored.channels[1].wet_reference);
+  const size_t bottom_dry_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelBottomDry, stored.channels[2].dry_baseline);
+  const size_t bottom_wet_written =
+      g_preferences.putUInt(kConfigKeyWaterLevelBottomWet, stored.channels[2].wet_reference);
+  g_preferences.end();
+
+  const bool saved =
+      version_written > 0 && top_dry_written > 0 && top_wet_written > 0 &&
+      middle_dry_written > 0 && middle_wet_written > 0 &&
+      bottom_dry_written > 0 && bottom_wet_written > 0;
+  Serial.printf("[water-level] calibration save %s\n", saved ? "succeeded" : "failed");
+  return saved;
+}
+
+void clearWaterLevelCalibration() {
+  if (!g_preferences.begin(kPreferencesNamespace, false)) {
+    Serial.println("[water-level] failed to open Preferences for calibration reset");
+    return;
+  }
+  g_preferences.remove(kConfigKeyWaterLevelCalibrationVersion);
+  g_preferences.remove(kConfigKeyWaterLevelTopDry);
+  g_preferences.remove(kConfigKeyWaterLevelTopWet);
+  g_preferences.remove(kConfigKeyWaterLevelMiddleDry);
+  g_preferences.remove(kConfigKeyWaterLevelMiddleWet);
+  g_preferences.remove(kConfigKeyWaterLevelBottomDry);
+  g_preferences.remove(kConfigKeyWaterLevelBottomWet);
+  g_preferences.end();
+  g_water_level.resetCalibration();
+  Serial.println("[water-level] calibration reset");
 }
 
 bool ensureMasterDeviceNodeRegistered(unsigned long now) {
@@ -2996,7 +3148,7 @@ bool registerProvisionedDevice() {
   updateStatusLed();
   Serial.println("[provisioning] backend_confirming");
   Serial.println("[provisioning] registering device with setup code");
-  StaticJsonDocument<512> payload;
+  StaticJsonDocument<2304> payload;
   payload["device_id"] = stableHardwareDeviceId();
   payload["claim_token"] = g_config.claim_token;
   payload["node_role"] = "master";
@@ -3014,9 +3166,30 @@ bool registerProvisionedDevice() {
   JsonObject capabilities = payload.createNestedObject("capabilities");
   capabilities["camera"] = false;
   capabilities["pump"] = true;
-  capabilities["moisture_sensor"] = true;
-  capabilities["water_temperature_sensor"] = true;
+  capabilities["grow_light"] = true;
+  capabilities["grow_light_driver"] = "dual_al8860";
+  capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
+  capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
+  capabilities["moisture_sensor"] = g_moisture.enabled();
+  capabilities["water_temperature_sensor"] = g_i2c_environment.mcp9808_present();
+  capabilities["water_temperature_sensor_source"] = "mcp9808";
   capabilities["water_level_sensor"] = true;
+  capabilities["water_level_sensor_type"] = "esp32s3_touch_three_pad";
+  capabilities["water_level_calibrated"] = g_water_level.calibrationReady();
+  capabilities["water_level_top_gpio"] = WATER_LEVEL_TOP_GPIO;
+  capabilities["water_level_middle_gpio"] = WATER_LEVEL_MIDDLE_GPIO;
+  capabilities["water_level_bottom_gpio"] = WATER_LEVEL_BOTTOM_GPIO;
+  capabilities["water_level_top_touch_channel"] = WATER_LEVEL_TOP_TOUCH_CHANNEL;
+  capabilities["water_level_middle_touch_channel"] = WATER_LEVEL_MIDDLE_TOUCH_CHANNEL;
+  capabilities["water_level_bottom_touch_channel"] = WATER_LEVEL_BOTTOM_TOUCH_CHANNEL;
+  capabilities["temperature_sensor"] = true;
+  capabilities["humidity_sensor"] = true;
+  capabilities["i2c_sda_gpio"] = PIN_I2C_SDA;
+  capabilities["i2c_scl_gpio"] = PIN_I2C_SCL;
+  capabilities["aht20_sensor"] = g_i2c_environment.aht20_present();
+  capabilities["mcp9808_sensor"] = g_i2c_environment.mcp9808_present();
+  capabilities["temperature_sensor_source"] = "aht20";
+  capabilities["humidity_sensor_source"] = "aht20";
   capabilities["light_control"] = true;
   capabilities["light_intensity_control"] = g_growing_light.supports_intensity_control();
   capabilities["light_intensity_min_percent"] = 0;
@@ -3033,8 +3206,6 @@ bool registerProvisionedDevice() {
   capabilities["ambient_led_belt_physical_led_count"] = g_ambient_led_belt.state().physical_led_count;
   capabilities["ambient_led_belt_color_order"] = plantlab::ambient_led_belt::colorOrderName(g_ambient_led_belt.state().color_order);
   capabilities["ambient_led_belt_max_brightness"] = g_ambient_led_belt.config().maximum_brightness;
-  capabilities["temperature_sensor"] = true;
-  capabilities["humidity_sensor"] = true;
 
   String body;
   serializeJson(payload, body);
@@ -3152,24 +3323,222 @@ void checkProvisioningButton() {
     return;
   }
 }
+
+void applyWaterLevelStatus(PlatformStatus* status) {
+  if (status == nullptr) {
+    return;
+  }
+  const WaterLevelReading water_level = g_water_level.reading();
+  status->has_water_level_state = true;
+  status->water_level.available = water_level.sensor_present;
+  status->water_level.calibrated = water_level.calibrated;
+  status->water_level.stable = water_level.stable;
+  status->water_level.state = waterLevelStateName(water_level.state);
+  status->water_level.instantaneous_state = waterLevelStateName(water_level.instantaneous_state);
+  status->water_level.quality = waterLevelQualityName(water_level.quality);
+  status->water_level.reason = water_level.diagnostic_reason == nullptr ? "" : water_level.diagnostic_reason;
+  status->water_level.percent = water_level.percent;
+  status->water_level.representative_raw = water_level.representative_raw;
+  for (size_t index = 0; index < kWaterLevelChannelCount && index < 3; ++index) {
+    const WaterLevelChannelReading& source = water_level.channels[index];
+    PlatformWaterLevelPadState& target = status->water_level.pads[index];
+    target.name = waterLevelPadName(source.pad);
+    target.gpio = source.gpio;
+    target.touch_channel = source.touch_channel;
+    target.available = source.available;
+    target.calibrated = source.calibrated;
+    target.wet = source.wet;
+    target.stable = source.stable;
+    target.raw = source.raw;
+    target.filtered = source.filtered;
+    target.threshold = source.threshold;
+    target.hysteresis = source.hysteresis;
+    target.dry_baseline = source.calibration.dry_baseline;
+    target.wet_reference = source.calibration.wet_reference;
+    target.margin = source.margin;
+    target.read_failures = source.read_failures;
+  }
+}
+
+void printWaterLevelStatus() {
+  const WaterLevelReading reading = g_water_level.reading();
+  Serial.printf(
+      "[water-level] state=%s instantaneous=%s quality=%s percent=%u calibrated=%u stable=%u available=%u raw=%lu reason=%s\n",
+      waterLevelStateName(reading.state),
+      waterLevelStateName(reading.instantaneous_state),
+      waterLevelQualityName(reading.quality),
+      static_cast<unsigned int>(reading.percent),
+      reading.calibrated ? 1U : 0U,
+      reading.stable ? 1U : 0U,
+      reading.sensor_present ? 1U : 0U,
+      static_cast<unsigned long>(reading.representative_raw),
+      reading.diagnostic_reason == nullptr ? "" : reading.diagnostic_reason);
+  for (size_t index = 0; index < kWaterLevelChannelCount; ++index) {
+    const WaterLevelChannelReading& channel = reading.channels[index];
+    Serial.printf(
+        "[water-level] pad=%s gpio=%d touch=%d raw=%lu filtered=%lu wet=%u stable=%u available=%u calibrated=%u threshold=%lu hyst=%lu dry=%lu wet_ref=%lu margin=%ld failures=%u\n",
+        waterLevelPadName(channel.pad),
+        channel.gpio,
+        channel.touch_channel,
+        static_cast<unsigned long>(channel.raw),
+        static_cast<unsigned long>(channel.filtered),
+        channel.wet ? 1U : 0U,
+        channel.stable ? 1U : 0U,
+        channel.available ? 1U : 0U,
+        channel.calibrated ? 1U : 0U,
+        static_cast<unsigned long>(channel.threshold),
+        static_cast<unsigned long>(channel.hysteresis),
+        static_cast<unsigned long>(channel.calibration.dry_baseline),
+        static_cast<unsigned long>(channel.calibration.wet_reference),
+        static_cast<long>(channel.margin),
+        static_cast<unsigned int>(channel.read_failures));
+  }
+}
+
+void handleSerialDiagnosticLine(const String& input) {
+  String line = input;
+  line.trim();
+  line.toLowerCase();
+  if (line.length() == 0) {
+    return;
+  }
+  if (line == "water help") {
+    Serial.println("[water-level] commands: water status | water diag on|off | water calibrate dry | water calibrate wet top|middle|bottom | water calibrate save | water calibrate reset");
+    return;
+  }
+  if (line == "water status") {
+    printWaterLevelStatus();
+    return;
+  }
+  if (line == "water diag on") {
+    g_water_level.setDiagnosticMode(true);
+    Serial.println("[water-level] diagnostics enabled");
+    printWaterLevelStatus();
+    return;
+  }
+  if (line == "water diag off") {
+    g_water_level.setDiagnosticMode(false);
+    Serial.println("[water-level] diagnostics disabled");
+    return;
+  }
+  if (line == "water calibrate dry") {
+    if (g_water_level.captureDryCalibration()) {
+      Serial.println("[water-level] dry calibration captured for all pads");
+    } else {
+      Serial.println("[water-level] dry calibration failed: wait for stable raw values");
+    }
+    printWaterLevelStatus();
+    return;
+  }
+  if (line == "water calibrate wet top" ||
+      line == "water calibrate wet middle" ||
+      line == "water calibrate wet bottom") {
+    WaterLevelPad pad = WaterLevelPad::kTop;
+    if (line.endsWith("middle")) {
+      pad = WaterLevelPad::kMiddle;
+    } else if (line.endsWith("bottom")) {
+      pad = WaterLevelPad::kBottom;
+    }
+    if (g_water_level.captureWetReference(pad)) {
+      Serial.printf("[water-level] wet calibration captured for %s pad\n", waterLevelPadName(pad));
+    } else {
+      Serial.printf("[water-level] wet calibration failed for %s pad: capture dry first and wait for stable raw values\n", waterLevelPadName(pad));
+    }
+    printWaterLevelStatus();
+    return;
+  }
+  if (line == "water calibrate save") {
+    saveWaterLevelCalibration();
+    printWaterLevelStatus();
+    return;
+  }
+  if (line == "water calibrate reset") {
+    clearWaterLevelCalibration();
+    printWaterLevelStatus();
+    return;
+  }
+  if (line.startsWith("water")) {
+    Serial.println("[water-level] unknown command; send 'water help'");
+  }
+}
+
+void serviceSerialDiagnostics(unsigned long now) {
+  (void)now;
+  while (Serial.available() > 0) {
+    const char c = static_cast<char>(Serial.read());
+    if (c == '\r' || c == '\n') {
+      handleSerialDiagnosticLine(g_serial_command_buffer);
+      g_serial_command_buffer = "";
+      continue;
+    }
+    if (g_serial_command_buffer.length() < 120) {
+      g_serial_command_buffer += c;
+    }
+  }
+}
+
+void serviceWaterLevelDiagnostics(unsigned long now) {
+  if (!g_water_level.diagnosticMode()) {
+    return;
+  }
+  if (now - g_last_water_level_diagnostic_ms < WATER_LEVEL_DIAGNOSTIC_INTERVAL_MS) {
+    return;
+  }
+  g_last_water_level_diagnostic_ms = now;
+  printWaterLevelStatus();
+}
 }  // namespace
 
 PlatformReading read_platform_reading() {
-  g_last_sensor_reading_ms = millis();
-  const Dht22Reading reading = g_dht22.read();
+  const unsigned long now = millis();
+  g_last_sensor_reading_ms = now;
+  g_water_level.update(now);
+  const I2cEnvironmentReading i2c_environment = g_i2c_environment.read();
   const MoistureReading moisture = g_moisture.read();
-  const WaterTemperatureReading water_temperature = g_water_temperature.read();
-  const WaterLevelReading water_level = g_water_level.read();
+  const WaterLevelReading water_level = g_water_level.reading();
 
-  if (!reading.valid) {
-    Serial.println("[dht22] read failed (NaN)");
-  } else {
-    if (kVerboseSensorPollingLogs) {
-      Serial.printf(
-          "[dht22] temp_c=%.1f humidity=%.1f%%\n",
-          reading.temperature_c,
-          reading.humidity_percent);
-    }
+  float air_temperature_c = 0.0f;
+  bool air_temperature_valid = false;
+  const char* air_temperature_source = "none";
+  if (i2c_environment.aht20_valid) {
+    air_temperature_c = i2c_environment.aht20_temperature_c;
+    air_temperature_valid = true;
+    air_temperature_source = "aht20";
+  }
+
+  float humidity_percent = 0.0f;
+  bool humidity_valid = false;
+  const char* humidity_source = "none";
+  if (i2c_environment.aht20_valid) {
+    humidity_percent = i2c_environment.aht20_humidity_percent;
+    humidity_valid = true;
+    humidity_source = "aht20";
+  }
+
+  if (!air_temperature_valid || !humidity_valid) {
+    Serial.println("[env] air temperature/humidity read failed");
+  } else if (kVerboseSensorPollingLogs) {
+    Serial.printf(
+        "[env] temp_c=%.1f source=%s humidity=%.1f%% source=%s\n",
+        air_temperature_c,
+        air_temperature_source,
+        humidity_percent,
+        humidity_source);
+  }
+
+  if (i2c_environment.aht20_valid && kVerboseSensorPollingLogs) {
+    Serial.printf(
+        "[aht20] temp_c=%.1f humidity=%.1f%%\n",
+        i2c_environment.aht20_temperature_c,
+        i2c_environment.aht20_humidity_percent);
+  } else if (!i2c_environment.aht20_valid && g_i2c_environment.aht20_present()) {
+    Serial.println("[aht20] read failed");
+  }
+
+  if (i2c_environment.mcp9808_valid && kVerboseSensorPollingLogs) {
+    Serial.printf("[mcp9808] temp_c=%.1f\n", i2c_environment.mcp9808_temperature_c);
+  } else if (!i2c_environment.mcp9808_valid && g_i2c_environment.mcp9808_present()) {
+    Serial.println("[mcp9808] read failed");
   }
 
   if (g_moisture.enabled() && !moisture.valid) {
@@ -3183,19 +3552,25 @@ PlatformReading read_platform_reading() {
     }
   }
 
-  if (!water_temperature.valid) {
-    Serial.println("[water-temp] DS18B20 read failed");
+  if (!i2c_environment.mcp9808_valid) {
+    Serial.println("[water-temp] MCP9808 read failed");
   } else if (kVerboseSensorPollingLogs) {
-    Serial.printf("[water-temp] temp_c=%.1f\n", water_temperature.temperature_c);
+    Serial.printf("[water-temp] temp_c=%.1f source=mcp9808\n", i2c_environment.mcp9808_temperature_c);
   }
 
-  if (!water_level.valid) {
-    Serial.println("[water-level] touch read failed");
+  if (!water_level.valid && kVerboseSensorPollingLogs) {
+    Serial.printf(
+        "[water-level] state=%s quality=%s reason=%s\n",
+        waterLevelStateName(water_level.state),
+        waterLevelQualityName(water_level.quality),
+        water_level.diagnostic_reason == nullptr ? "" : water_level.diagnostic_reason);
   } else if (kVerboseSensorPollingLogs) {
     Serial.printf(
-        "[water-level] raw=%d state=%s\n",
-        water_level.raw,
-        water_level.state.c_str());
+        "[water-level] raw=%lu state=%s quality=%s percent=%u\n",
+        static_cast<unsigned long>(water_level.representative_raw),
+        waterLevelStateName(water_level.state),
+        waterLevelQualityName(water_level.quality),
+        static_cast<unsigned int>(water_level.percent));
   }
 
   if (kVerboseSensorPollingLogs) {
@@ -3208,17 +3583,17 @@ PlatformReading read_platform_reading() {
 
   PlatformReading platform_reading{};
   platform_reading.hardware_device_id = stableHardwareDeviceId();
-  platform_reading.temperature_c = reading.temperature_c;
-  platform_reading.humidity_percent = reading.humidity_percent;
+  platform_reading.temperature_c = air_temperature_c;
+  platform_reading.humidity_percent = humidity_percent;
   platform_reading.moisture_percent = moisture.moisture_percent;
-  platform_reading.water_temperature_c = water_temperature.temperature_c;
-  platform_reading.water_level_raw = water_level.raw;
-  platform_reading.temperature_valid = reading.valid;
-  platform_reading.humidity_valid = reading.valid;
+  platform_reading.water_temperature_c = i2c_environment.mcp9808_temperature_c;
+  platform_reading.water_level_raw = static_cast<int>(water_level.representative_raw);
+  platform_reading.temperature_valid = air_temperature_valid;
+  platform_reading.humidity_valid = humidity_valid;
   platform_reading.moisture_valid = moisture.valid;
-  platform_reading.water_temperature_valid = water_temperature.valid;
+  platform_reading.water_temperature_valid = i2c_environment.mcp9808_valid;
   platform_reading.water_level_valid = water_level.valid;
-  platform_reading.water_level_state = water_level.state;
+  platform_reading.water_level_state = waterLevelStateName(water_level.state);
   platform_reading.light_on = g_growing_light.is_on();
   if (g_growing_light.supports_intensity_control()) {
     platform_reading.light_intensity_percent = g_growing_light.intensity_percent();
@@ -3289,6 +3664,7 @@ PlatformStatus platform_status(const String& message) {
   status.ambient_led_belt.data_gpio = belt.data_gpio;
   status.ambient_led_belt.diagnostic_active = belt.diagnostic_active;
   status.ambient_led_belt.last_error = belt.last_error;
+  applyWaterLevelStatus(&status);
   status.diagnostics.valid = true;
   status.diagnostics.has_uptime_seconds = true;
   status.diagnostics.uptime_seconds = static_cast<uint32_t>(now / 1000UL);
@@ -3791,10 +4167,21 @@ void setup() {
       kSoftwareVersion,
       plantlab::kMasterSoftwareVersionCode);
   Serial.printf("Provisioning env: %s\n", PLANTLAB_ENV_LABEL);
-  Serial.printf("DHT22 pin: GPIO%d\n", PIN_DHT22_DATA);
+  Serial.printf("I2C environmental sensor bus: SDA GPIO%d SCL GPIO%d (AHT20 air, MCP9808 water)\n", PIN_I2C_SDA, PIN_I2C_SCL);
+  Serial.printf(
+      "Water level pads: top GPIO%d TOUCH%d middle GPIO%d TOUCH%d bottom GPIO%d TOUCH%d\n",
+      WATER_LEVEL_TOP_GPIO,
+      WATER_LEVEL_TOP_TOUCH_CHANNEL,
+      WATER_LEVEL_MIDDLE_GPIO,
+      WATER_LEVEL_MIDDLE_TOUCH_CHANNEL,
+      WATER_LEVEL_BOTTOM_GPIO,
+      WATER_LEVEL_BOTTOM_TOUCH_CHANNEL);
   Serial.printf("Moisture ADC pin: GPIO%d\n", PIN_SOIL_MOISTURE_ADC);
   Serial.printf("WS2811 ambient LED belt DIN pin: GPIO%d\n", AMBIENT_LED_BELT_DATA_GPIO);
-  Serial.printf("PCB grow LED control pin: GPIO%d\n", PIN_LIGHT_MOSFET_GATE);
+  Serial.printf(
+      "PCB grow LED red CTRL pin: GPIO%d white CTRL pin: GPIO%d\n",
+      PIN_GROW_LIGHT_RED_CTRL,
+      PIN_GROW_LIGHT_WHITE_CTRL);
   Serial.printf("Legacy pump gate pin: GPIO%d\n", PIN_PUMP_MOSFET_GATE);
   Serial.printf("Provisioning button pin: GPIO%d\n", PIN_POWER_BUTTON);
   Serial.printf("Status LED pin: GPIO%d\n", PIN_STATUS_LED);
@@ -3817,10 +4204,10 @@ void setup() {
   g_status_led.begin();
   g_power_button.begin();
   g_status_led.set_mode(StatusLedMode::kBooting);
-  g_dht22.begin();
+  g_i2c_environment.begin();
   g_moisture.begin();
-  g_water_temperature.begin();
-  g_water_level.begin();
+  g_water_level.begin(millis());
+  loadWaterLevelCalibration();
   g_growing_light.begin();
   g_pump.begin();
   if (ambient_led_belt_config_ok) {
@@ -3832,14 +4219,19 @@ void setup() {
     }
   }
 
-  Serial.println("[dht22] sensor initialized");
+  Serial.printf(
+      "[i2c] environmental sensors SDA GPIO%d SCL GPIO%d AHT20=%s MCP9808=%s\n",
+      g_i2c_environment.sda_pin(),
+      g_i2c_environment.scl_pin(),
+      g_i2c_environment.aht20_present() ? "present" : "not found",
+      g_i2c_environment.mcp9808_present() ? "present" : "not found");
   if (g_moisture.enabled()) {
     Serial.println("[moisture] sensor initialized");
   } else {
     Serial.println("[moisture] sensor disabled: GPIO1 reserved for WS2811 ambient LED belt DIN");
   }
-  Serial.println("[water-temp] sensor initialized");
-  Serial.println("[water-level] touch sensor initialized");
+  Serial.println("[water-temp] MCP9808 sensor path initialized");
+  Serial.println("[water-level] three-pad touch sensor initialized");
   Serial.println("[grow-light] initialized OFF");
   Serial.println("[pump] initialized OFF");
   plantlab::time_sync::begin();
@@ -3866,6 +4258,9 @@ void loop() {
   g_status_led.update(now);
   g_pump.update();
   g_ambient_led_belt.tick(now);
+  g_water_level.update(now);
+  serviceSerialDiagnostics(now);
+  serviceWaterLevelDiagnostics(now);
 
   if (g_provisioning_mode) {
     serviceBleProvisioning(now);
@@ -3923,8 +4318,8 @@ void loop() {
     }
   }
 
-  if (now - g_last_dht22_read_ms >= DHT22_READ_INTERVAL_MS) {
-    g_last_dht22_read_ms = now;
+  if (now - g_last_local_sensor_read_ms >= PLANTLAB_LOCAL_SENSOR_READ_INTERVAL_MS) {
+    g_last_local_sensor_read_ms = now;
     if (!platform_enabled()) {
       read_platform_reading();
     }
