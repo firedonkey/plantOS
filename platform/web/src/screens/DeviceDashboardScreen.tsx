@@ -32,15 +32,22 @@ export function DeviceDashboardScreen() {
   const growLedOn = (dashboard?.device.currentLightOn ?? latestReading?.lightOn) === true;
   const growLedIntensityPercent = dashboard?.device.currentLightIntensityPercent ?? latestReading?.lightIntensityPercent;
   const lightIntensitySupported = hasLightIntensitySupport(dashboard?.hardwareHealth?.primary?.capabilities);
+  const growLightChannelSupported = hasGrowLightChannelSupport(dashboard?.hardwareHealth?.primary?.capabilities);
   const currentLightIntensity = clampLightIntensity(growLedIntensityPercent ?? (growLedOn ? 100 : 0));
   const [lightIntensityDraft, setLightIntensityDraft] = useState(currentLightIntensity);
   const [lightIntensityActive, setLightIntensityActive] = useState(false);
+  const [redGrowLedIntensityDraft, setRedGrowLedIntensityDraft] = useState(0);
+  const [whiteGrowLedIntensityDraft, setWhiteGrowLedIntensityDraft] = useState(0);
   const pendingLightOn = activeCommandAction === "light_on" || isActionBlocked("light_on");
   const pendingLightOff = activeCommandAction === "light_off" || isActionBlocked("light_off");
   const pendingLightIntensity = activeCommandAction === "light_intensity" || isActionBlocked("light_intensity");
+  const pendingRedLightIntensity = activeCommandAction === "light_red_intensity" || isActionBlocked("light_red_intensity");
+  const pendingWhiteLightIntensity = activeCommandAction === "light_white_intensity" || isActionBlocked("light_white_intensity");
   const nextLightAction = growLedOn ? "light_off" : "light_on";
   const lightToggleDisabled = isCommandRunning || pendingLightOn || pendingLightOff;
   const lightIntensityDisabled = isCommandRunning || pendingLightIntensity;
+  const redGrowLedIntensityDisabled = isCommandRunning || pendingRedLightIntensity;
+  const whiteGrowLedIntensityDisabled = isCommandRunning || pendingWhiteLightIntensity;
   const [ambientBeltBrightness, setAmbientBeltBrightness] = useState(10);
   const pendingAmbientBeltColor = activeCommandAction === "ambient_belt_color" || isActionBlocked("ambient_belt_color");
   const pendingAmbientBeltOff = activeCommandAction === "ambient_belt_off" || isActionBlocked("ambient_belt_off");
@@ -261,6 +268,67 @@ export function DeviceDashboardScreen() {
             ) : null}
           </div>
 
+          {growLightChannelSupported ? (
+            <div className="card stack-form grow-led-channel-card">
+              <div>
+                <h3>Grow LED test</h3>
+                <p className="subtitle">Red and white channels</p>
+              </div>
+              <div className="grow-led-channel-grid">
+                <div className="grow-led-channel-control">
+                  <label htmlFor="grow-led-red-intensity">
+                    <span>Red</span>
+                    <strong>{pendingRedLightIntensity ? "Setting..." : `${redGrowLedIntensityDraft}%`}</strong>
+                  </label>
+                  <input
+                    id="grow-led-red-intensity"
+                    aria-label="Grow LED red brightness"
+                    disabled={redGrowLedIntensityDisabled}
+                    max={100}
+                    min={0}
+                    onChange={(event) => setRedGrowLedIntensityDraft(clampLightIntensity(Number(event.currentTarget.value)))}
+                    step={1}
+                    type="range"
+                    value={redGrowLedIntensityDraft}
+                  />
+                  <button
+                    className="grow-led-channel-button"
+                    disabled={redGrowLedIntensityDisabled}
+                    onClick={() => runCommand("light_red_intensity", { intensityPercent: redGrowLedIntensityDraft })}
+                    type="button"
+                  >
+                    Set red
+                  </button>
+                </div>
+                <div className="grow-led-channel-control">
+                  <label htmlFor="grow-led-white-intensity">
+                    <span>White</span>
+                    <strong>{pendingWhiteLightIntensity ? "Setting..." : `${whiteGrowLedIntensityDraft}%`}</strong>
+                  </label>
+                  <input
+                    id="grow-led-white-intensity"
+                    aria-label="Grow LED white brightness"
+                    disabled={whiteGrowLedIntensityDisabled}
+                    max={100}
+                    min={0}
+                    onChange={(event) => setWhiteGrowLedIntensityDraft(clampLightIntensity(Number(event.currentTarget.value)))}
+                    step={1}
+                    type="range"
+                    value={whiteGrowLedIntensityDraft}
+                  />
+                  <button
+                    className="grow-led-channel-button"
+                    disabled={whiteGrowLedIntensityDisabled}
+                    onClick={() => runCommand("light_white_intensity", { intensityPercent: whiteGrowLedIntensityDraft })}
+                    type="button"
+                  >
+                    Set white
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="card stack-form ambient-led-belt-card">
             <div className="ambient-led-belt-heading">
               <div>
@@ -440,6 +508,19 @@ function hasLightIntensitySupport(capabilities?: Record<string, unknown>): boole
     return false;
   }
   return modes.some((mode) => ["intensity", "dimming", "pwm"].includes(String(mode).toLowerCase()));
+}
+
+function hasGrowLightChannelSupport(capabilities?: Record<string, unknown>): boolean {
+  if (!capabilities) {
+    return false;
+  }
+  if (capabilities.grow_light_channel_control === true) {
+    return true;
+  }
+  if (String(capabilities.grow_light_driver ?? "").trim().toLowerCase() === "dual_al8860") {
+    return true;
+  }
+  return capabilities.grow_light_red_ctrl_gpio != null && capabilities.grow_light_white_ctrl_gpio != null;
 }
 
 const AMBIENT_LED_BELT_COLORS = [

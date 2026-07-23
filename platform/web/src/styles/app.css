@@ -762,6 +762,74 @@ select {
   opacity: 0.6;
 }
 
+.grow-led-channel-card {
+  background: #fbfaf8;
+}
+
+.grow-led-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.grow-led-channel-control {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d7dee3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.grow-led-channel-control label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #55635d;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.grow-led-channel-control label strong {
+  color: #1f2a24;
+  font-size: 16px;
+}
+
+.grow-led-channel-control input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+  accent-color: #2f855a;
+}
+
+.grow-led-channel-control input[type="range"]:disabled {
+  opacity: 0.6;
+}
+
+.grow-led-channel-button {
+  min-height: 42px;
+  border: 1px solid #cfd8cf;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pl-color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+  transition: border-color var(--pl-motion-normal), box-shadow var(--pl-motion-normal), opacity var(--pl-motion-normal);
+}
+
+.grow-led-channel-button:hover:not(:disabled) {
+  border-color: var(--pl-color-accent);
+  box-shadow: 0 0 0 3px rgba(47, 133, 90, 0.12);
+}
+
+.grow-led-channel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .ambient-led-belt-card {
   background: #f8faf8;
 }

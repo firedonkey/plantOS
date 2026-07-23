@@ -135,6 +135,28 @@ def test_light_intensity_command_accepts_percent_value():
         teardown_overrides()
 
 
+def test_grow_light_channel_intensity_command_accepts_json_value():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={
+                "target": "grow_light",
+                "action": "set_channel_intensity",
+                "value": {"channel": "red", "brightness_percent": 7},
+            },
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["target"] == "grow_light"
+        assert payload["action"] == "set_channel_intensity"
+        assert payload["value"] == '{"brightness_percent":7,"channel":"red"}'
+        assert payload["status"] == "pending"
+    finally:
+        teardown_overrides()
+
+
 def test_legacy_light_target_remains_supported():
     client, device_id, _ = build_client_with_devices()
     try:
@@ -171,6 +193,23 @@ def test_light_intensity_command_rejects_invalid_percent_value():
         response = client.post(
             f"/api/devices/{device_id}/commands",
             json={"target": "light", "action": "set_intensity", "value": "125"},
+        )
+
+        assert response.status_code == 422
+    finally:
+        teardown_overrides()
+
+
+def test_grow_light_channel_intensity_command_rejects_invalid_channel():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        response = client.post(
+            f"/api/devices/{device_id}/commands",
+            json={
+                "target": "grow_light",
+                "action": "set_channel_intensity",
+                "value": {"channel": "blue", "brightness_percent": 7},
+            },
         )
 
         assert response.status_code == 422

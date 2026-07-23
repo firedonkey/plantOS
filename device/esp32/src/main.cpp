@@ -567,6 +567,7 @@ String masterCapabilitiesJson() {
   capabilities["esp_now"] = true;
   capabilities["grow_light"] = true;
   capabilities["grow_light_driver"] = "dual_al8860";
+  capabilities["grow_light_channel_control"] = true;
   capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
   capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
   capabilities["light_control"] = true;
@@ -3168,6 +3169,7 @@ bool registerProvisionedDevice() {
   capabilities["pump"] = true;
   capabilities["grow_light"] = true;
   capabilities["grow_light_driver"] = "dual_al8860";
+  capabilities["grow_light_channel_control"] = true;
   capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
   capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
   capabilities["moisture_sensor"] = g_moisture.enabled();
@@ -3849,6 +3851,33 @@ bool parseLightIntensityPercent(const String& value, int* percent) {
   return true;
 }
 
+bool parseGrowLightChannelIntensityCommand(const String& value, String* channel, int* percent) {
+  JsonDocument doc;
+  const DeserializationError error = deserializeJson(doc, value);
+  if (error) {
+    return false;
+  }
+  const char* parsed_channel = doc["channel"] | "";
+  const String normalized_channel(parsed_channel);
+  if (normalized_channel != "red" && normalized_channel != "white") {
+    return false;
+  }
+  if (!doc["brightness_percent"].is<int>()) {
+    return false;
+  }
+  const int parsed_percent = doc["brightness_percent"].as<int>();
+  if (parsed_percent < 0 || parsed_percent > 100) {
+    return false;
+  }
+  if (channel != nullptr) {
+    *channel = normalized_channel;
+  }
+  if (percent != nullptr) {
+    *percent = parsed_percent;
+  }
+  return true;
+}
+
 int reportedLightIntensityPercent() {
   return g_growing_light.supports_intensity_control() ? g_growing_light.intensity_percent() : -1;
 }
@@ -4003,6 +4032,27 @@ void execute_platform_command(const PlatformCommand& command) {
       } else {
         g_growing_light.set_intensity_percent(intensity_percent);
         message = "grow light intensity set to " + String(intensity_percent) + "%";
+      }
+    } else if (command.action == "set_channel_intensity") {
+      String channel;
+      int intensity_percent = 0;
+      if (!g_growing_light.supports_intensity_control()) {
+        success = false;
+        message = "grow light channel intensity control is not supported";
+      } else if (!parseGrowLightChannelIntensityCommand(command.value, &channel, &intensity_percent)) {
+        success = false;
+        command_error_code = PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+        message = "invalid grow light channel intensity";
+      } else if (channel == "red") {
+        g_growing_light.set_primary_intensity_percent(intensity_percent);
+        message = "grow light red intensity set to " + String(intensity_percent) + "%";
+      } else if (channel == "white") {
+        g_growing_light.set_secondary_intensity_percent(intensity_percent);
+        message = "grow light white intensity set to " + String(intensity_percent) + "%";
+      } else {
+        success = false;
+        command_error_code = PLANTLAB_COMMAND_ERROR_INVALID_PARAMS;
+        message = "unsupported grow light channel";
       }
     } else {
       success = false;

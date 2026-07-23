@@ -575,6 +575,7 @@ def test_device_command_wrapper_apis():
                     "light_control": True,
                     "light_intensity_control": True,
                     "light_control_modes": ["on_off", "intensity"],
+                    "grow_light_driver": "dual_al8860",
                 },
             )
 
@@ -595,6 +596,24 @@ def test_device_command_wrapper_apis():
             assert intensity_command.target == CommandTarget.GROW_LIGHT
             assert intensity_command.action == CommandAction.SET_INTENSITY
             assert intensity_command.value == "65"
+
+        channel_response = client.post(
+            f"/api/devices/{device_id}/commands/grow-light-channel",
+            json={"channel": "red", "intensity_percent": 7},
+        )
+        assert channel_response.status_code == 201
+        channel_payload = channel_response.json()
+        assert channel_payload["status"] == "accepted"
+        assert channel_payload["command"] == "grow_light"
+        assert channel_payload["action"] == "set_red_intensity"
+        assert channel_payload["value"] == '{"brightness_percent":7,"channel":"red"}'
+
+        with next(app.dependency_overrides[get_session]()) as session:
+            channel_command = session.get(Command, channel_payload["command_id"])
+            assert channel_command is not None
+            assert channel_command.target == CommandTarget.GROW_LIGHT
+            assert channel_command.action == CommandAction.SET_CHANNEL_INTENSITY
+            assert channel_command.value == '{"brightness_percent":7,"channel":"red"}'
 
         pump_response = client.post(f"/api/devices/{device_id}/commands/pump", json={"action": "run", "seconds": 7})
         assert pump_response.status_code == 201

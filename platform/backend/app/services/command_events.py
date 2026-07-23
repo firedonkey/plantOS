@@ -110,7 +110,7 @@ def event_type_for_result_status(status: str) -> EventType:
 def _command_type(command: Command) -> CommandType | None:
     target = _value(command.target)
     action = _value(command.action)
-    if target in {"grow_light", "light"} and action in {"on", "off", "set_intensity"}:
+    if target in {"grow_light", "light"} and action in {"on", "off", "set_intensity", "set_channel_intensity"}:
         return CommandType.SET_GROW_LIGHT_BRIGHTNESS
     if target == "ambient_led_belt" and action == "set":
         return CommandType.SET_AMBIENT_LED_BELT
@@ -138,6 +138,19 @@ def _command_params(command: Command) -> dict[str, Any]:
         except ValueError:
             brightness = 0
         return {"brightness_percent": max(0, min(100, brightness))}
+    if target in {"grow_light", "light"} and action == "set_channel_intensity":
+        params = _json_command_value(command.value)
+        if not isinstance(params, dict):
+            return {"brightness_percent": 0}
+        channel = str(params.get("channel") or "").strip().lower()
+        try:
+            brightness = int(params.get("brightness_percent") or 0)
+        except (TypeError, ValueError):
+            brightness = 0
+        payload = {"brightness_percent": max(0, min(100, brightness))}
+        if channel in {"red", "white"}:
+            payload["channel"] = channel
+        return payload
     if target in {"grow_light", "light"} and action == "on":
         return {"brightness_percent": 100}
     if target in {"grow_light", "light"} and action == "off":

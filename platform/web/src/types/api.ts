@@ -96,6 +96,8 @@ export type DeviceCommand = {
     | "light_on"
     | "light_off"
     | "light_intensity"
+    | "light_red_intensity"
+    | "light_white_intensity"
     | "ambient_belt_color"
     | "ambient_belt_off"
     | "pump_run"

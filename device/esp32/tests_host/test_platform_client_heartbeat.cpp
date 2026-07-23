@@ -334,6 +334,51 @@ int main() {
   assert(std::string(commands[0].value.c_str()) == "55");
 
   platform_client_host_test::reset_http_capture();
+  platform_client_host_test::next_response_body = R"json({
+    "schema_version": "1.0",
+    "commands": [
+      {
+        "schema_version": "1.0",
+        "message_id": "cmdmsg_89_1",
+        "device_id": 42,
+        "hardware_device_id": "master-01",
+        "node_role": "master",
+        "message_type": "COMMAND",
+        "sent_at": "2026-05-27T12:00:00Z",
+        "payload": {
+          "command_id": "cmd_89",
+          "command_type": "SET_GROW_LIGHT_BRIGHTNESS",
+          "target": {
+            "node_role": "master",
+            "hardware_device_id": "master-01"
+          },
+          "params": {
+            "channel": "white",
+            "brightness_percent": 12
+          },
+          "timeout_ms": 20000,
+          "priority": "normal"
+        }
+      }
+    ]
+  })json";
+
+  PlatformCommand channel_commands[1]{};
+  assert(client.poll_contract_commands("master-01", "master", "0.2.3", "esp32_master", channel_commands, 1, &error) == 1);
+  assert(channel_commands[0].valid);
+  assert(channel_commands[0].contract_native);
+  assert(channel_commands[0].id == 89);
+  assert(std::string(channel_commands[0].command_id.c_str()) == "cmd_89");
+  assert(std::string(channel_commands[0].command_type.c_str()) == "SET_GROW_LIGHT_BRIGHTNESS");
+  assert(std::string(channel_commands[0].target.c_str()) == "grow_light");
+  assert(std::string(channel_commands[0].action.c_str()) == "set_channel_intensity");
+  StaticJsonDocument<128> channel_doc;
+  json_error = deserializeJson(channel_doc, channel_commands[0].value);
+  assert(!json_error);
+  assert(std::string(channel_doc["channel"] | "") == "white");
+  assert((channel_doc["brightness_percent"] | 0) == 12);
+
+  platform_client_host_test::reset_http_capture();
   assert(client.report_contract_command_result(
       commands[0],
       "master-01",

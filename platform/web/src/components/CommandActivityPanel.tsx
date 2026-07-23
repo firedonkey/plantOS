@@ -46,6 +46,10 @@ function formatAction(action: DeviceCommand["action"]): string {
       return "Grow LED off";
     case "light_intensity":
       return "Grow LED intensity";
+    case "light_red_intensity":
+      return "Grow LED red intensity";
+    case "light_white_intensity":
+      return "Grow LED white intensity";
     case "ambient_belt_color":
       return "Ambient LED belt color";
     case "ambient_belt_off":

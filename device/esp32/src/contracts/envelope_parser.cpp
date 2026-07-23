@@ -49,9 +49,20 @@ bool mapCommandPayload(JsonObjectConst payload, PlatformCommand* command, String
   if (String(command_type) == PLANTLAB_COMMAND_SET_GROW_LIGHT_BRIGHTNESS ||
       String(command_type) == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS) {
     const int brightness = boundedPercent(params["brightness_percent"], 100);
+    const char* channel = params["channel"] | "";
     command->target = "grow_light";
-    command->action = "set_intensity";
-    command->value = String(brightness);
+    if (String(channel) == "red" || String(channel) == "white") {
+      command->action = "set_channel_intensity";
+      JsonDocument channel_payload;
+      channel_payload["channel"] = channel;
+      channel_payload["brightness_percent"] = brightness;
+      String payload_json;
+      serializeJson(channel_payload, payload_json);
+      command->value = payload_json;
+    } else {
+      command->action = "set_intensity";
+      command->value = String(brightness);
+    }
   } else if (String(command_type) == PLANTLAB_COMMAND_SET_AMBIENT_LED_BELT) {
     command->target = "ambient_led_belt";
     command->action = "set";

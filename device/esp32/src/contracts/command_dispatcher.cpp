@@ -12,7 +12,7 @@ bool isSupportedMasterCommand(const PlatformCommand& command) {
   if ((command.command_type == PLANTLAB_COMMAND_SET_GROW_LIGHT_BRIGHTNESS ||
        command.command_type == PLANTLAB_COMMAND_SET_LIGHT_BRIGHTNESS) &&
       (command.target == "grow_light" || command.target == "light") &&
-      command.action == "set_intensity") {
+      (command.action == "set_intensity" || command.action == "set_channel_intensity")) {
     return true;
   }
   if (command.command_type == PLANTLAB_COMMAND_SET_AMBIENT_LED_BELT &&

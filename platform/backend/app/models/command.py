@@ -26,6 +26,7 @@ class CommandAction(str, Enum):
     ON = "on"
     OFF = "off"
     SET_INTENSITY = "set_intensity"
+    SET_CHANNEL_INTENSITY = "set_channel_intensity"
     SET = "set"
     RUN = "run"
     CAPTURE = "capture"

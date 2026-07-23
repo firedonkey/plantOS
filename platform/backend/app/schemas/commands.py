@@ -17,7 +17,11 @@ class CommandCreate(BaseModel):
     @model_validator(mode="after")
     def validate_target_action(self):
         grow_light_targets = {CommandTarget.GROW_LIGHT, CommandTarget.LIGHT}
-        if self.value is not None and not isinstance(self.value, str) and self.target != CommandTarget.AMBIENT_LED_BELT:
+        allows_json_value = (
+            self.target == CommandTarget.AMBIENT_LED_BELT
+            or (self.target in grow_light_targets and self.action == CommandAction.SET_CHANNEL_INTENSITY)
+        )
+        if self.value is not None and not isinstance(self.value, str) and not allows_json_value:
             raise ValueError("Command value must be a string.")
         if isinstance(self.value, str) and len(self.value) > 2000:
             raise ValueError("Command value must be at most 2000 characters.")
@@ -27,8 +31,9 @@ class CommandCreate(BaseModel):
             CommandAction.ON,
             CommandAction.OFF,
             CommandAction.SET_INTENSITY,
+            CommandAction.SET_CHANNEL_INTENSITY,
         }:
-            raise ValueError("Grow light commands support on, off, or set_intensity.")
+            raise ValueError("Grow light commands support on, off, set_intensity, or set_channel_intensity.")
         if self.target in grow_light_targets and self.action == CommandAction.SET_INTENSITY:
             if self.value is None:
                 raise ValueError("Grow light intensity commands require a value.")
@@ -38,6 +43,32 @@ class CommandCreate(BaseModel):
                 raise ValueError("Grow light intensity value must be an integer percent.") from exc
             if intensity_percent < 0 or intensity_percent > 100:
                 raise ValueError("Grow light intensity value must be between 0 and 100.")
+        if self.target in grow_light_targets and self.action == CommandAction.SET_CHANNEL_INTENSITY:
+            if self.value is None:
+                raise ValueError("Grow light channel intensity commands require a JSON value.")
+            if isinstance(self.value, str):
+                try:
+                    parsed = json.loads(self.value)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Grow light channel intensity value must be JSON.") from exc
+            else:
+                parsed = self.value
+            if not isinstance(parsed, dict):
+                raise ValueError("Grow light channel intensity value must be a JSON object.")
+            channel = str(parsed.get("channel", "")).strip().lower()
+            if channel not in {"red", "white"}:
+                raise ValueError("Grow light channel must be red or white.")
+            try:
+                brightness_percent = int(parsed.get("brightness_percent"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Grow light channel brightness_percent must be an integer percent.") from exc
+            if brightness_percent < 0 or brightness_percent > 100:
+                raise ValueError("Grow light channel brightness_percent must be between 0 and 100.")
+            self.value = json.dumps(
+                {"channel": channel, "brightness_percent": brightness_percent},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
         if self.target == CommandTarget.LIGHT:
             self.target = CommandTarget.GROW_LIGHT
         if self.target == CommandTarget.AMBIENT_LED_BELT and self.action != CommandAction.SET:
@@ -112,6 +143,11 @@ class LightCommandRequest(BaseModel):
         if self.state is not None and self.intensity_percent is not None:
             raise ValueError("Provide only one of state or intensity_percent.")
         return self
+
+
+class GrowLightChannelCommandRequest(BaseModel):
+    channel: Literal["red", "white"]
+    intensity_percent: int = Field(ge=0, le=100)
 
 
 class PumpCommandRequest(BaseModel):

@@ -125,7 +125,7 @@ type ApiHealthNode = {
 type ApiHealthCommand = {
   id: number;
   target: "grow_light" | "light" | "ambient_led_belt" | "pump" | "camera";
-  action: "on" | "off" | "set_intensity" | "set" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "set_channel_intensity" | "set" | "run" | "capture";
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
   timestamp: string;
@@ -148,7 +148,7 @@ type ApiCommandRead = {
   id: number;
   device_id: number;
   target: "grow_light" | "light" | "ambient_led_belt" | "pump" | "camera";
-  action: "on" | "off" | "set_intensity" | "set" | "run" | "capture";
+  action: "on" | "off" | "set_intensity" | "set_channel_intensity" | "set" | "run" | "capture";
   value?: string | null;
   status: "pending" | "sent" | "in_progress" | "completed" | "failed" | "timed_out";
   message?: string | null;
@@ -438,6 +438,10 @@ function mapCommandAction(target: ApiCommandRead["target"], action: ApiCommandRe
   }
   if ((target === "grow_light" || target === "light") && action === "set_intensity") {
     return "light_intensity";
+  }
+  if ((target === "grow_light" || target === "light") && action === "set_channel_intensity") {
+    const params = parseCommandValue(value);
+    return params?.channel === "white" ? "light_white_intensity" : "light_red_intensity";
   }
   if (target === "ambient_led_belt" && action === "set") {
     const params = parseCommandValue(value);
@@ -1219,6 +1223,22 @@ function commandRequestForAction(action: DeviceCommand["action"], options?: Comm
         init: {
           method: "POST",
           body: JSON.stringify({ intensity_percent: options?.intensityPercent ?? 0 }),
+        },
+      };
+    case "light_red_intensity":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands/grow-light-channel`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ channel: "red", intensity_percent: options?.intensityPercent ?? 0 }),
+        },
+      };
+    case "light_white_intensity":
+      return {
+        path: (deviceId: string) => `/api/devices/${deviceId}/commands/grow-light-channel`,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ channel: "white", intensity_percent: options?.intensityPercent ?? 0 }),
         },
       };
     case "ambient_belt_color":

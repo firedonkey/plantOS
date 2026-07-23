@@ -33,6 +33,41 @@ test("web dashboard gates grow LED intensity controls on hardware capability sup
   }
 });
 
+test("web dashboard exposes independent grow LED red and white test controls", async () => {
+  const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
+  const hookSource = await readText("../src/hooks/useDeviceDashboard.ts");
+  const apiSource = await readText("../src/api/devices.ts");
+  const typeSource = await readText("../src/types/api.ts");
+
+  for (const requiredText of [
+    "const growLightChannelSupported = hasGrowLightChannelSupport(dashboard?.hardwareHealth?.primary?.capabilities);",
+    "Grow LED test",
+    'aria-label="Grow LED red brightness"',
+    'aria-label="Grow LED white brightness"',
+    'runCommand("light_red_intensity", { intensityPercent: redGrowLedIntensityDraft })',
+    'runCommand("light_white_intensity", { intensityPercent: whiteGrowLedIntensityDraft })',
+    "capabilities.grow_light_channel_control === true",
+    'String(capabilities.grow_light_driver ?? "").trim().toLowerCase() === "dual_al8860"',
+  ]) {
+    assert.match(dashboardSource, escaped(requiredText));
+  }
+
+  for (const requiredText of [
+    'case "light_red_intensity":',
+    'case "light_white_intensity":',
+    "path: (deviceId: string) => `/api/devices/${deviceId}/commands/grow-light-channel`,",
+    'body: JSON.stringify({ channel: "red", intensity_percent: options?.intensityPercent ?? 0 })',
+    'body: JSON.stringify({ channel: "white", intensity_percent: options?.intensityPercent ?? 0 })',
+  ]) {
+    assert.match(apiSource, escaped(requiredText));
+  }
+
+  assert.match(typeSource, escaped('"light_red_intensity"'));
+  assert.match(typeSource, escaped('"light_white_intensity"'));
+  assert.match(hookSource, escaped('return "Grow LED red channel";'));
+  assert.match(hookSource, escaped('return "Grow LED white channel";'));
+});
+
 test("web dashboard hides legacy pump actions from user-facing dashboard controls", async () => {
   const dashboardSource = await readText("../src/screens/DeviceDashboardScreen.tsx");
   const hookSource = await readText("../src/hooks/useDeviceDashboard.ts");

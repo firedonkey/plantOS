@@ -43,6 +43,32 @@ def test_contract_poll_returns_typed_command_envelope_and_sent_events():
         teardown_overrides()
 
 
+def test_contract_poll_includes_grow_light_channel_intensity_params():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        create_response = client.post(
+            f"/api/devices/{device_id}/commands/grow-light-channel",
+            json={"channel": "white", "intensity_percent": 12},
+        )
+        command_id = create_response.json()["command_id"]
+        _use_device_token_auth()
+
+        response = _poll(client, hardware_device_id="master-01", node_role="master")
+
+        assert response.status_code == 200
+        commands = response.json()["commands"]
+        assert len(commands) == 1
+        payload = commands[0]["payload"]
+        assert payload["command_id"] == f"cmd_{command_id}"
+        assert payload["command_type"] == "SET_GROW_LIGHT_BRIGHTNESS"
+        assert payload["target"]["node_role"] == "master"
+        assert payload["params"]["channel"] == "white"
+        assert payload["params"]["brightness_percent"] == 12
+    finally:
+        teardown_overrides()
+
+
 def test_contract_poll_returns_empty_list_cleanly():
     client, device_id, _ = build_client_with_devices()
     try:
@@ -369,6 +395,8 @@ def _add_node(client, device_id: int, *, hardware_device_id: str, node_role: str
                     "light_control": True,
                     "light_intensity_control": True,
                     "light_control_modes": ["on_off", "intensity"],
+                    "grow_light_driver": "dual_al8860",
+                    "grow_light_channel_control": True,
                 }
                 if node_role == "master"
                 else {},

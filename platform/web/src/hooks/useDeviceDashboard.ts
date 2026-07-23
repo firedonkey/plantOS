@@ -371,7 +371,13 @@ function delay(ms: number): Promise<void> {
 }
 
 function isLightCommand(action: DeviceCommand["action"]): boolean {
-  return action === "light_on" || action === "light_off" || action === "light_intensity";
+  return (
+    action === "light_on" ||
+    action === "light_off" ||
+    action === "light_intensity" ||
+    action === "light_red_intensity" ||
+    action === "light_white_intensity"
+  );
 }
 
 function isAmbientLedBeltCommand(action: DeviceCommand["action"]): boolean {
@@ -437,6 +443,10 @@ function friendlyCommandLabel(action: DeviceCommand["action"]): string {
       return "Grow LED off";
     case "light_intensity":
       return "Grow LED brightness";
+    case "light_red_intensity":
+      return "Grow LED red channel";
+    case "light_white_intensity":
+      return "Grow LED white channel";
     case "ambient_belt_color":
       return "Ambient LED belt color";
     case "ambient_belt_off":

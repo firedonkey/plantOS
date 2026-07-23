@@ -19,6 +19,7 @@ from app.schemas.commands import (
     CommandRead,
     CaptureCommandRequest,
     DeviceCommandEnvelopeRead,
+    GrowLightChannelCommandRequest,
     LightCommandRequest,
     PumpCommandRequest,
 )
@@ -739,6 +740,44 @@ def create_light_command(
     )
 
 
+@router.post("/{device_id}/commands/grow-light-channel", response_model=DeviceCommandEnvelopeRead, status_code=201)
+def create_grow_light_channel_command(
+    device_id: int,
+    payload: GrowLightChannelCommandRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    if is_demo_user(current_user):
+        if is_demo_device_id(device_id):
+            raise api_error(403, "demo_account_read_only", demo_forbidden_message("send grow-light test commands to"))
+        raise HTTPException(status_code=404, detail="Device not found.")
+    device = get_device_for_user(session, current_user, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+
+    nodes = list_nodes_for_device(session, device.id)
+    if not _device_supports_grow_light_channel_control(nodes):
+        raise HTTPException(status_code=409, detail="Grow-light channel control is not supported by this device.")
+
+    value = json.dumps(
+        {"channel": payload.channel, "brightness_percent": payload.intensity_percent},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    command = create_command(
+        session,
+        device.id,
+        CommandCreate(target="grow_light", action="set_channel_intensity", value=value),
+    )
+    return _queued_command_response(
+        device_id=device.id,
+        command_name="grow_light",
+        action=f"set_{payload.channel}_intensity",
+        command=command,
+        message=f"Grow-light {payload.channel} channel command queued: set intensity to {payload.intensity_percent}%.",
+    )
+
+
 @router.post("/{device_id}/commands/pump", response_model=DeviceCommandEnvelopeRead, status_code=201)
 def create_pump_command(
     device_id: int,
@@ -1063,6 +1102,10 @@ def _device_supports_light_intensity(nodes: list) -> bool:
     return any(_node_supports_light_intensity(getattr(node, "capabilities", None) or {}) for node in nodes)
 
 
+def _device_supports_grow_light_channel_control(nodes: list) -> bool:
+    return any(_node_supports_grow_light_channel_control(getattr(node, "capabilities", None) or {}) for node in nodes)
+
+
 def _node_supports_light_intensity(capabilities: dict) -> bool:
     if capabilities.get("light_intensity_control") is True:
         return True
@@ -1073,6 +1116,14 @@ def _node_supports_light_intensity(capabilities: dict) -> bool:
         normalized_modes = {str(mode).strip().lower() for mode in modes}
         return bool(normalized_modes & {"intensity", "dimming", "pwm"})
     return False
+
+
+def _node_supports_grow_light_channel_control(capabilities: dict) -> bool:
+    if capabilities.get("grow_light_channel_control") is True:
+        return True
+    if str(capabilities.get("grow_light_driver") or "").strip().lower() == "dual_al8860":
+        return True
+    return capabilities.get("grow_light_red_ctrl_gpio") is not None and capabilities.get("grow_light_white_ctrl_gpio") is not None
 
 
 def _command_health(session: Session, device_id: int) -> CommandHealthSnapshot:
