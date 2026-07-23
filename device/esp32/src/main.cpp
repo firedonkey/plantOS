@@ -206,7 +206,8 @@ LightController g_growing_light(
     PIN_GROW_LIGHT_WHITE_CTRL,
     ACTUATOR_ON_LEVEL,
     ACTUATOR_OFF_LEVEL,
-    PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED != 0);
+    PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED != 0,
+    PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ);
 PumpController g_pump(PIN_PUMP_MOSFET_GATE, ACTUATOR_ON_LEVEL, ACTUATOR_OFF_LEVEL);
 PowerButton g_power_button(
     PIN_POWER_BUTTON,
@@ -570,6 +571,7 @@ String masterCapabilitiesJson() {
   capabilities["grow_light_channel_control"] = true;
   capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
   capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
+  capabilities["grow_light_pwm_frequency_hz"] = g_growing_light.pwm_frequency_hz();
   capabilities["light_control"] = true;
   capabilities["light_intensity_control"] = g_growing_light.supports_intensity_control();
   capabilities["light_intensity_min_percent"] = 0;
@@ -3172,6 +3174,7 @@ bool registerProvisionedDevice() {
   capabilities["grow_light_channel_control"] = true;
   capabilities["grow_light_red_ctrl_gpio"] = PIN_GROW_LIGHT_RED_CTRL;
   capabilities["grow_light_white_ctrl_gpio"] = PIN_GROW_LIGHT_WHITE_CTRL;
+  capabilities["grow_light_pwm_frequency_hz"] = g_growing_light.pwm_frequency_hz();
   capabilities["moisture_sensor"] = g_moisture.enabled();
   capabilities["water_temperature_sensor"] = g_i2c_environment.mcp9808_present();
   capabilities["water_temperature_sensor_source"] = "mcp9808";

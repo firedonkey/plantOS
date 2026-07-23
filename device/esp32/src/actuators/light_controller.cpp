@@ -3,6 +3,8 @@
 #include <Arduino.h>
 
 namespace {
+constexpr int kDefaultPwmFrequencyHz = 1000;
+
 int clamp_percent(int percent) {
   if (percent < 0) {
     return 0;
@@ -12,22 +14,33 @@ int clamp_percent(int percent) {
   }
   return percent;
 }
+
+int valid_pwm_frequency_hz(int frequency_hz) {
+  return frequency_hz > 0 ? frequency_hz : kDefaultPwmFrequencyHz;
+}
 }
 
-LightController::LightController(int pin, int on_level, int off_level, bool intensity_control_enabled)
-    : LightController(pin, -1, on_level, off_level, intensity_control_enabled) {}
+LightController::LightController(
+    int pin,
+    int on_level,
+    int off_level,
+    bool intensity_control_enabled,
+    int pwm_frequency_hz)
+    : LightController(pin, -1, on_level, off_level, intensity_control_enabled, pwm_frequency_hz) {}
 
 LightController::LightController(
     int primary_pin,
     int secondary_pin,
     int on_level,
     int off_level,
-    bool intensity_control_enabled)
+    bool intensity_control_enabled,
+    int pwm_frequency_hz)
     : primary_pin_(primary_pin),
       secondary_pin_(secondary_pin),
       on_level_(on_level),
       off_level_(off_level),
       intensity_control_enabled_(intensity_control_enabled),
+      pwm_frequency_hz_(valid_pwm_frequency_hz(pwm_frequency_hz)),
       intensity_percent_(0),
       primary_intensity_percent_(0),
       secondary_intensity_percent_(0),
@@ -45,6 +58,7 @@ void LightController::begin() {
   secondary_intensity_percent_ = 0;
   is_on_ = false;
   if (intensity_control_enabled_) {
+    analogWriteFrequency(pwm_frequency_hz_);
     write_pwm_all(pwm_duty_for_percent(0));
   }
 }
@@ -133,6 +147,10 @@ int LightController::primary_pin() const {
 
 int LightController::secondary_pin() const {
   return secondary_pin_;
+}
+
+int LightController::pwm_frequency_hz() const {
+  return pwm_frequency_hz_;
 }
 
 void LightController::sync_combined_state() {

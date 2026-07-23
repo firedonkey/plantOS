@@ -77,6 +77,12 @@
 #define PLANTLAB_LIGHT_INTENSITY_CONTROL_ENABLED 1
 #endif
 
+// AL8860 CTRL PWM frequency. Keep this above the audible range to reduce coil
+// or ceramic-capacitor noise when the grow LEDs are dimmed.
+#ifndef PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ
+#define PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ 25000
+#endif
+
 // 24 V WS2811 FCOB ambient LED belt. The purchased belt has about 630 physical
 // emitters, but WS2811 belts usually address groups of emitters through one IC.
 // Only logical WS2811 control segments are allocated and transmitted.

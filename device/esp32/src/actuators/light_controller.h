@@ -2,13 +2,19 @@
 
 class LightController {
  public:
-  LightController(int pin, int on_level, int off_level, bool intensity_control_enabled = false);
+  LightController(
+      int pin,
+      int on_level,
+      int off_level,
+      bool intensity_control_enabled = false,
+      int pwm_frequency_hz = 1000);
   LightController(
       int primary_pin,
       int secondary_pin,
       int on_level,
       int off_level,
-      bool intensity_control_enabled = false);
+      bool intensity_control_enabled = false,
+      int pwm_frequency_hz = 1000);
   void begin();
   void set_on(bool on);
   bool set_intensity_percent(int percent);
@@ -23,6 +29,7 @@ class LightController {
   bool has_secondary_channel() const;
   int primary_pin() const;
   int secondary_pin() const;
+  int pwm_frequency_hz() const;
 
  private:
   int primary_pin_;
@@ -30,6 +37,7 @@ class LightController {
   int on_level_;
   int off_level_;
   bool intensity_control_enabled_;
+  int pwm_frequency_hz_;
   int intensity_percent_;
   int primary_intensity_percent_;
   int secondary_intensity_percent_;

@@ -16,6 +16,7 @@ struct PinState {
 };
 
 std::map<int, PinState> g_pin_states;
+int g_analog_frequency_hz = kUnset;
 
 PinState stateFor(int pin) {
   const auto found = g_pin_states.find(pin);
@@ -24,6 +25,7 @@ PinState stateFor(int pin) {
 
 void resetPins() {
   g_pin_states.clear();
+  g_analog_frequency_hz = kUnset;
 }
 
 void assertBothPwm(int duty) {
@@ -50,9 +52,14 @@ void analogWrite(int pin, int duty) {
   g_pin_states[pin].pwm = duty;
 }
 
+void analogWriteFrequency(unsigned int frequency_hz) {
+  g_analog_frequency_hz = static_cast<int>(frequency_hz);
+}
+
 int main() {
   static_assert(PIN_GROW_LIGHT_RED_CTRL == 18, "red grow-light CTRL must be GPIO18");
   static_assert(PIN_GROW_LIGHT_WHITE_CTRL == 8, "white grow-light CTRL must be GPIO8");
+  static_assert(PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ == 25000, "grow-light PWM should run above audible range");
 
   resetPins();
   LightController grow_light(
@@ -60,11 +67,14 @@ int main() {
       PIN_GROW_LIGHT_WHITE_CTRL,
       ACTUATOR_ON_LEVEL,
       ACTUATOR_OFF_LEVEL,
-      true);
+      true,
+      PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ);
   grow_light.begin();
   assert(grow_light.has_secondary_channel());
   assert(grow_light.primary_pin() == PIN_GROW_LIGHT_RED_CTRL);
   assert(grow_light.secondary_pin() == PIN_GROW_LIGHT_WHITE_CTRL);
+  assert(grow_light.pwm_frequency_hz() == PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ);
+  assert(g_analog_frequency_hz == PLANTLAB_GROW_LIGHT_PWM_FREQUENCY_HZ);
   assert(stateFor(PIN_GROW_LIGHT_RED_CTRL).mode == OUTPUT);
   assert(stateFor(PIN_GROW_LIGHT_WHITE_CTRL).mode == OUTPUT);
   assertBothPwm(0);

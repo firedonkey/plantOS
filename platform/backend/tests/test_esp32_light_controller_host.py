@@ -26,6 +26,7 @@ def test_esp32_grow_light_controller_drives_red_and_white_channels(tmp_path):
 void pinMode(int pin, int mode);
 void digitalWrite(int pin, int level);
 void analogWrite(int pin, int duty);
+void analogWriteFrequency(unsigned int frequency_hz);
 """,
         encoding="utf-8",
     )
