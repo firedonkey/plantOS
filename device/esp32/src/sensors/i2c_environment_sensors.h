@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 struct I2cEnvironmentReading {
   float aht20_temperature_c = 0.0f;
   float aht20_humidity_percent = 0.0f;
@@ -24,10 +26,12 @@ class I2cEnvironmentSensors {
   bool probe_address(unsigned char address);
   bool initialize_aht20();
   bool read_aht20(float* temperature_c, float* humidity_percent);
+  bool ensure_mcp9808_present();
   bool read_mcp9808(float* temperature_c);
 
   int sda_pin_;
   int scl_pin_;
   bool aht20_present_ = false;
   bool mcp9808_present_ = false;
+  uint8_t mcp9808_read_failures_ = 0;
 };

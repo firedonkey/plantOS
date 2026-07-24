@@ -11,6 +11,7 @@ constexpr uint8_t kAht20StatusBusyMask = 0x80;
 constexpr uint8_t kAht20StatusCalibratedMask = 0x08;
 constexpr uint8_t kMcp9808Address = 0x18;
 constexpr uint8_t kMcp9808TemperatureRegister = 0x05;
+constexpr uint8_t kMcp9808MaxReadFailuresBeforeProbe = 3;
 constexpr uint32_t kI2cClockHz = 100000UL;
 constexpr uint16_t kI2cTimeoutMs = 80;
 
@@ -122,20 +123,42 @@ bool I2cEnvironmentSensors::read_aht20(float* temperature_c, float* humidity_per
          *temperature_c > -40.0f && *temperature_c < 125.0f;
 }
 
+bool I2cEnvironmentSensors::ensure_mcp9808_present() {
+  if (mcp9808_present_) {
+    return true;
+  }
+  mcp9808_present_ = probe_address(kMcp9808Address);
+  if (mcp9808_present_) {
+    mcp9808_read_failures_ = 0;
+    Serial.println("[mcp9808] detected at I2C address 0x18");
+  }
+  return mcp9808_present_;
+}
+
 bool I2cEnvironmentSensors::read_mcp9808(float* temperature_c) {
-  if (!mcp9808_present_ || temperature_c == nullptr) {
+  if (temperature_c == nullptr || !ensure_mcp9808_present()) {
     return false;
   }
 
   Wire.beginTransmission(kMcp9808Address);
   Wire.write(kMcp9808TemperatureRegister);
   if (Wire.endTransmission(false) != 0) {
+    ++mcp9808_read_failures_;
+    if (mcp9808_read_failures_ >= kMcp9808MaxReadFailuresBeforeProbe) {
+      mcp9808_present_ = probe_address(kMcp9808Address);
+      mcp9808_read_failures_ = mcp9808_present_ ? 0 : kMcp9808MaxReadFailuresBeforeProbe;
+    }
     return false;
   }
   const int bytes_read = Wire.requestFrom(static_cast<int>(kMcp9808Address), 2);
   if (bytes_read != 2) {
     while (Wire.available() > 0) {
       Wire.read();
+    }
+    ++mcp9808_read_failures_;
+    if (mcp9808_read_failures_ >= kMcp9808MaxReadFailuresBeforeProbe) {
+      mcp9808_present_ = probe_address(kMcp9808Address);
+      mcp9808_read_failures_ = mcp9808_present_ ? 0 : kMcp9808MaxReadFailuresBeforeProbe;
     }
     return false;
   }
@@ -146,5 +169,11 @@ bool I2cEnvironmentSensors::read_mcp9808(float* temperature_c) {
     value -= 256.0f;
   }
   *temperature_c = value;
-  return value > -40.0f && value < 125.0f;
+  const bool valid = value > -40.0f && value < 125.0f;
+  if (valid) {
+    mcp9808_read_failures_ = 0;
+  } else {
+    ++mcp9808_read_failures_;
+  }
+  return valid;
 }

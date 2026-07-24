@@ -3897,7 +3897,15 @@ PlatformReading read_platform_reading() {
   const unsigned long now = millis();
   g_last_sensor_reading_ms = now;
   g_water_level.update(now);
+  const bool mcp9808_present_before_read = g_i2c_environment.mcp9808_present();
   const I2cEnvironmentReading i2c_environment = g_i2c_environment.read();
+  if (g_i2c_environment.mcp9808_present() != mcp9808_present_before_read) {
+    Serial.printf(
+        "[mcp9808] presence changed: %s\n",
+        g_i2c_environment.mcp9808_present() ? "present" : "not found");
+    g_master_node_registered = false;
+    g_last_master_node_register_attempt_ms = 0;
+  }
   const MoistureReading moisture = g_moisture.read();
   const WaterLevelReading water_level = g_water_level.reading();
 
