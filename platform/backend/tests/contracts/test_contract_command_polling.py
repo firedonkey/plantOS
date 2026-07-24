@@ -154,6 +154,33 @@ def test_contract_poll_targets_specific_camera_role_without_leaking_to_other_cam
         teardown_overrides()
 
 
+def test_contract_poll_does_not_let_master_claim_targeted_side_camera_command():
+    client, device_id, _ = build_client_with_devices()
+    try:
+        _add_node(client, device_id, hardware_device_id="master-01", node_role="master")
+        _add_node(client, device_id, hardware_device_id="camera-side", node_role="camera", camera_role="side")
+        create_response = client.post(f"/api/devices/{device_id}/commands/capture", json={"camera_role": "side"})
+        command_id = create_response.json()["command_id"]
+        _use_device_token_auth()
+
+        master_response = _poll(client, hardware_device_id="master-01", node_role="master")
+        side_response = _poll(client, hardware_device_id="camera-side", node_role="camera")
+
+        assert master_response.status_code == 200
+        assert master_response.json()["commands"] == []
+        assert side_response.status_code == 200
+        commands = side_response.json()["commands"]
+        assert len(commands) == 1
+        assert commands[0]["payload"]["command_id"] == f"cmd_{command_id}"
+        assert commands[0]["payload"]["target"]["hardware_device_id"] == "camera-side"
+        assert commands[0]["payload"]["target"]["camera_role"] == "side"
+        with client.testing_session_local() as session:
+            command = session.get(Command, command_id)
+            assert command.status == CommandStatus.SENT
+    finally:
+        teardown_overrides()
+
+
 def test_contract_poll_all_camera_capture_has_no_specific_target_hardware_id():
     client, device_id, _ = build_client_with_devices()
     try:

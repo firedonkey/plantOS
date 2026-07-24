@@ -140,10 +140,6 @@ def _payload_matches_polling_node(payload: CommandPayload, poller_node: DeviceNo
     if target_hardware_device_id:
         if target_hardware_device_id == poller_node.hardware_device_id:
             return True
-        # The master is the ESP-NOW gateway for camera commands even when the
-        # backend also names the physical camera node.
-        if poller_role == NodeRole.MASTER.value and target_role == NodeRole.CAMERA.value:
-            return True
         return False
     if target_role == poller_role:
         return True

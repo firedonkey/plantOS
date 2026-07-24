@@ -360,12 +360,15 @@ void queueLocalCapture() {
   Serial.printf("[camera-node] local capture queued camera_role=%s\n", runtimeCameraRole());
 }
 
+bool captureAndDumpSerialImage();
+
 void printSerialHelp() {
   Serial.println("[camera-node] USB commands:");
   Serial.println("  camera status");
   Serial.println("  camera role side");
   Serial.println("  camera role top");
   Serial.println("  camera capture");
+  Serial.println("  camera local-capture");
   Serial.println("  camera help");
 }
 
@@ -386,6 +389,10 @@ void handleSerialCommandLine(String line) {
   }
   if (line == "camera capture" || line == "capture") {
     queueLocalCapture();
+    return;
+  }
+  if (line == "camera local-capture" || line == "local-capture") {
+    captureAndDumpSerialImage();
     return;
   }
   if (line == "camera role side" || line == "role side") {
@@ -834,6 +841,38 @@ void deinitCamera() {
     Serial.printf("[camera-node] camera deinit returned err=%d\n", static_cast<int>(err));
   }
   g_camera_initialized = false;
+}
+
+bool captureAndDumpSerialImage() {
+  if (g_capture_requested || g_capture_in_progress) {
+    Serial.println("[camera-node] local serial capture rejected: capture already active");
+    return false;
+  }
+  if (!initCamera()) {
+    return false;
+  }
+
+  camera_fb_t* frame = esp_camera_fb_get();
+  if (frame == nullptr) {
+    Serial.println("[camera-node] local serial image capture failed");
+    recordDiagnosticError("image_capture_failed", "local serial image capture failed");
+    deinitCamera();
+    return false;
+  }
+
+  Serial.printf(
+      "[camera-node] LOCAL_JPEG_BEGIN bytes=%u width=%u height=%u\n",
+      static_cast<unsigned int>(frame->len),
+      static_cast<unsigned int>(frame->width),
+      static_cast<unsigned int>(frame->height));
+  Serial.write(frame->buf, frame->len);
+  Serial.println();
+  Serial.println("[camera-node] LOCAL_JPEG_END");
+  Serial.flush();
+
+  esp_camera_fb_return(frame);
+  deinitCamera();
+  return true;
 }
 
 bool captureAndUploadImage() {
