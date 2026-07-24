@@ -287,6 +287,7 @@ MasterProvisioningSession g_camera_provisioning_session{};
 bool g_camera_provisioning_acknowledged = false;
 CameraProvisioningSlotId g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
 bool g_camera_provisioning_manual_active = false;
+bool g_camera_auto_provisioning_enabled = false;
 unsigned long g_camera_provisioning_manual_deadline_ms = 0;
 bool g_camera_runtime_ready = false;
 unsigned long g_last_local_sensor_read_ms = 0;
@@ -988,6 +989,7 @@ void requestCameraProvisioningSlot(
     unsigned long now) {
   g_camera_provisioning_slot_id = slot_id;
   g_camera_provisioning_manual_active = true;
+  g_camera_auto_provisioning_enabled = false;
   g_camera_provisioning_manual_deadline_ms = now + kManualCameraProvisioningWindowMs;
   g_camera_provisioning_session = MasterProvisioningSession{};
   g_camera_provisioning_acknowledged = false;
@@ -1017,6 +1019,7 @@ void enableAutomaticTopCameraProvisioning(unsigned long now) {
   (void)now;
   g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
   g_camera_provisioning_manual_active = false;
+  g_camera_auto_provisioning_enabled = true;
   g_camera_provisioning_manual_deadline_ms = 0;
   g_camera_provisioning_session = MasterProvisioningSession{};
   g_camera_provisioning_acknowledged = false;
@@ -1030,6 +1033,7 @@ void stopCameraProvisioning(const char* reason) {
   g_camera_provisioning_session = MasterProvisioningSession{};
   g_camera_provisioning_acknowledged = true;
   g_camera_provisioning_manual_active = false;
+  g_camera_auto_provisioning_enabled = false;
   g_camera_provisioning_manual_deadline_ms = 0;
   g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
   memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
@@ -1050,12 +1054,13 @@ void printCameraProvisioningStatus() {
             : 0;
   }
   Serial.printf(
-      "[camera-provisioning] status slot=%s camera_index=%u role=%s target=%s manual=%u remaining_ms=%lu ack=%u session_state=%u runtime_ready=%u\n",
+      "[camera-provisioning] status slot=%s camera_index=%u role=%s target=%s manual=%u auto=%u remaining_ms=%lu ack=%u session_state=%u runtime_ready=%u\n",
       slot.name,
       static_cast<unsigned int>(slot.camera_node_index),
       espnow_camera_role_label(static_cast<uint8_t>(slot.camera_role)),
       macToString(activeCameraProvisioningTargetMac()).c_str(),
       g_camera_provisioning_manual_active ? 1U : 0U,
+      g_camera_auto_provisioning_enabled ? 1U : 0U,
       static_cast<unsigned long>(remaining_ms),
       g_camera_provisioning_acknowledged ? 1U : 0U,
       static_cast<unsigned int>(g_camera_provisioning_session.state),
@@ -1413,8 +1418,11 @@ void serviceCameraProvisioning(unsigned long now) {
   }
   if (g_camera_provisioning_manual_active &&
       static_cast<long>(now - g_camera_provisioning_manual_deadline_ms) >= 0) {
-    Serial.println("[camera-provisioning] manual provisioning window expired; returning to automatic top slot");
-    enableAutomaticTopCameraProvisioning(now);
+    Serial.println("[camera-provisioning] manual provisioning window expired; provisioning stopped");
+    stopCameraProvisioning("manual window expired");
+    return;
+  }
+  if (!g_camera_provisioning_manual_active && !g_camera_auto_provisioning_enabled) {
     return;
   }
 
@@ -2330,6 +2338,7 @@ void resetCameraProvisioningRuntime() {
   g_camera_provisioning_acknowledged = false;
   g_camera_provisioning_slot_id = CameraProvisioningSlotId::kTop;
   g_camera_provisioning_manual_active = false;
+  g_camera_auto_provisioning_enabled = false;
   g_camera_provisioning_manual_deadline_ms = 0;
   memset(g_camera_provisioning_target_mac, 0, sizeof(g_camera_provisioning_target_mac));
   g_camera_provisioning_target_mac_known = false;
@@ -4025,7 +4034,7 @@ PlatformStatus platform_status(const String& message) {
   status.provisioning_status = plantlab::provisioningStateName(g_provisioning_state);
   if (g_camera_runtime_ready) {
     status.camera_node_status = PLANTLAB_DEVICE_STATUS_ONLINE;
-  } else if (g_camera_target_mac_known || g_camera_provisioning_acknowledged) {
+  } else if (g_camera_target_mac_known) {
     status.camera_node_status = PLANTLAB_DEVICE_STATUS_DEGRADED;
   }
   if (g_last_command_result_ms > 0 && g_last_command_id > 0) {

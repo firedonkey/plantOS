@@ -49,6 +49,16 @@ inline bool camera_node_runtime_config_equal(
          memcmp(left.device_token, right.device_token, sizeof(left.device_token)) == 0;
 }
 
+inline bool camera_node_should_accept_provisioning_config(
+    const CameraNodeRuntimeConfig& current,
+    const CameraNodeRuntimeConfig& next) {
+  if (!camera_node_runtime_config_complete(current) || !camera_node_runtime_config_complete(next)) {
+    return true;
+  }
+  return !(current.camera_role == static_cast<uint8_t>(CameraRoleCode::kSide) &&
+           next.camera_role == static_cast<uint8_t>(CameraRoleCode::kTop));
+}
+
 inline bool camera_node_apply_provisioning_payload(
     CameraNodeRuntimeConfig* config,
     const CameraProvisioningPayload& payload) {

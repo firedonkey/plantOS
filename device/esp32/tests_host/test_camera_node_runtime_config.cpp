@@ -46,10 +46,64 @@ void test_runtime_config_rejects_incomplete_payload() {
   assert(!camera_node_apply_provisioning_payload(&config, payload));
   assert(!camera_node_runtime_config_complete(config));
 }
+
+void test_runtime_config_rejects_side_to_top_reprovisioning() {
+  CameraNodeRuntimeConfig current{};
+  CameraProvisioningPayload side_payload{};
+  assert(espnow_build_provisioning_payload(
+      &side_payload,
+      1,
+      2,
+      34,
+      CameraRoleCode::kSide,
+      30,
+      "PlantLabWiFi",
+      "camera-pass",
+      "https://api.example.test",
+      "shared-device-token"));
+  assert(camera_node_apply_provisioning_payload(&current, side_payload));
+
+  CameraNodeRuntimeConfig next{};
+  CameraProvisioningPayload top_payload = side_payload;
+  top_payload.camera_node_index = 1;
+  top_payload.camera_role = static_cast<uint8_t>(CameraRoleCode::kTop);
+  top_payload.capture_phase_seconds = 0;
+  assert(camera_node_apply_provisioning_payload(&next, top_payload));
+
+  assert(!camera_node_should_accept_provisioning_config(current, next));
+}
+
+void test_runtime_config_allows_top_to_side_recovery() {
+  CameraNodeRuntimeConfig current{};
+  CameraProvisioningPayload top_payload{};
+  assert(espnow_build_provisioning_payload(
+      &top_payload,
+      1,
+      1,
+      34,
+      CameraRoleCode::kTop,
+      0,
+      "PlantLabWiFi",
+      "camera-pass",
+      "https://api.example.test",
+      "shared-device-token"));
+  assert(camera_node_apply_provisioning_payload(&current, top_payload));
+
+  CameraNodeRuntimeConfig next{};
+  CameraProvisioningPayload side_payload = top_payload;
+  side_payload.camera_node_index = 2;
+  side_payload.camera_role = static_cast<uint8_t>(CameraRoleCode::kSide);
+  side_payload.capture_phase_seconds = 30;
+  assert(camera_node_apply_provisioning_payload(&next, side_payload));
+
+  assert(camera_node_should_accept_provisioning_config(current, next));
+}
 }  // namespace
 
 int main() {
   test_runtime_config_accepts_valid_payload();
   test_runtime_config_rejects_incomplete_payload();
+  test_runtime_config_rejects_side_to_top_reprovisioning();
+  test_runtime_config_allows_top_to_side_recovery();
   return 0;
 }

@@ -1168,6 +1168,16 @@ void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kInvalid);
       return;
     }
+    if (!camera_node_should_accept_provisioning_config(g_runtime_config, next_config)) {
+      Serial.printf(
+          "[camera-node] provisioning role change rejected local_role=%s requested_role=%s request=%u\n",
+          runtimeCameraRole(),
+          espnow_camera_role_label(next_config.camera_role),
+          static_cast<unsigned int>(packet.request_id));
+      recordDiagnosticError("espnow_provisioning_role_rejected", "camera provisioning role change rejected");
+      sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kInvalid);
+      return;
+    }
     if (camera_node_runtime_config_equal(g_runtime_config, next_config)) {
       Serial.println("[camera-node] provisioning config unchanged");
       sendAck(mac_addr, command, packet.request_id, EspNowAckStatus::kOk);
